@@ -1,0 +1,17 @@
+{
+    "name": "rbs-03/pms-rbs",
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Rakeybul Hasan",
+            "email": "rakeybul.rbs@gmail.com"
+        }
+    ],
+    "require": {
+        "firebase/php-jwt": "^6.10"
+    }
+}

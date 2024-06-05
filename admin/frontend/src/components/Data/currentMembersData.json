@@ -1,0 +1,23 @@
+[
+  {
+      "id": 1,
+      "avatarSrc": "https://raw.githubusercontent.com/mantinedev/mantine/master/.demo/avatars/avatar-1.png",
+      "name": "Noor Khan",
+      "email": "noorkhan@gmail.com",
+      "phoneNumber": "+880 123 456 7890"
+  },
+  {
+      "id": 2,
+      "avatarSrc": "https://raw.githubusercontent.com/mantinedev/mantine/master/.demo/avatars/avatar-2.png",
+      "name": "Shafiq Islam",
+      "email": "shafiqislam@gmail.com",
+      "phoneNumber": "+880 123 456 7890"
+  },
+  {
+      "id": 12,
+      "avatarSrc": "https://raw.githubusercontent.com/mantinedev/mantine/master/.demo/avatars/avatar-2.png",
+      "name": "Rakebul Hasan",
+      "email": "rakebulhasan@gmail.com",
+      "phoneNumber": "+880 123 456 7890"
+  }
+]
