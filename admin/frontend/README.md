@@ -4,7 +4,7 @@
 Follow these steps to install the plugin:
 
 1. **Download the Plugin:**
-   - Clone the repository : `$ git clone https://github.com/luminouslabsbd/luminous-pms-wp-react.git`
+   - Clone the repository : `$ git clone https://github.com/lazycodersllc/lazytask.git`
 
 2. **Upload to WordPress:**
    - Upload the entire plugin folder to the `wp-content/plugins/` directory of your WordPress installation.

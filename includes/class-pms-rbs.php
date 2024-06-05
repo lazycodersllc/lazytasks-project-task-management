@@ -72,7 +72,7 @@ class Lazy_Task {
 		} else {
 			$this->version = '1.0.0';
 		}
-		$this->plugin_name = 'pms-rbs';
+		$this->plugin_name = 'LazyTasks';
 
 		$this->load_dependencies();
 		$this->set_locale();

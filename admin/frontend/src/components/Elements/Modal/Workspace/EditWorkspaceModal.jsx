@@ -128,7 +128,7 @@ const EditWorkspaceModal = ({ workspaceData }) => {
                             <div>
                                 <div
                                     className={`current-member-lists flex flex-wrap gap-4 ${currentMemberData.length > 0 ? 'mb-4' : ''}`}>
-                                    {currentMemberData.map((member) => (
+                                    {currentMemberData && currentMemberData.length >0 && currentMemberData.map((member) => (
                                         <div key={member.id}
                                              className="single-current-member flex items-center justify-between gap-2">
                                             <Avatar src={member.avatar} size={22} radius={22}/>
@@ -165,11 +165,11 @@ const EditWorkspaceModal = ({ workspaceData }) => {
                             {showMembersList && (
                                 <div
                                     className="members-lists mt-3 border boder-solid border-[#6191A4] rounded-md p-3 pb-0">
-                                    <Text size="sm" fw={700} c="#202020">{filteredMembers.length} people
+                                    <Text size="sm" fw={700} c="#202020">{filteredMembers && filteredMembers.length} people
                                         available</Text>
                                     <div className="members-lists mt-3">
                                         <ScrollArea h={250} scrollbarSize={4} scrollHideDelay={500}>
-                                            {filteredMembers.map((member) => (
+                                            {filteredMembers && filteredMembers.length > 0 && filteredMembers.map((member) => (
                                                 <div key={member.id}
                                                      className="ml-single flex items-center border-b border-solid border-[#C2D4DC] py-3 justify-between">
                                                     <Avatar src={member.avatar} size={32} radius={32}/>

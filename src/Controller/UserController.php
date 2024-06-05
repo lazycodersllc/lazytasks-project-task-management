@@ -198,7 +198,7 @@ final class UserController {
 		if ( ! $secret_key ) {
 			return new WP_Error(
 				'jwt_auth_bad_config',
-				__( 'JWT is not configured properly, please contact the administration', 'pms-rbs' ),
+				__( 'JWT is not configured properly, please contact the administration', 'lazytask' ),
 				[
 					'status' => 403,
 				]
@@ -210,7 +210,7 @@ final class UserController {
 		$user = wp_authenticate($username, $password);
 
 		if (is_wp_error($user)) {
-			return new WP_Error('invalid_credentials', __('Invalid credentials', 'pms-rbs'), array('status' => 401));
+			return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytask'), array('status' => 401));
 		}
 
 		$issued_at = time();
@@ -397,12 +397,12 @@ final class UserController {
 
 	  $userId = $_COOKIE['user_id'];
 	  if(!$userId){
-		  return new WP_Error('invalid_credentials', __('Invalid credentials', 'pms-rbs'), array('status' => 401));
+		  return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytask'), array('status' => 401));
 	  }
 	  $user = get_user_by('ID', $userId );
 
 	  if (is_wp_error($user)) {
-		  return new WP_Error('invalid_credentials', __('Invalid credentials', 'pms-rbs'), array('status' => 401));
+		  return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytask'), array('status' => 401));
 	  }
 
 	  $issued_at = time();
@@ -590,34 +590,34 @@ final class UserController {
 
 				// Handle file upload
 				$requestFile = $request->get_file_params();
-				if (empty($requestFile['file'])) {
-					return new WP_Error('no_file', 'No file uploaded', array('status' => 400));
+				if (isset($requestFile['file']) && $requestFile['file']) {
+					require_once(ABSPATH . 'wp-admin/includes/file.php');
+					$uploadedfile = $requestFile['file'];
+					$upload_overrides = array('test_form' => false);
+
+					$moveFile = wp_handle_upload($uploadedfile, $upload_overrides);
+
+					if($moveFile){
+						$attachment = array(
+							'post_author' => $userId,
+							'post_title' => $uploadedfile['name'],
+							'post_content' => '',
+							'post_status' => 'inherit',
+							'post_mime_type' => image_type_to_mime_type(exif_imagetype($moveFile['file']))
+						);
+
+						$attachment_id = wp_insert_attachment($attachment, $moveFile['file']);
+
+						require_once(ABSPATH . 'wp-admin/includes/image.php');
+						$attach_data = wp_generate_attachment_metadata($attachment_id, $moveFile['file']);
+						wp_update_attachment_metadata($attachment_id, $attach_data);
+
+						update_user_meta($userId, 'profile_photo', $moveFile['url']);
+						update_user_meta($userId, 'profile_photo_id', $attachment_id);
+
+					}
 				}
-				require_once(ABSPATH . 'wp-admin/includes/file.php');
-				$uploadedfile = $requestFile['file'];
-				$upload_overrides = array('test_form' => false);
 
-				$moveFile = wp_handle_upload($uploadedfile, $upload_overrides);
-
-				if($moveFile){
-					$attachment = array(
-						'post_author' => $userId,
-						'post_title' => $uploadedfile['name'],
-						'post_content' => '',
-						'post_status' => 'inherit',
-						'post_mime_type' => image_type_to_mime_type(exif_imagetype($moveFile['file']))
-					);
-
-					$attachment_id = wp_insert_attachment($attachment, $moveFile['file']);
-
-					require_once(ABSPATH . 'wp-admin/includes/image.php');
-					$attach_data = wp_generate_attachment_metadata($attachment_id, $moveFile['file']);
-					wp_update_attachment_metadata($attachment_id, $attach_data);
-
-					update_user_meta($userId, 'profile_photo', $moveFile['url']);
-					update_user_meta($userId, 'profile_photo_id', $attachment_id);
-
-				}
 
 				$db->query('COMMIT');
 

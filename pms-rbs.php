@@ -23,7 +23,7 @@ global $wpdb;
  * Author URI:        https://lazycoders.co
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
- * Text Domain:       pms-rbs
+ * Text Domain:       lazytask
  * Domain Path:       /languages
  */
 

@@ -80,7 +80,7 @@ This section describes how to install the plugin and get it working.
 
 e.g.
 
-1. Upload `pms-rbs.php` to the `/wp-content/plugins/` directory
+1. Upload lazytask.zip to the `/wp-content/plugins/` directory
 1. Activate the plugin through the 'Plugins' menu in WordPress
 
 == Frequently Asked Questions ==
