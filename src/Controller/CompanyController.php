@@ -30,7 +30,7 @@ final class CompanyController {
 			}
 			return new WP_REST_Response(['status'=>200, 'message'=>'Success', 'data'=>$results], 200);
 		}
-		return new WP_REST_Response(['status'=>404, 'message'=>'No record found', 'data'=>[]], 404);
+		return new WP_REST_Response(['status'=>200, 'message'=>'No record found', 'data'=>[]], 200);
 	}
 
 	public function create(WP_REST_Request $request){

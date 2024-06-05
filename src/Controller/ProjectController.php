@@ -54,7 +54,7 @@ final class ProjectController {
 			}
 			return new WP_REST_Response(['status'=>200, 'message'=>'Success', 'data'=>$returnArray], 200);
 		}
-		return new WP_REST_Response(['status'=>404, 'message'=>'No record found', 'data'=>$returnArray], 404);
+		return new WP_REST_Response(['status'=>200, 'message'=>'No record found', 'data'=>$returnArray], 200);
 	}
 	const TABLE_PROJECT_MEMBERS = PMS_TABLE_PREFIX . 'projects_users';
 

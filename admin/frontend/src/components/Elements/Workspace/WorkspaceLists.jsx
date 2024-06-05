@@ -33,10 +33,10 @@ const WorkspaceLists = () => {
               <Accordion.Control className="!bg-white font-bold border-solid !border-[#545454] !rounded-t-md">
                 {item.name}
               </Accordion.Control>
-              {item.projects.length>0 &&
+              {item.projects && item.projects.length > 0 &&
               <Accordion.Panel>
                 <ul>
-                  {item.projects.map((project, index) => (
+                  {item.projects && item.projects.map((project, index) => (
                       <li key={`${item.id}-${index}`}>
                         <a onClick={()=>goToTasksList(project.id)} rel="noopener noreferrer" className="text-[#39758D] hover:underline">
                           {project.name}

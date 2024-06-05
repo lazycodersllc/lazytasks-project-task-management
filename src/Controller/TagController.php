@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Helper\DatabaseTableSchema;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -11,12 +12,18 @@ final class TagController {
 
 	public function getAllTags() {
 		global $wpdb;
+		$db = DatabaseTableSchema::get_global_wp_db($wpdb);
 		//phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$tags = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}pms_tags", ARRAY_A);
-		if($tags) {
-			return new WP_REST_Response(['status'=>200, 'message'=>'Success', 'data'=>$tags], 200);
+		$tags = $db->get_results("SELECT * FROM {$wpdb->prefix}pms_tags", ARRAY_A);
+		try {
+			if($tags) {
+				return new WP_REST_Response(['status'=>200, 'message'=>'Success', 'data'=>$tags], 200);
+			}
+			return new WP_REST_Response(['status'=>200, 'message'=>'No tags found', 'data'=>[]], 200);
+		} catch (\Exception $e) {
+			return new WP_REST_Response(['status'=>400, 'message'=>'Error', 'data'=>[]], 400);
 		}
-		return new WP_REST_Response(['status'=>404, 'message'=>'No tags found', 'data'=>[]], 404);
+
 	}
 
 	public function create( WP_REST_Request $request ) {

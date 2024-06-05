@@ -224,6 +224,42 @@ class DatabaseTableSchema {
 ";
 		require_once (ABSPATH. 'wp-admin/includes/upgrade.php');
 		dbDelta($table_generate_query);
+
+
+
+		$db = self::get_global_wp_db();
+		$array = [
+			[
+				'name' => 'Superadmin',
+				'slug' => 'superadmin'
+			],[
+				'name' => 'Admin',
+				'slug' => 'admin'
+			],[
+				'name' => 'Director',
+				'slug' => 'director'
+			],[
+				'name' => 'Manager',
+				'slug' => 'manager'
+			],[
+				'name' => 'Line Manager',
+				'slug' => 'line-manager'
+			],[
+				'name' => 'Employee',
+				'slug' => 'employee'
+			],[
+				'name' => 'Follower',
+				'slug' => 'follower'
+			]
+		];
+
+		//if empty check data
+		if($db->get_row("SELECT * FROM $table_name") == null){
+			foreach ($array as $item){
+				$db->insert($table_name, $item);
+			}
+		}
+
 	}
 
 	private static function tbl_permissions(){
@@ -240,6 +276,48 @@ class DatabaseTableSchema {
 ";
 		require_once (ABSPATH. 'wp-admin/includes/upgrade.php');
 		dbDelta($table_generate_query);
+
+		$arrayPermissions = [
+			[
+				'name' => 'superadmin',
+				'description' => 'superadmin'
+			],[
+				'name' => 'admin',
+				'description' => 'admin'
+			],[
+				'name' => 'director',
+				'description' => 'director'
+			],[
+				'name' => 'accounts',
+				'description' => 'accounts'
+			],[
+				'name' => 'manager',
+				'description' => 'manager'
+			],[
+				'name' => 'line_manager',
+				'description' => 'line_manager'
+			],[
+				'name' => 'employee',
+				'description' => 'employee'
+			],[
+				'name' => 'follower',
+				'description' => 'follower'
+			],[
+				'name' => 'task-edit',
+				'description' => 'task-edit'
+			],[
+				'name' => 'task-view',
+				'description' => 'task-view'
+			]
+		];
+
+		$db = self::get_global_wp_db();
+		if($db->get_row("SELECT * FROM $table_name") == null){
+			foreach ($arrayPermissions as $item){
+				$db->insert($table_name, $item);
+			}
+		}
+
 	}
 
 	private static function tbl_role_has_permissions(){
@@ -255,6 +333,195 @@ class DatabaseTableSchema {
 ";
 		require_once (ABSPATH. 'wp-admin/includes/upgrade.php');
 		dbDelta($table_generate_query);
+
+		$rolePermissions = [
+			[
+				'role_id' => 1,
+				'permission_id' => 1
+			],[
+				'role_id' => 1,
+				'permission_id' => 2
+			],[
+				'role_id' => 1,
+				'permission_id' => 3
+			],[
+				'role_id' => 1,
+				'permission_id' => 4
+			],[
+				'role_id' => 1,
+				'permission_id' => 5
+			],[
+				'role_id' => 1,
+				'permission_id' => 6
+			],[
+				'role_id' => 1,
+				'permission_id' => 7
+			],[
+				'role_id' => 1,
+				'permission_id' => 8
+			],[
+				'role_id' => 1,
+				'permission_id' => 9
+			],[
+				'role_id' => 1,
+				'permission_id' => 10
+			],[
+				'role_id' => 2,
+				'permission_id' => 2
+			],[
+				'role_id' => 2,
+				'permission_id' => 3
+			],[
+				'role_id' => 2,
+				'permission_id' => 4
+			],[
+				'role_id' => 2,
+				'permission_id' => 5
+			],[
+				'role_id' => 2,
+				'permission_id' => 6
+			],[
+				'role_id' => 2,
+				'permission_id' => 7
+			],[
+				'role_id' => 2,
+				'permission_id' => 8
+			],[
+				'role_id' => 2,
+				'permission_id' => 9
+			],[
+				'role_id' => 2,
+				'permission_id' => 10
+			],[
+				'role_id' => 3,
+				'permission_id' => 3
+			],[
+				'role_id' => 3,
+				'permission_id'=> 4
+			],
+			[
+				'role_id' => 3,
+				'permission_id'=> 5
+			],
+			[
+				'role_id' => 3,
+				'permission_id'=> 6
+			],
+			[
+				'role_id' => 3,
+				'permission_id'=> 7
+			],
+			[
+				'role_id' => 3,
+				'permission_id'=> 8
+			],
+			[
+				'role_id' => 3,
+				'permission_id'=> 9
+			],
+			[
+				'role_id' => 3,
+				'permission_id'=> 10
+			],
+			[
+				'role_id' => 4,
+				'permission_id'=> 4
+			],
+			[
+				'role_id' => 4,
+				'permission_id'=> 5
+			],
+			[
+				'role_id' => 4,
+				'permission_id'=> 6
+			],
+			[
+				'role_id' => 4,
+				'permission_id'=> 7
+			],
+			[
+				'role_id' => 4,
+				'permission_id'=> 8
+			],
+			[
+				'role_id' => 4,
+				'permission_id'=> 9
+			],
+			[
+				'role_id' => 4,
+				'permission_id'=> 10
+			],
+			[
+				'role_id' => 5,
+				'permission_id'=> 5
+			],
+			[
+				'role_id' => 5,
+				'permission_id'=> 6
+			],
+			[
+				'role_id' => 5,
+				'permission_id'=> 7
+			],
+			[
+				'role_id' => 5,
+				'permission_id'=> 8
+			],
+			[
+				'role_id' => 5,
+				'permission_id'=> 9
+			],
+			[
+				'role_id' => 5,
+				'permission_id'=> 10
+			],
+			[
+				'role_id' => 6,
+				'permission_id'=> 6
+			],
+			[
+				'role_id' => 6,
+				'permission_id'=> 7
+			],
+			[
+				'role_id' => 6,
+				'permission_id'=> 8
+			],
+			[
+				'role_id' => 6,
+				'permission_id'=> 9
+			],
+			[
+				'role_id' => 6,
+				'permission_id'=> 10
+			],
+			[
+				'role_id' => 7,
+				'permission_id'=> 7
+			],
+			[
+				'role_id' => 7,
+				'permission_id'=> 8
+			],
+			[
+				'role_id' => 7,
+				'permission_id'=> 9
+			],
+			[
+				'role_id' => 7,
+				'permission_id'=> 10
+			],
+		];
+
+		$db = self::get_global_wp_db();
+
+		if($db->get_row("SELECT * FROM $table_name") == null){
+			foreach ($rolePermissions as $item){
+				$db->insert($table_name, $item);
+			}
+		}
+
+
 	}
 
 	private static function tbl_user_has_roles(){
