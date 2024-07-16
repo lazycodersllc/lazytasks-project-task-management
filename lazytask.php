@@ -17,6 +17,7 @@
  * Description:       Comprehensive Task and Project Management: Create, assign, follow, and comment on tasks with ease. Our user-friendly interface ensures your projects are always on track and accessible.
  * Version:           1.0.0
  * Requires at least: 3.0.1
+ * Tested up to:      6.5
  * Requires PHP:      7.4
  * Author:            Lazycoders
  * Author URI:        https://lazycoders.co
