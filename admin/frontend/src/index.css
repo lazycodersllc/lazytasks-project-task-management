@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@import url("https://unpkg.com/react-phone-number-input@3.x/bundle/style.css");
+
+body {
+    background-color:  #f4f4f4 !important; 
+}
+div#lazy_pms {
+    margin-left: -20px;
+}
+.container #lazy_pms {
+    margin-left: auto;
+}
+.scrollbar-width-thin::-webkit-scrollbar {
+    width: 3px;
+}
+.scrollbar-width-thin::-webkit-scrollbar-thumb {
+    background-color: #cccccc;
+    border-radius: 2px;
+}
+.bg-purple-500{
+    background-color: #6c63ff!important;
+}
+.bg-violet-500{
+    background-color: rgb(139 92 246);
+}
