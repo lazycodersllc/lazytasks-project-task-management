@@ -7,7 +7,7 @@ const usersSlice = createSlice({
   initialState,
   reducers: {
     setUsers(state, action) {
-        const payloadIds = new Set(action.payload.map(item => item.id));
+        const payloadIds = new Set(action.payload && action.payload.length > 0 && action.payload.map(item => item.id));
         return [
             ...state.filter(item => !payloadIds.has(item.id)),
             ...action.payload

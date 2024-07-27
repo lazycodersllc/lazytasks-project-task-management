@@ -3,7 +3,7 @@ Contributors: lazycoders
 Donate link: https://lazycoders.co
 Tags: bug tracking, project management, swimlane, calendar, collaboration
 Requires at least: 3.0.1
-Tested up to: 6.5
+Tested up to: 6.6
 Stable tag: 1.0.0
 Requires PHP: 7.4
 License: GPLv2 or later
@@ -80,7 +80,7 @@ This section describes how to install the plugin and get it working.
 
 e.g.
 
-1. Upload lazytask.zip to the `/wp-content/plugins/` directory
+1. Upload lazytasks-project-task-management.zip to the `/wp-content/plugins/` directory
 1. Activate the plugin through the 'Plugins' menu in WordPress
 
 == Frequently Asked Questions ==

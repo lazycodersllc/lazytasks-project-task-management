@@ -11,7 +11,7 @@ const TaskComment = ({task, selectedValue}) => {
 
   const [comments, setComments] = useState(task && task.comments ? task.comments : []);
   const [commentText, setCommentText] = useState('');
-  const {loggedUserId, name} = useSelector((state) => state.auth.user)
+  const {loggedUserId, name, avatar, user} = useSelector((state) => state.auth.user)
 
   const formatTimestamp = (timestamp) => {
     const now = new Date();
@@ -68,8 +68,8 @@ const TaskComment = ({task, selectedValue}) => {
           <div className="write-comments">
             <div className="flex gap-2 mb-2">
               <Avatar size={32}
-                      src="https://raw.githubusercontent.com/mantinedev/mantine/master/.demo/avatars/avatar-7.png"
-                      alt="Noor Khan"/>
+                      src={user && user.avatar ? user.avatar : avatar}
+                      alt={name}/>
               <Textarea
                   description=""
                   style={{width: '100%'}}

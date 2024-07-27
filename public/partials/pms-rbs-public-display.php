@@ -8,8 +8,8 @@
  * @link       https://lazycoders.co
  * @since      1.0.0
  *
- * @package    Lazy_Task
- * @subpackage Lazy_Task/public/partials
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/public/partials
  */
 ?>
 

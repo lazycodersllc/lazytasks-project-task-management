@@ -7,8 +7,8 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  * @link       https://lazycoders.co
  * @since      1.0.0
  *
- * @package    Lazy_Task
- * @subpackage Lazy_Task/admin
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/admin
  */
 
 use Firebase\JWT\JWT;
@@ -19,8 +19,8 @@ use Firebase\JWT\JWT;
  * Defines the plugin name, version, and two examples hooks for how to
  * enqueue the admin-specific stylesheet and JavaScript.
  *
- * @package    Lazy_Task
- * @subpackage Lazy_Task/admin
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/admin
  * @author     lazycoders <info@lazycoders.co>
  */
 class Lazytask_Admin {
@@ -123,8 +123,8 @@ class Lazytask_Admin {
 
     public function lazytask_admin_menu() {
         add_menu_page(
-            __("Lazy Tasks", "lazytask"),
-            __("Lazy Tasks", "lazytask"),
+            __("Lazy Tasks", "lazytasks-project-task-management"),
+            __("Lazy Tasks", "lazytasks-project-task-management"),
             "ll_pms",
             "pms-rbs",
             array($this, "lazytask_init"),

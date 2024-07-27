@@ -7,8 +7,8 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  * @link       https://lazycoders.co
  * @since      1.0.0
  *
- * @package    Lazy_Task
- * @subpackage Lazy_Task/includes
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/includes
  */
 
 
@@ -19,8 +19,8 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  * This class defines all code necessary to run during the plugin's activation.
  *
  * @since      1.0.0
- * @package    Lazy_Task
- * @subpackage Lazy_Task/includes
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/includes
  * @author     lazycoders <info@lazycoders.co>
  */
 class Lazytask_Activator {

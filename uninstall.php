@@ -22,7 +22,7 @@
  * @link       https://lazycoders.co
  * @since      1.0.0
  *
- * @package    Lazy_Task
+ * @package    Lazytask_Lazy_Task
  */
 
 // If uninstall not called from WordPress, then exit.

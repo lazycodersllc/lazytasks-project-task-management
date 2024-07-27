@@ -198,7 +198,7 @@ final class Lazytask_UserController {
 		if ( ! $secret_key ) {
 			return new WP_Error(
 				'jwt_auth_bad_config',
-				__( 'JWT is not configured properly, please contact the administration', 'lazytask' ),
+				__( 'JWT is not configured properly, please contact the administration', 'lazytasks-project-task-management' ),
 				[
 					'status' => 403,
 				]
@@ -210,7 +210,7 @@ final class Lazytask_UserController {
 		$user = wp_authenticate($username, $password);
 
 		if (is_wp_error($user)) {
-			return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytask'), array('status' => 401));
+			return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytasks-project-task-management'), array('status' => 401));
 		}
 
 		$issued_at = time();
@@ -401,12 +401,12 @@ final class Lazytask_UserController {
 //	  $userId = isset($_COOKIE['user_id']) ? (int)$_COOKIE['user_id'] : '';
 	  $userId = is_user_logged_in() && is_admin() ? get_current_user_id() : '';
 	  if(!$userId){
-		  return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytask'), array('status' => 401));
+		  return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytasks-project-task-management'), array('status' => 401));
 	  }
 	  $user = get_user_by('ID', $userId );
 
 	  if (is_wp_error($user)) {
-		  return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytask'), array('status' => 401));
+		  return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytasks-project-task-management'), array('status' => 401));
 	  }
 
 	  $issued_at = time();
@@ -470,15 +470,15 @@ final class Lazytask_UserController {
 		// $role = sanitize_text_field($parameters['role']);
 		$error = new WP_Error();
 		if (empty($username)) {
-			$error->add(400, __("Username field 'username' is required.", 'lazytask'), array('status' => 400));
+			$error->add(400, __("Username field 'username' is required.", 'lazytasks-project-task-management'), array('status' => 400));
 			return $error;
 		}
 		if (empty($email)) {
-			$error->add(401, __("Email field 'email' is required.", 'lazytask'), array('status' => 400));
+			$error->add(401, __("Email field 'email' is required.", 'lazytasks-project-task-management'), array('status' => 400));
 			return $error;
 		}
 		if (empty($password)) {
-			$error->add(404, __("Password field 'password' is required.", 'lazytask'), array('status' => 400));
+			$error->add(404, __("Password field 'password' is required.", 'lazytasks-project-task-management'), array('status' => 400));
 			return $error;
 		}
 		$nickname= '';
@@ -522,7 +522,7 @@ final class Lazytask_UserController {
 
 				return new WP_REST_Response(['status'=>404, 'data'=>[]]);
 				}
-			return new WP_Error('error', __("User Registration Failed", "lazytask"), array('status' => 500));
+			return new WP_Error('error', __("User Registration Failed", "lazytasks-project-task-management"), array('status' => 500));
 			} else {
 				return $user_id;
 			}
@@ -549,11 +549,11 @@ final class Lazytask_UserController {
 		// $role = sanitize_text_field($parameters['role']);
 		$error = new WP_Error();
 		if (empty($username)) {
-			$error->add(400, __("Username field 'username' is required.", 'lazytask'), array('status' => 400));
+			$error->add(400, __("Username field 'username' is required.", 'lazytasks-project-task-management'), array('status' => 400));
 			return $error;
 		}
 		if (empty($email)) {
-			$error->add(401, __("Email field 'email' is required.", 'lazytask'), array('status' => 400));
+			$error->add(401, __("Email field 'email' is required.", 'lazytasks-project-task-management'), array('status' => 400));
 			return $error;
 		}
 
@@ -633,7 +633,7 @@ final class Lazytask_UserController {
 					return new WP_REST_Response(['status'=>404, 'data'=>[]]);
 				}
 			}
-			return new WP_Error('error', __("User Update Failed", "lazytask"), array('status' => 500));
+			return new WP_Error('error', __("User Update Failed", "lazytasks-project-task-management"), array('status' => 500));
 		}
 
 		private function addUserRole($userId, $roles) {

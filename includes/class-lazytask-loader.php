@@ -7,8 +7,8 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  * @link       https://lazycoders.co
  * @since      1.0.0
  *
- * @package    Lazy_Task
- * @subpackage Lazy_Task/includes
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/includes
  */
 
 /**
@@ -18,8 +18,8 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  * the plugin, and register them with the WordPress API. Call the
  * run function to execute the list of actions and filters.
  *
- * @package    Lazy_Task
- * @subpackage Lazy_Task/includes
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/includes
  * @author     lazycoders <info@lazycoders.co>
  */
 class Lazytask_Loader {

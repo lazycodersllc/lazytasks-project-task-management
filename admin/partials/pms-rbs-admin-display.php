@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  * @link       https://lazycoders.co
  * @since      1.0.0
  *
- * @package    Lazy_Task
- * @subpackage Lazy_Task/admin/partials
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/admin/partials
  */
 ?>
 

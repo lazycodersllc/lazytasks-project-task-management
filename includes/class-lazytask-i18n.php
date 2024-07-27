@@ -10,8 +10,8 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  * @link       https://lazycoders.co
  * @since      1.0.0
  *
- * @package    Lazy_Task
- * @subpackage Lazy_Task/includes
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/includes
  */
 
 /**
@@ -21,8 +21,8 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  * so that it is ready for translation.
  *
  * @since      1.0.0
- * @package    Lazy_Task
- * @subpackage Lazy_Task/includes
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/includes
  * @author     lazycoders <info@lazycoders.co>
  */
 class Lazytask_i18n {
@@ -36,7 +36,7 @@ class Lazytask_i18n {
 	public function lazytask_load_plugin_textdomain() {
 
 		load_plugin_textdomain(
-			'lazytask',
+			'lazytasks-project-task-management',
 			false,
 			dirname( dirname( plugin_basename( __FILE__ ) ) ) . '/languages/'
 		);

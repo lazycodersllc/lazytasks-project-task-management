@@ -10,8 +10,8 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  * @link       https://lazycoders.co
  * @since      1.0.0
  *
- * @package    Lazy_Task
- * @subpackage Lazy_Task/includes
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/includes
  */
 
 /**
@@ -24,11 +24,11 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
  * version of the plugin.
  *
  * @since      1.0.0
- * @package    Lazy_Task
- * @subpackage Lazy_Task/includes
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/includes
  * @author     lazycoders <info@lazycoders.co>
  */
-class Lazy_Task {
+class Lazytask_Lazy_Task {
 
 	/**
 	 * The loader that's responsible for maintaining and registering all hooks that power
@@ -73,7 +73,7 @@ class Lazy_Task {
 		} else {
 			$this->version = '1.0.0';
 		}
-		$this->plugin_name = 'lazytask';
+		$this->plugin_name = 'lazytasks-project-task-management';
 
 		$this->lazytask_load_dependencies();
 		$this->lazytask_set_locale();
@@ -177,8 +177,7 @@ class Lazy_Task {
 	 */
    public function lazytask_add_page_template_to_dropdown( $templates )
 	{
-		$templates[plugin_dir_url( __DIR__ ) . 'templates/lazytask-page-template.php'] = __( 'Lazy PMS Page Template', 'lazytask' );
-//	   $templates[plugin_dir_path( dirname( __FILE__ ) ) . 'templates/dashboard-page-template.php'] = __( 'Dashboard Page Template', 'text-domain' );
+		$templates[plugin_dir_url( __DIR__ ) . 'templates/lazytask-page-template.php'] = __( 'Lazy PMS Page Template', 'lazytasks-project-task-management' );
 
 		return $templates;
 	}

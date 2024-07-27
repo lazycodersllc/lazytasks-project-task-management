@@ -54,7 +54,7 @@ const ProfileEdit = () => {
         formData.append('file', file);
 
         dispatch(editUser({id: id, data: formData}))
-        navigate('/settings')
+        navigate('/dashboard');
     };
 
 

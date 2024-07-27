@@ -6,8 +6,8 @@
  * @link       https://lazycoders.co
  * @since      1.0.0
  *
- * @package    Lazy_Task
- * @subpackage Lazy_Task/public
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/public
  */
 
 /**
@@ -16,8 +16,8 @@
  * Defines the plugin name, version, and two examples hooks for how to
  * enqueue the public-facing stylesheet and JavaScript.
  *
- * @package    Lazy_Task
- * @subpackage Lazy_Task/public
+ * @package    Lazytask_Lazy_Task
+ * @subpackage Lazytask_Lazy_Task/public
  * @author     lazycoders <info@lazycoders.co>
  */
 class Lazytask_Public {

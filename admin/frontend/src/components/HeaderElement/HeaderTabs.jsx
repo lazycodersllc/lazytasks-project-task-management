@@ -30,12 +30,6 @@ import WorkspaceLists from '../Elements/Workspace/WorkspaceLists';
 import {useSelector} from "react-redux";
 import useAuth from "../../utils/useAuth";
 
-const user = {
-  name: 'Jane Spoonfighter',
-  email: 'janspoon@fighter.dev',
-  image: 'https://raw.githubusercontent.com/mantinedev/mantine/master/.demo/avatars/avatar-5.png',
-}; 
-
 const dashboardMainMenuData = [
     {
       label: 'Dashboard',

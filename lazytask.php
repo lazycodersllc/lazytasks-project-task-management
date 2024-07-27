@@ -9,7 +9,7 @@
  *
  * @link              https://lazycoders.co
  * @since             1.0.0
- * @package           Lazy_Task
+ * @package           Lazytask_Lazy_Task
  *
  * @wordpress-plugin
  * Plugin Name:       LazyTasks - Project & Task Management with Collaboration, Kanban and Gantt Chart
@@ -17,13 +17,13 @@
  * Description:       Comprehensive Task and Project Management: Create, assign, follow, and comment on tasks with ease. Our user-friendly interface ensures your projects are always on track and accessible.
  * Version:           1.0.0
  * Requires at least: 3.0.1
- * Tested up to:      6.5
+ * Tested up to:      6.6
  * Requires PHP:      7.4
  * Author:            Lazycoders
  * Author URI:        https://lazycoders.co
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
- * Text Domain:       lazytask
+ * Text Domain:       lazytasks-project-task-management
  * Domain Path:       /languages
  */
 if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
@@ -71,7 +71,7 @@ register_deactivation_hook( __FILE__, 'lazytask_deactivate' );
  * The core plugin class that is used to define internationalization,
  * admin-specific hooks, and public-facing site hooks.
  */
-require plugin_dir_path( __FILE__ ) . 'includes/class-pms-rbs.php';
+require plugin_dir_path( __FILE__ ) . 'includes/class-lazy-task.php';
 
 /**
  * Begins execution of the plugin.
@@ -84,7 +84,7 @@ require plugin_dir_path( __FILE__ ) . 'includes/class-pms-rbs.php';
  */
 function lazytask_run() {
 
-	$plugin = new Lazy_Task();
+	$plugin = new Lazytask_Lazy_Task();
 	$plugin->run();
 
 }
