@@ -133,8 +133,46 @@
     color: var(--PhoneInputCountrySelectArrow-color--focus);
 }
 
+.mantine-Menu-dropdown div[aria-hidden=true] {
+    display:none;
+}
+/*calendar css*/
+.fc-toolbar-title{
+    font-family: var(--mantine-font-family-headings);
+}
+.fc-today-button{
+    text-transform: capitalize!important;
+}
+.fc-h-event{
+    margin-bottom: 5px;
+    background-color: rgb(236 255 255);
+    border-color: rgb(236 255 255);
+}
+.fc-daygrid-day-bg{
+    display: none;
+}
+.fc .fc-daygrid-day-frame{
+    height: 125px;
+}
+.fc .fc-button-primary:disabled {
+    background-color: #EBF1F4!important;
+    border-color: #EBF1F4!important;;
+    color: #202020!important;;
+}
+.fc .fc-prev-button, .fc .fc-next-button {
+    background-color: #EBF1F4!important;
+    border-color: #EBF1F4!important;;
+    color: #202020!important;;
+}
+.fc .fc-prev-button:hover, .fc .fc-next-button:hover, .fc .fc-prev-button:focus, .fc .fc-next-button:focus, .fc .fc-prev-button:focus-visible, .fc .fc-next-button:focus-visible {
+    background-color: #202020!important;
+    border-color: #202020!important;
+    color: #ffffff!important;
+    box-shadow: none;
+}
+
 body {
-    background-color:  #f4f4f4 !important; 
+    background-color:  #f4f4f4 !important;
 }
 div#lazy_pms {
     margin-left: -20px;

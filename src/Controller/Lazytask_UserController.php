@@ -13,9 +13,10 @@ use WP_REST_Response;
 final class Lazytask_UserController {
 
 
-	public function getAllMembers(){
+	public function getAllMembers(WP_REST_Request $request){
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+		$requestData = $request->get_params();
 		$results = $db->get_results("SELECT * FROM `{$wpdb->prefix}users` as users", ARRAY_A);
 		$returnArray = [];
 		if($results){
@@ -33,7 +34,7 @@ final class Lazytask_UserController {
 						'name' => $value['display_name'],
 						'email' => $value['user_email'],
 						'username' => $value['user_login'],
-						'phoneNumber' => get_user_meta($value['ID'], 'phoneNumber', true),
+						'phoneNumber' => get_user_meta($value['ID'], 'phone_number', true),
 						'firstName' => get_user_meta($user->ID, 'first_name', true),
 						'lastName' => get_user_meta($user->ID, 'last_name', true),
 						'created_at' => $value['user_registered'],
@@ -45,7 +46,40 @@ final class Lazytask_UserController {
 				}
 
 			}
-			return ['status'=>200, 'data'=>$returnArray];
+
+			if(isset($requestData['company_id']) && $requestData['company_id'] != ''){
+				$companyController = new Lazytask_CompanyController();
+				$companyMembers = $companyController->getCompanyMembers($requestData['company_id']);
+				$companyMembersId = isset($companyMembers[$requestData['company_id']]) && sizeof($companyMembers[$requestData['company_id']]) > 0 ?  array_column($companyMembers[$requestData['company_id']], 'id') : [];
+				//  array filter to get only company members an array
+				if (sizeof($companyMembersId) > 0) {
+					$returnArrayFilter = array_filter($returnArray, function($item) use ($companyMembersId) {
+						return in_array($item['id'], $companyMembersId);
+					});
+
+					$returnArray = array_values($returnArrayFilter);
+				}else{
+					$returnArray = [];
+				}
+			}
+
+			if(isset($requestData['project_id']) && $requestData['project_id'] != ''){
+				$projectController = new Lazytask_ProjectController();
+				$projectMembers = $projectController->getProjectMembers($requestData['project_id']);
+				$projectMembersId = isset($projectMembers[$requestData['project_id']]) && sizeof($projectMembers[$requestData['project_id']]) > 0 ?  array_column($projectMembers[$requestData['project_id']], 'id') : [];
+				//  array filter to get only company members an array
+				if (sizeof($projectMembersId) > 0) {
+					$returnArrayFilter = array_filter($returnArray, function($item) use ($projectMembersId) {
+						return in_array($item['id'], $projectMembersId);
+					});
+
+					$returnArray = array_values($returnArrayFilter);
+				}else{
+					$returnArray = [];
+				}
+			}
+
+			return ['status'=>200, 'data'=>$returnArray, 'requestData'=>$requestData];
 		}
 		return ['status'=>404, 'data'=>$returnArray];
 	}
@@ -78,10 +112,11 @@ final class Lazytask_UserController {
 		$user_roles = $user->roles;
 	$returnArray = [
 		'id' => $user->ID,
+		'user_id' => $user->ID, //for apps development
 		'name' => $user->display_name,
 		'email' => $user->user_email,
 		'username' => $user->user_login,
-		'phoneNumber' => get_user_meta($user->ID, 'phoneNumber', true),
+		'phoneNumber' => get_user_meta($user->ID, 'phone_number', true),
 		'firstName' => get_user_meta($user->ID, 'first_name', true),
 		'lastName' => get_user_meta($user->ID, 'last_name', true),
 		'created_at' => $user->user_registered,
@@ -93,15 +128,17 @@ final class Lazytask_UserController {
 		return $returnArray;
 	}
 
-	private function getRolesByUser($userId) {
+	public function getRolesByUser($userId) {
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+		$userHasRolesTable = LAZYTASK_TABLE_PREFIX . 'user_has_roles';
+		$rolesTable = LAZYTASK_TABLE_PREFIX . 'roles';
 
 		$results = $db->get_results(
 			$db->prepare(
 				"SELECT roles.id, roles.name , roles.slug 
-						FROM `{$wpdb->prefix}pms_user_has_roles` as user_has_roles 
-						JOIN `{$wpdb->prefix}pms_roles` as roles ON user_has_roles.role_id = roles.id 
+						FROM `{$userHasRolesTable}` as user_has_roles 
+						JOIN `{$rolesTable}` as roles ON user_has_roles.role_id = roles.id 
 						WHERE user_has_roles.user_id = %d", (int)$userId), ARRAY_A);
 		$returnArray = [];
 
@@ -138,8 +175,9 @@ final class Lazytask_UserController {
 	private function getPermissionByRole($roleId) {
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
-
-		$results = $db->get_results($db->prepare("SELECT permissions.name FROM `{$wpdb->prefix}pms_role_has_permissions` as role_has_permissions JOIN `{$wpdb->prefix}pms_permissions` as permissions ON role_has_permissions.permission_id = permissions.id WHERE role_has_permissions.role_id =%d", (int)$roleId), ARRAY_A);
+		$roleHasPermissionTable = LAZYTASK_TABLE_PREFIX . 'role_has_permissions';
+		$permissionTable = LAZYTASK_TABLE_PREFIX . 'permissions';
+		$results = $db->get_results($db->prepare("SELECT permissions.name FROM `{$roleHasPermissionTable}` as role_has_permissions JOIN `{$permissionTable}` as permissions ON role_has_permissions.permission_id = permissions.id WHERE role_has_permissions.role_id =%d", (int)$roleId), ARRAY_A);
 		$returnArray = [];
 		if($results){
 			foreach ($results as $key => $value) {
@@ -238,7 +276,7 @@ final class Lazytask_UserController {
 	}
 
 // Function to generate JWT token
-	public function validate_token( WP_REST_Request $request ) {
+	public function validate_token( WP_REST_Request $request, $permissions=[] ) {
 
 		$auth_header = $request->get_header( 'Authorization' );
 
@@ -311,6 +349,32 @@ final class Lazytask_UserController {
 				);
 			}
 
+			if(sizeof($permissions)>0){
+				$llc_permissions = $token->data->llc_permissions;
+				$intersect = array_intersect($llc_permissions, $permissions);
+				if(sizeof($intersect)==0){
+					return new WP_Error(
+						'jwt_auth_bad_request',
+						'You do not have permission to access this resource',
+						[
+							'status' => 403,
+						]
+					);
+				}
+			}
+
+			// check token expiration
+			if (time() > $token->exp) {
+				return new WP_Error(
+					'jwt_auth_bad_request',
+					'Token has expired',
+					[
+						'status' => 408,
+					]
+				);
+			}
+
+
 			/** This is for the /toke/validate endpoint*/
 			return [
 				'code' => 'jwt_auth_valid_token',
@@ -350,7 +414,7 @@ final class Lazytask_UserController {
 			}
 
 			/** So far so good, validate the user id in the token */
-			if ( ! isset( $token->data->user->id ) ) {
+			if ( ! isset( $token->data->user_id ) ) {
 				/** No user id in the token, abort!! */
 				return new WP_Error(
 					'jwt_auth_bad_request',
@@ -362,34 +426,77 @@ final class Lazytask_UserController {
 			}
 			return [
 				'code' => 'jwt_auth_valid_token',
+				'status' => 200,
 				'data' => [
-					'status' => 200,
+					'user_id' => $token->data->user_id,
+					'name' => $token->data->name,
+					'email' => $token->data->email,
+					'avatar' => $token->data->avatar,
+					'roles' => $token->data->roles,
+					'llc_roles' => $token->data->llc_roles,
+					'llc_permissions' => $token->data->llc_permissions,
 				],
 			];
 		} catch (Exception $e) {
-			return $e->getMessage();
+			return [
+				'code' => 'jwt_auth_invalid_token',
+				'status' => 403,
+				'message' => $e->getMessage(),
+			];
 		}
 	}
 
 	function logout_user() {
 		header("Access-Control-Allow-Origin: *");
-
-		/*if (isset($_COOKIE['user_id'])) {
-			unset($_COOKIE['user_id']);
-			setcookie( 'user_id', '', time() - ( 15 * 60 ) );
-		}*/
+		session_destroy();
 		wp_logout();
 		wp_clear_auth_cookie();
-		return [ "status" => 200, "message" => "User logged out successfully", "user_id"=>'' ];
+		return [ "status" => 200, "message" => "User logged out successfully", "user_id"=>null ];
 	}
 
-	public function permission_check(WP_REST_Request $request)
+	public function lazytask_forget_password_request(WP_REST_Request $request) {
+		$email = sanitize_email($request->get_param('email'));
+		if (!email_exists($email)) {
+			return new WP_REST_Response([
+				'status'=>404,
+				'message'=>'No user found with this email address.'
+			], 200);
+		}
+
+		// Generate password reset key and send email
+		$user = get_user_by('email', $email);
+		$key = get_password_reset_key($user);
+
+		$reset_url = site_url('/lazy-task')."/#/change-password/?key=".$key."&login=".rawurlencode($user->user_login);
+
+		// Send email to user with the reset link
+		wp_mail($user->user_email, 'Password Reset Request', 'Click the following link to reset your password: ' . $reset_url);
+
+		return new WP_REST_Response(['status'=>200, 'message'=>'Password reset email sent. Please check'], 200);
+	}
+
+	public function lazytask_forget_password_store(WP_REST_Request $request) {
+		$key = sanitize_text_field($request->get_param('key'));
+		$login = sanitize_text_field($request->get_param('login'));
+		$new_password = $request->get_param('password');
+
+		$user = check_password_reset_key($key, $login);
+		if (is_wp_error($user)) {
+			return new WP_REST_Response(['status'=>404, 'message'=>'Invalid key.'], 404);
+		}
+
+		reset_password($user, $new_password);
+
+		return new WP_REST_Response(['status'=>200, 'message'=>'Password has been reset.'], 200);
+	}
+
+	public function permission_check(WP_REST_Request $request, $permissions=[])
 	{
 
-		$response = $this->validate_token($request);
+		$response = $this->validate_token($request, $permissions);
 //		var_dump($response);die;
 		if (is_wp_error($response)) {
-			return false;
+			return $response;
 		}
 		return true;
 	}
@@ -398,12 +505,12 @@ final class Lazytask_UserController {
 
 	  $secret_key = defined( 'LAZYTASK_JWT_SECRET_KEY' ) ? LAZYTASK_JWT_SECRET_KEY : false;
 
-//	  $userId = isset($_COOKIE['user_id']) ? (int)$_COOKIE['user_id'] : '';
-	  $userId = is_user_logged_in() && is_admin() ? get_current_user_id() : '';
-	  if(!$userId){
-		  return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytasks-project-task-management'), array('status' => 401));
-	  }
-	  $user = get_user_by('ID', $userId );
+      $userId = is_user_logged_in() && is_admin() ? get_current_user_id() : '';
+
+		if(!$userId){
+			return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytasks-project-task-management'), array('status' => 401));
+		}
+		$user = get_user_by('ID', $userId );
 
 	  if (is_wp_error($user)) {
 		  return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytasks-project-task-management'), array('status' => 401));
@@ -464,7 +571,9 @@ final class Lazytask_UserController {
 		$firstName = sanitize_text_field($parameters['firstName']);
 		$lastName = sanitize_text_field($parameters['lastName']);
 		$phoneNumber = sanitize_text_field($parameters['phoneNumber']);
+		$loggedInUserId = $parameters['loggedInUserId'] ? (int)$parameters['loggedInUserId'] : null;
 		$roles = $parameters['roles'];
+//		$roles = isset($parameters['roles']) && sizeof($parameters['roles']) > 0 ? json_decode($parameters['roles'], true) : [];
 		$email = sanitize_text_field($parameters['email']);
 		$password = isset($parameters['password']) && $parameters['password']!=''? sanitize_text_field($parameters['password']): '123456';
 		// $role = sanitize_text_field($parameters['role']);
@@ -507,12 +616,17 @@ final class Lazytask_UserController {
 				$user->set_role('ll_pms');
 				update_user_meta($user_id, 'first_name', $firstName);
 				update_user_meta($user_id, 'last_name', $lastName);
-				add_user_meta($user_id, 'll_roles', $roles, true);
-				add_user_meta($user_id, 'phoneNumber', $phoneNumber, true);
+				add_user_meta($user_id, 'phone_number', $phoneNumber, true);
 				if($roles){
+					add_user_meta($user_id, 'll_roles', $roles, true);
 					$this->addUserRole($user_id, $roles);
 				}
 				$db->query('COMMIT');
+				$loggedInUser = get_user_by('ID', $loggedInUserId);
+				$referenceInfo = ['id'=>$user_id, 'name'=>$firstName . ' ' . $lastName, 'type'=>'user'];
+				$placeholdersArray = ['name'=>$loggedInUser?$loggedInUser->display_name:'', 'username'=>$email, 'password'=>$password];
+
+				do_action('lazytask_user_registration', $referenceInfo, ['web-app', 'email'], [$user_id], $placeholdersArray);
 
 				$user = $this->getUserById($user_id);
 
@@ -543,7 +657,7 @@ final class Lazytask_UserController {
 		$firstName = sanitize_text_field($parameters['firstName']);
 		$lastName = sanitize_text_field($parameters['lastName']);
 		$phoneNumber = sanitize_text_field($parameters['phoneNumber']);
-		$roles = json_decode($parameters['roles'], true);
+		$roles = isset($parameters['roles']) && $parameters['roles']!='' ? json_decode($parameters['roles'], true) : [];
 		$email = sanitize_text_field($parameters['email']);
 //		$password = isset($parameters['password']) && $parameters['password']!=''? sanitize_text_field($parameters['password']): '123456';
 		// $role = sanitize_text_field($parameters['role']);
@@ -586,9 +700,10 @@ final class Lazytask_UserController {
 				update_user_meta($userId, 'first_name', $firstName);
 				update_user_meta($userId, 'last_name', $lastName);
 
-				update_user_meta($userId, 'll_roles', $roles);
-				update_user_meta($userId, 'phoneNumber', $phoneNumber);
+				update_user_meta($userId, 'phone_number', $phoneNumber);
 				if($roles){
+					update_user_meta($userId, 'll_roles', $roles);
+
 					$this->addUserRole($userId, $roles);
 				}
 
@@ -707,6 +822,38 @@ final class Lazytask_UserController {
 
 		}
 
+		// get companies by user id
+		public function getCompaniesByUserId($userId){
+			global $wpdb;
+			$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+			$usersTable = $wpdb->prefix . 'users';
+			$companyMembersTable = LAZYTASK_TABLE_PREFIX . 'companies_users';
+			$companyTable = LAZYTASK_TABLE_PREFIX . 'companies';
+
+			if (is_array($userId)) {
+				$ids = implode(', ', array_fill(0, count($userId), '%s'));
+			}else{
+				$ids = '%s';
+				$userId = [$userId];
+			}
+
+			$sql = "SELECT companies.* FROM `{$usersTable}` as users
+				JOIN `{$companyMembersTable}` as companyMembers  ON users.ID = companyMembers.user_id
+						JOIN `{$companyTable}` as companies ON companyMembers.company_id = companies.id
+			WHERE companyMembers.user_id IN ($ids) group by companies.id";
+
+			$query = call_user_func_array(array($wpdb, 'prepare'), array_merge(array($sql), $userId));
+
+			$results = $db->get_results(
+				$query, ARRAY_A);
+
+			$returnArray = [];
+			if($results){
+				$returnArray = $results;
+			}
+			return $returnArray;
+		}
+
 
 	public function getProjectsByUserId($userId){
 		global $wpdb;
@@ -770,9 +917,9 @@ final class Lazytask_UserController {
 			}
 		}
 
-		if($user){
+		/*if($user){
 			return get_avatar_url($user->ID);
-		}
+		}*/
 		return '';
 
 	}

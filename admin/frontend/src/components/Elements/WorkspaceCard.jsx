@@ -5,9 +5,8 @@ import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import EditWorkspaceModal from './Modal/Workspace/EditWorkspaceModal'; 
 import CreateProjectModal from './Modal/Project/CreateProjectModal'; 
 import DeleteWorkspaceModal from './Modal/Workspace/DeleteWorkspace';
-import { setUsers } from '../../reducers/usersSlice';
-import {fetchAllMembers} from "../../store/auth/userSlice";
 import UsersAvatarGroup from "../ui/UsersAvatarGroup";
+import {hasPermission} from "../ui/permissions";
 
 const WorkspaceCard = (props) => {
     const {
@@ -16,9 +15,10 @@ const WorkspaceCard = (props) => {
         projects,
         members
     } = props;
+    const { loggedInUser } = useSelector((state) => state.auth.session)
 
     return (
-        <Paper radius="md" withBorder p="10px" bg="var(--mantine-color-body)" style={{ border: '1px solid #A4C0CB', width: '100%', height:'100%' }}>
+        <Paper className="min-h-[193px]" radius="md" withBorder p="15px" bg="var(--mantine-color-body)" style={{ border: '1px solid #A4C0CB', width: '100%', height:'100%' }}>
             
             <Text ta="left" fz="md" fw={500} c="#202020">
                 {name}
@@ -41,11 +41,17 @@ const WorkspaceCard = (props) => {
 
             <UsersAvatarGroup users={members} size={40} maxCount={4} />
 
-            <div className="flex justify-end gap-3 mt-4">
-                <CreateProjectModal buttonStyle="b" companyId={id} companyName={name} members={members}/>
+            <div className="flex justify-end gap-2.5 mt-4">
+                {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) &&
+                    <CreateProjectModal buttonStyle="b" companyId={id} companyName={name} members={members}/>
+                }
                 {/* <EditWorkspaceModal workspaceid={id} /> */}
-                <EditWorkspaceModal workspaceData={{ id, name, members }} />
-                <DeleteWorkspaceModal id={id} />
+                {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin']) &&
+                    <>
+                        <EditWorkspaceModal workspaceData={{ id, name, members }} />
+                        <DeleteWorkspaceModal key={id} {...props} />
+                    </>
+                }
             </div>
         </Paper>
     );

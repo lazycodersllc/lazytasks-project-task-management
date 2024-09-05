@@ -1,7 +1,18 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import { useDisclosure } from '@mantine/hooks';
-import {Drawer, Button, FileInput, rem, Textarea, Text, ScrollArea} from '@mantine/core';
-import { IconFile, IconPaperclip } from '@tabler/icons-react';  
+import {
+    Drawer,
+    Button,
+    FileInput,
+    rem,
+    Textarea,
+    Text,
+    ScrollArea,
+    useMantineTheme,
+    Group,
+    TextInput
+} from '@mantine/core';
+import {IconCheck, IconFile, IconPaperclip, IconPlus} from '@tabler/icons-react';
 import ContentEditable from 'react-contenteditable'; 
 import TaskAssignTo from './Task/TaskAssignTo';
 import TaskFollower from './Task/TaskFollower';
@@ -10,15 +21,18 @@ import TaskPriority from './Task/TaskPriority';
 import TaskTag from './Task/TaskTag';
 // import TaskComment from './TaskComment';
 import {useDispatch, useSelector} from "react-redux";
-import {createTask, editTask} from "../../../Settings/store/taskSlice";
+import {createTask, editTask, removeSuccessMessage} from "../../../Settings/store/taskSlice";
 import DueDate from "./Task/DueDate";
 import dayjs from "dayjs";
 import Priority from "./Task/Priority";
 import TaskTagForTaskAdd from "./Task/TaskTagForTaskAdd";
+import {notifications} from "@mantine/notifications";
 
-const AddTaskDrawer = ({ projectId, taskSectionId }) => {
+const AddTaskDrawer = ({ view, projectId, taskSectionId }) => {
     const dispatch = useDispatch();
+    const theme = useMantineTheme();
     const {loggedUserId} = useSelector((state) => state.auth.user)
+    const {success} = useSelector((state) => state.settings.task);
 
     const icon = <IconPaperclip style={{ width: rem(18), height: rem(18) }} stroke={1.5} />;
     const [taskCreateDrawerOpen, { open: openTaskCreateDrawer, close: closeTaskCreateDrawer }] = useDisclosure(false);
@@ -87,6 +101,21 @@ const AddTaskDrawer = ({ projectId, taskSectionId }) => {
             setTaskName('Type task name here');
             setTaskDescription('');
             // setCurrentMemberData([]);
+
+            if(success){
+                notifications.show({
+                    color: theme.primaryColor,
+                    title: success,
+                    icon: <IconCheck />,
+                    autoClose: 5000,
+                    // withCloseButton: true,
+                });
+                const timer = setTimeout(() => {
+                    dispatch(removeSuccessMessage());
+                }, 5000); // Clear notification after 3 seconds
+
+                return () => clearTimeout(timer);
+            }
         }
     };
     const handleAddTaskDrawerOpen = () => {
@@ -95,27 +124,53 @@ const AddTaskDrawer = ({ projectId, taskSectionId }) => {
   return (
     <>
         <div className="drawer">
-          <button onClick={handleAddTaskDrawerOpen}>
-            <span className="text-[#ED7D31] font-semibold text-[14px]">+ Add Task</span>
-          </button>
+            {view && view === 'listView' ?
+                <Group justify="center">
+                    <Button
+                        size="md"
+                        color={`#ED7D31`}
+                        onClick={handleAddTaskDrawerOpen}
+                        leftSection={<IconPlus stroke={1.25} size={20} color={`#ED7D31`}/>}
+                        variant="transparent">
+                        Add Task
+                    </Button>
+                </Group>
+                :
+                <button onClick={handleAddTaskDrawerOpen}>
+                    <span className="text-[#ED7D31] font-semibold text-[14px]">+ Add Task</span>
+                </button>
+            }
 
-          <Drawer
-              opened={taskCreateDrawerOpen}
-              onClose={closeTaskCreateDrawer}
-              position="right"
-              withCloseButton={false} size="lg" closeOnClickOutside={false}
+
+            <Drawer
+                opened={taskCreateDrawerOpen}
+                onClose={closeTaskCreateDrawer}
+                position="right"
+              withCloseButton={false} size="lg"
           overlayProps={{ backgroundOpacity: 0, blur: 0 }}
           >
             <div className="mt-4">
 
               <Drawer.Body className="!px-1">
-                <div className="drawer-head flex mb-4 w-full">
+                <div className="drawer-head flex mb-4 w-full items-center">
                   <div className="w-[85%]">
-                  <ContentEditable
+                      <TextInput
+                          className="focus:border-black-600"
+                          defaultValue={taskName}
+                          onChange={(e) => setTaskName(e.target.value)}
+                          onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                  handleTaskCreation();
+                                  setTaskName('Type task name here');
+                                  closeTaskCreateDrawer();
+                              }
+                          }}
+                      />
+                  {/*<ContentEditable
                       onChange={(e) => setTaskName(e.target.value)}
                     html={taskName}
                     className="inline-block w-full text-[#4d4d4d] font-bold text-[16px]"
-                  />
+                  />*/}
                   </div>
                   <div className="dh-btn flex w-[10%]">
                     <div className="attachment w-[35px] mt-[-3px]">
@@ -138,17 +193,21 @@ const AddTaskDrawer = ({ projectId, taskSectionId }) => {
                             <div className="w-1/3">
                                 <Text fw={400} fz={14} c="#202020">Assign To</Text>
                             </div>
-                            <TaskAssignTo assignedMember={(props) => {
-                                handleAssignButtonClick(props);
-                            }} />
+                            <div className={`relative`}>
+                                <TaskAssignTo assignedMember={(props) => {
+                                    handleAssignButtonClick(props);
+                                }} />
+                            </div>
                         </div>
                         <div className="flex z-[103]">
                             <div className="w-1/3">
                                 <Text fw={400} fz={14} c="#202020">Following</Text>
                             </div>
-                            <TaskFollower editHandler={(props) => {
-                                handleAssignFollower(props);
-                            }}/>
+                            <div className={`relative`}>
+                                <TaskFollower editHandler={(props) => {
+                                    handleAssignFollower(props);
+                                }}/>
+                            </div>
                         </div>
                         <div className="flex z-[102]">
                             <div className="w-1/3">

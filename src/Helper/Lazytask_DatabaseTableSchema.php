@@ -3,6 +3,7 @@
 namespace Lazytask\Helper;
 
 use wpdb;
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 
 class Lazytask_DatabaseTableSchema {
 
@@ -27,6 +28,10 @@ class Lazytask_DatabaseTableSchema {
 		self::tbl_tags();
 		self::tbl_task_tags();
 		self::tbl_quick_task();
+		self::tbl_notification_channel();
+		self::tbl_notification_template();
+		self::tbl_notification();
+		self::tbl_notification_history();
 	}
 
 	private static function tbl_companies(){
@@ -44,6 +49,8 @@ class Lazytask_DatabaseTableSchema {
   `address` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   `status` int NOT NULL DEFAULT '1',
   `sort_order` int NOT NULL DEFAULT '9999',
+  `created_by` bigint unsigned DEFAULT NULL,
+  `deleted_by` bigint unsigned DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL,
@@ -87,7 +94,9 @@ class Lazytask_DatabaseTableSchema {
   `code` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `address` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   `status` int NOT NULL DEFAULT '1',
-  `sort_order` int NOT NULL DEFAULT '9999',
+  `sort_order` int NOT NULL DEFAULT '9999',  
+  `created_by` bigint unsigned DEFAULT NULL,
+  `deleted_by` bigint unsigned DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL,
@@ -148,6 +157,7 @@ class Lazytask_DatabaseTableSchema {
   `deleted_by` bigint unsigned DEFAULT NULL,
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Untitled Section',
   `slug` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `mark_is_complete` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'regular',
   `sort_order` int NOT NULL DEFAULT '1',
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
@@ -548,6 +558,7 @@ class Lazytask_DatabaseTableSchema {
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `parent_id` int DEFAULT NULL,
   `user_id` int DEFAULT NULL,
+  `deleted_by` bigint unsigned DEFAULT NULL,
   `commentable_id` int DEFAULT NULL,
   `commentable_type` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `content` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
@@ -678,7 +689,434 @@ class Lazytask_DatabaseTableSchema {
 		dbDelta($table_generate_query);
 	}
 
+	private static function tbl_notification_channel(){
+		global $wpdb;
+		$table_name = LAZYTASK_TABLE_PREFIX . 'notification_channels';
+
+		$table_generate_query = "
+	        CREATE TABLE IF NOT EXISTS `". $table_name ."` (
+		  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+		  `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `slug` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `status` int NOT NULL DEFAULT '1',
+		  `sort_order` int NOT NULL DEFAULT '9999',
+		  `created_at` timestamp NULL DEFAULT NULL,
+		  `updated_at` timestamp NULL DEFAULT NULL,
+		  PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+	";
+		require_once (ABSPATH. 'wp-admin/includes/upgrade.php');
+		dbDelta($table_generate_query);
+
+		$arrayChannels = [
+			[
+				'name' => 'Web App',
+				'slug' => 'web-app'
+			],
+			[
+				'name' => 'SMS',
+				'slug' => 'sms'
+			],
+			[
+				'name' => 'Email',
+				'slug' => 'email'
+			],
+			[
+				'name' => 'Mobile',
+				'slug' => 'mobile'
+			],
+			[
+				'name' => 'Browser',
+				'slug' => 'browser'
+			]
+		];
+
+		$db = self::get_global_wp_db($wpdb);
+		if($db->get_row("SELECT * FROM $table_name") == null){
+			foreach ($arrayChannels as $item){
+				$item['created_at'] = gmdate('Y-m-d H:i:s');
+				$db->insert($table_name, $item);
+			}
+		}
+	}
+
+	private static function tbl_notification_template(){
+		global $wpdb;
+		$table_name = LAZYTASK_TABLE_PREFIX . 'notification_templates';
+
+		$table_generate_query = "
+	        CREATE TABLE IF NOT EXISTS `". $table_name ."` (
+		  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+		  `title` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `notification_action_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `description` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+		  `email_subject` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `content` json DEFAULT NULL,
+		  `type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,		  
+		  `status` int NOT NULL DEFAULT '1',
+		  `sort_order` int NOT NULL DEFAULT '9999',
+		  `created_at` timestamp NULL DEFAULT NULL,
+		  `updated_at` timestamp NULL DEFAULT NULL,
+		  PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+	";
+		require_once (ABSPATH. 'wp-admin/includes/upgrade.php');
+		dbDelta($table_generate_query);
+
+		//default template data
+		$defaultTemplates = [
+			[
+				'title' => 'When someone is added in the system',
+				'notification_action_name' => 'lazytask_user_registration',
+				'description' => 'When someone is added in the system',
+				'email_subject' => 'You have been added to LazyTask Task Management System',
+				'content' => json_encode([
+'email' => 'Welcome to LazyTasks,
+
+You have been invited to the LazyTasks Project and Task Management system by [NAME].
+
+Please find your username and password below.
+Username: [USERNAME]
+Password: [PASSWORD]
+
+Please click here to join: https://tasks.pul-group.com/lazy-task/
+
+We recommend you change your password once logged in.
+
+Thanks.
+System Notification',
+'web-app' => 'Welcome to LazyTasks,
+
+You have been invited to the LazyTasks Project and Task Management system by [NAME].
+
+Please find your username and password below.
+Username: [USERNAME]
+Password: [PASSWORD]
+
+We recommend you change your password once logged in.
+
+Thanks.
+System Notification'
+]),
+				'type' => null,
+				'status' => 1,
+				'sort_order' => 1,
+				'created_at' => gmdate('Y-m-d H:i:s'),
+				'updated_at' => gmdate('Y-m-d H:i:s')
+			],
+			[
+				'title' => 'When someone is added to a workspace',
+				'notification_action_name' => 'lazytask_workspace_assigned_member',
+				'description' => 'When someone is added to a workspace',
+				'email_subject' => 'You have been added to a new Workspace',
+				'content' => json_encode([
+'email' => 'Hello [MEMBER_NAME],
+
+You have been added to the workspace [COMPANY_NAME] by [CREATOR_NAME] in the role of [MEMBER_ROLES].
+
+If you think this was an error, please contact your Manager.
+
+Thanks.
+System Notification',
+'web-app' => 'Hello [MEMBER_NAME],
+
+You have been added to the workspace [COMPANY_NAME] by [CREATOR_NAME] in the role of [MEMBER_ROLES].
+
+If you think this was an error, please contact your LazyTasks system administrator.
+
+Thanks.
+System Notification'
+				]),
+				'type' => null,
+				'status' => 1,
+				'sort_order' => 2,
+				'created_at' => gmdate('Y-m-d H:i:s'),
+				'updated_at' => gmdate('Y-m-d H:i:s')
+			],
+			[
+				'title' => 'When someone is removed from a workspace',
+				'notification_action_name' => 'lazytask_workspace_removed_member',
+				'description' => 'When someone is removed from a workspace',
+				'email_subject' => 'You have been removed to a Workspace',
+				'content' => json_encode([
+'email' => 'Hello [MEMBER_NAME],
+
+You have been removed from the workspace [COMPANY_NAME] by [CREATOR_NAME] in the role of [MEMBER_ROLES].
+
+If you think this was an error, please contact your manager.
+
+Thanks.
+System Notification',
+'web-app' => 'Hello [MEMBER_NAME],
+
+You have been removed from the workspace [COMPANY_NAME] by [CREATOR_NAME] in the role of [MEMBER_ROLES].
+
+If you think this was an error, please contact your LazyTasks system administrator.
+
+Thanks.
+System Notification'
+				]),
+				'type' => null,
+				'status' => 1,
+				'sort_order' => 3,
+				'created_at' => gmdate('Y-m-d H:i:s'),
+				'updated_at' => gmdate('Y-m-d H:i:s')
+			],
+			[
+				'title' => 'When someone is added to a project',
+				'notification_action_name' => 'lazytask_project_assigned_member',
+				'description' => 'When someone is added to a project',
+				'email_subject' => 'You have been added to a new project',
+				'content' => json_encode([
+'email' => 'Hello [MEMBER_NAME],
+
+You have been added to the project [PROJECT_NAME] by [CREATOR_NAME] in the role of [MEMBER_ROLES].
+
+If you think this was an error, please contact your Manager.
+
+Thanks.
+System Notification',
+'web-app' => 'Hello [MEMBER_NAME],
+
+You have been added to the workspace [PROJECT_NAME] by [CREATOR_NAME] in the role of [MEMBER_ROLES].
+
+If you think this was an error, please contact your LazyTasks system administrator
+
+Thanks.
+System Notification'
+				]),
+				'type' => null,
+				'status' => 1,
+				'sort_order' => 4,
+				'created_at' => gmdate('Y-m-d H:i:s'),
+				'updated_at' => gmdate('Y-m-d H:i:s')
+			],
+			[
+				'title' => 'When someone is removed from a project',
+				'notification_action_name' => 'lazytask_project_removed_member',
+				'description' => 'When someone is removed from a project',
+				'email_subject' => 'You have been removed from a new project',
+				'content' => json_encode([
+'email' => 'Hello [MEMBER_NAME],
+
+You have been removed from the project [PROJECT_NAME] by [CREATOR_NAME] in the role of [MEMBER_ROLES].
+
+If you think this was an error, please contact your Manager.
+
+Thanks.
+System Notification',
+'web-app' => 'Hello [MEMBER_NAME],
+
+You have been removed from the project [PROJECT_NAME] by [CREATOR_NAME] in the role of [MEMBER_ROLES].
+
+If you think this was an error, please contact your LazyTasks system administrator.
+
+Thanks.
+System Notification'
+				]),
+				'type' => null,
+				'status' => 1,
+				'sort_order' => 5,
+				'created_at' => gmdate('Y-m-d H:i:s'),
+				'updated_at' => gmdate('Y-m-d H:i:s')
+			],
+			[
+				'title' => 'When a task is assigned to an user',
+				'notification_action_name' => 'lazytask_task_assigned_member',
+				'description' => 'When a task is assigned to an user',
+				'email_subject' => 'A new task has been assigned to you',
+				'content' => json_encode([
+'email' => 'Hello [MEMBER_NAME],
+
+The following task has been assigned to you by [CREATOR_NAME] on the [PROJECT_NAME].
+
+Task Name: [TASK_NAME]
+
+Please sign into your project management web-portal or mobile app for further details.
+
+Thanks.
+System Notification',
+'web-app' => 'Hello [MEMBER_NAME],
+
+The following task has been assigned to you by [CREATOR_NAME] on the [PROJECT_NAME].
+
+Task Name: [TASK_NAME]
+
+Please sign into LazyTasks web or mobile to view further details.
+
+Thanks.
+System Notification'
+				]),
+				'type' => null,
+				'status' => 1,
+				'sort_order' => 6,
+				'created_at' => gmdate('Y-m-d H:i:s'),
+				'updated_at' => gmdate('Y-m-d H:i:s')
+			],
+			[
+				'title' => 'Date change on a task',
+				'notification_action_name' => 'lazytask_task_deadline_changed',
+				'description' => 'Date change on a task',
+				'email_subject' => 'Attention: deadline has changed',
+				'content' => json_encode([
+'email' => 'Hello [MEMBER_NAME],
+
+The deadline for [TASK_NAME] in the [PROJECT_NAME] has been changed from [PREVIOUS_ASSIGNED_DATE] to [NEW_ASSIGNED_DATE] by [CREATOR_NAME].
+
+Please sign into view further details.
+
+Thanks.
+System Notification',
+'web-app' => 'Hello [MEMBER_NAME],
+
+The deadline for [TASK_NAME] in the [PROJECT_NAME] has been changed from [PREVIOUS_ASSIGNED_DATE] to [NEW_ASSIGNED_DATE] by [CREATOR_NAME].
+
+Please sign into your project management web-portal or mobile app for further details.
+
+Thanks.
+System Notification'
+				]),
+				'type' => null,
+				'status' => 1,
+				'sort_order' => 7,
+				'created_at' => gmdate('Y-m-d H:i:s'),
+				'updated_at' => gmdate('Y-m-d H:i:s')
+			],
+			[
+				'title' => 'Someone started following a task',
+				'notification_action_name' => 'lazytask_task_follow_by_own',
+				'description' => 'Someone started following a task',
+				'email_subject' => 'A member started following a task',
+				'content' => json_encode([
+'email' => 'Hello [MEMBER_NAME],
+
+[CREATOR_NAME] is now following the task titled [TASK_NAME].
+
+Please sign into your project management web-portal or mobile app for further details.
+
+Thanks.
+System Notification',
+'web-app' => 'Hello [MEMBER_NAME],
+
+[CREATOR_NAME] is now following the task titled [TASK_NAME].
+
+Please sign into your project management web-portal or mobile app for further details.
+
+Thanks.
+System Notification'
+				]),
+				'type' => null,
+				'status' => 1,
+				'sort_order' => 8,
+				'created_at' => gmdate('Y-m-d H:i:s'),
+				'updated_at' => gmdate('Y-m-d H:i:s')
+			],
+			[
+				'title' => 'Someone (with permission) has forced another user to follow a task',
+				'notification_action_name' => 'lazytask_task_follow_to_other',
+				'description' => 'Someone (with permission) has forced another user to follow a task',
+				'email_subject' => 'Attention: Someone has made you a follower in a task',
+				'content' => json_encode([
+				'email' => 'Hello [MEMBER_NAME],
+
+[CREATOR_NAME] has now made you a follower of the task [TASK_NAME].
+
+Usually, when someone makes you a follower of a task, that means you need to keep an eye on this specific task.
+
+Please sign into your project management web-portal or mobile app for further details.
+
+Thanks.
+System Notification',
+'web-app' => 'Hello [MEMBER_NAME],
+
+[CREATOR_NAME] has now made you a follower of the task [TASK_NAME].
+
+Please sign into view further details.
+
+Thanks.
+System Notification'
+				]),
+				'type' => null,
+				'status' => 1,
+				'sort_order' => 9,
+				'created_at' => gmdate('Y-m-d H:i:s'),
+				'updated_at' => gmdate('Y-m-d H:i:s')
+			],
+
+		];
+
+		$db = self::get_global_wp_db();
+		if($db->get_row("SELECT * FROM $table_name") == null){
+			foreach ($defaultTemplates as $item){
+				$db->insert($table_name, $item);
+			}
+		}
+
+	}
+
+	private static function tbl_notification(){
+		global $wpdb;
+		$table_name = LAZYTASK_TABLE_PREFIX . 'notifications';
+
+		$table_generate_query = "
+	        CREATE TABLE IF NOT EXISTS `". $table_name ."` (
+		  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+		  `user_id` bigint unsigned DEFAULT NULL,
+		  `notification_template_id` bigint unsigned DEFAULT NULL,
+		  `notification_action_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `subject_id` bigint unsigned DEFAULT NULL,
+		  `subject_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `subject_type` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `content` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+		  `type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `is_read` int NOT NULL DEFAULT '0',		  
+		  `status` int NOT NULL DEFAULT '1',
+		  `sort_order` int NOT NULL DEFAULT '9999',
+		  `created_at` timestamp NULL DEFAULT NULL,
+		  `updated_at` timestamp NULL DEFAULT NULL,
+		  PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+	";
+		require_once (ABSPATH. 'wp-admin/includes/upgrade.php');
+		dbDelta($table_generate_query);
+	}
+
+	private static function tbl_notification_history(){
+		global $wpdb;
+		$table_name = LAZYTASK_TABLE_PREFIX . 'notification_histories';
+
+		$table_generate_query = "
+	        CREATE TABLE IF NOT EXISTS `". $table_name ."` (
+		  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+		  `user_id` bigint unsigned DEFAULT NULL,
+		  `notification_template_id` bigint unsigned DEFAULT NULL,
+		  `notification_action_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `subject_id` bigint unsigned DEFAULT NULL,
+		  `subject_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `subject_type` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `content` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+		  `channel` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+		  `is_read` int NOT NULL DEFAULT '0',		  
+		  `status` int NOT NULL DEFAULT '1',
+		  `sort_order` int NOT NULL DEFAULT '9999',
+		  `created_at` timestamp NULL DEFAULT NULL,
+		  `updated_at` timestamp NULL DEFAULT NULL,
+		  PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+	";
+		require_once (ABSPATH. 'wp-admin/includes/upgrade.php');
+		dbDelta($table_generate_query);
+	}
+
 	public static function get_global_wp_db( $wpdb = NULL ) {
+		static $db;
+		if ( is_null($db) || ! is_null( $wpdb ) ) {
+			$db = is_null($wpdb) ? $GLOBALS['wpdb'] : $wpdb;
+		}
+		return $db;
+	}
+	public function get_global_wpdb( $wpdb = NULL ) {
 		static $db;
 		if ( is_null($db) || ! is_null( $wpdb ) ) {
 			$db = is_null($wpdb) ? $GLOBALS['wpdb'] : $wpdb;

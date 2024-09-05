@@ -5,6 +5,7 @@ import '@mantine/dates/styles.css';
 import {useDispatch, useSelector} from "react-redux";
 import dayjs from "dayjs";
 import {editMyTask} from "../../Settings/store/myTaskSlice";
+import {hasPermission} from "../../ui/permissions";
 
 const formatDate = (date) => {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -42,6 +43,7 @@ const TaskDueDate = ({ taskId, dueDate}) => {
   const [calendarVisible, setCalendarVisible] = useState(false);
   const calendarRef = useRef(null);
   const {loggedUserId} = useSelector((state) => state.auth.user)
+  const {loggedInUser} = useSelector((state) => state.auth.session)
 
 
   
@@ -97,7 +99,7 @@ const TaskDueDate = ({ taskId, dueDate}) => {
           )
       )}
 
-      {calendarVisible && (
+      {calendarVisible && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (
         <div ref={calendarRef} className="absolute bg-white border border-solid border-[#6191A4] rounded-sm p-2 z-[9]" onClick={handleCalendarClick}>
           <Calendar
             getDayProps={(date) => ({ 

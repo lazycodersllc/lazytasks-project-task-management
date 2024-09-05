@@ -1,9 +1,11 @@
-import { Avatar, Button, Select, Text, Textarea } from '@mantine/core';
-import { IconChevronDown, IconPointFilled } from '@tabler/icons-react';
-import React, { useState } from 'react';
+import {Avatar, Button, Select, Text, Textarea, Title} from '@mantine/core';
+import {IconChevronDown, IconPointFilled, IconTrashX} from '@tabler/icons-react';
+import React, {Fragment, useEffect, useState} from 'react';
 import { useDisclosure } from '@mantine/hooks';
 import {useDispatch, useSelector} from "react-redux";
-import {createComment} from "../../../Settings/store/taskSlice";
+import {createComment, deleteComment} from "../../../Settings/store/taskSlice";
+import {useEditor} from "@tiptap/react";
+import {modals} from "@mantine/modals";
 
 const TaskComment = ({task, selectedValue}) => {
 
@@ -11,7 +13,8 @@ const TaskComment = ({task, selectedValue}) => {
 
   const [comments, setComments] = useState(task && task.comments ? task.comments : []);
   const [commentText, setCommentText] = useState('');
-  const {loggedUserId, name, avatar, user} = useSelector((state) => state.auth.user)
+  const {loggedUserId, name} = useSelector((state) => state.auth.user)
+  const {loggedInUser} = useSelector((state) => state.auth.session)
 
   const formatTimestamp = (timestamp) => {
     const now = new Date();
@@ -42,9 +45,35 @@ const TaskComment = ({task, selectedValue}) => {
       created_at: formatTimestamp(timestamp)
     };
     dispatch(createComment(newComment));
-    setComments([newComment, ...comments]);
+    // setComments([newComment, ...comments]);
     setCommentText(''); // Clear textarea
   };
+  useEffect(() => {
+    setComments(task && task.comments ? task.comments : []);
+  } , [task.comments]);
+
+  const commentDeleteHandler = (commentId) => modals.openConfirmModal({
+    title: (
+        <Title order={5}>Are you sure this task delete?</Title>
+    ),
+    size: 'sm',
+    radius: 'md',
+    withCloseButton: false,
+    children: (
+        <Text size="sm">
+          This action is so important that you are required to confirm it with a modal. Please click
+          one of these buttons to proceed.
+        </Text>
+    ),
+    labels: { confirm: 'Confirm', cancel: 'Cancel' },
+    onCancel: () => console.log('Cancel'),
+    onConfirm: () => {
+      if(commentId && commentId!=='undefined'){
+        dispatch(deleteComment({id: commentId, data: {'deleted_by': loggedUserId}}));
+      }
+    },
+  });
+
 
   return (
     <>
@@ -52,13 +81,18 @@ const TaskComment = ({task, selectedValue}) => {
         {selectedValue==='Only Comments' && comments && comments.length>0 && comments.map((comment, index) => (
             <div key={index} className="single-comment mb-4">
               <div className="sc-head flex items-center gap-2">
-                {/*<Avatar size={32} src={comment.avatarSrc} alt={comment.user_name} />*/}
+                <Avatar size={32} src={comment.avatar} alt={comment.user_name} />
                 <Text fw={500} fz={14} c="#202020">{comment.user_name}</Text>
                 <Text fw={400} fz={12} c="#39758D"><IconPointFilled size={14} /></Text>
                 <Text fw={400} fz={12} c="#39758D">{comment.created_at}</Text>
+                <IconTrashX
+                    onClick={()=> {commentDeleteHandler(comment && comment.id)}}
+                    size="16"
+                    color="var(--mantine-color-red-filled)"
+                />
               </div>
               <div className="comment-body pl-[40px]">
-                <Text fw={400} fz={14} c="#4D4D4D">{comment.content}</Text>
+                <Text fw={400} fz={14} c="#4D4D4D" lineClamp={2}>{comment.content}</Text>
               </div>
             </div>
         ))}
@@ -68,8 +102,8 @@ const TaskComment = ({task, selectedValue}) => {
           <div className="write-comments">
             <div className="flex gap-2 mb-2">
               <Avatar size={32}
-                      src={user && user.avatar ? user.avatar : avatar}
-                      alt={name}/>
+                      src={loggedInUser && loggedInUser.avatar ? loggedInUser.avatar : ''}
+                      alt={loggedInUser && loggedInUser.name}/>
               <Textarea
                   description=""
                   style={{width: '100%'}}

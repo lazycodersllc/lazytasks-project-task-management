@@ -56,12 +56,13 @@ export const updateCompany = async (id, data) => {
     return response.data;
 }
 
-export const removeCompany = async (id) => {
+export const removeCompany = async (id, data) => {
     try {
 
         const response = await ApiService.fetchData({
             url: `/companies/delete/${id}`,
             method: 'put',
+            data
         })
         return response.data;
 

@@ -4,7 +4,11 @@ const WorkspaceDeleteButton = ({ onClick }) => {
     return (
         <> 
             <button className="text-center" onClick={onClick}>
-                <IconTrash size={20} color="#ED7D31" />
+                <IconTrash
+                    size={20}
+                    color="red"
+                    stroke={1.25}
+                />
             </button>
         </>
         

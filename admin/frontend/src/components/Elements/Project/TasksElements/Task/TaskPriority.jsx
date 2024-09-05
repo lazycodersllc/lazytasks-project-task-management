@@ -3,16 +3,20 @@ import React, {useState, useRef, useEffect, Fragment} from 'react';
 import {useDispatch, useSelector} from "react-redux";
 import {createProjectPriority, editTask} from "../../../../Settings/store/taskSlice";
 import {useParams} from "react-router-dom";
+import {hasPermission} from "../../../../ui/permissions";
+import {Box, Button, ColorInput, Popover, Text, TextInput} from "@mantine/core";
 
 const TaskPriority = ({ taskId, priority}) => {
   const dispatch = useDispatch();
   const id = useParams();
   const projectId = id.id;
   const {loggedUserId} = useSelector((state) => state.auth.user)
+  const {loggedInUser} = useSelector((state) => state.auth.session)
+
   const {projectPriorities} = useSelector((state) => state.settings.task);
 
   const [newPriority, setNewPriority] = useState('');
-  const [newPriorityColor, setNewPriorityColor] = useState('');
+  const [newPriorityColor, setNewPriorityColor] = useState('#346A80');
   const [selectedPriority, setSelectedPriority] = useState(priority ? priority.id : '');
   const [selectedPriorityName, setSelectedPriorityName] = useState(priority ? priority.name : '');
   const [selectedPriorityColor, setSelectedPriorityColor] = useState(priority && priority.color_code ? priority.color_code : '#000000');
@@ -24,6 +28,7 @@ const TaskPriority = ({ taskId, priority}) => {
     const handleClickOutside = (event) => {
       if (selectPriorityRef.current && !selectPriorityRef.current.contains(event.target)) {
         setShowPriorityList(false);
+        setShowPriorityAddInput(false);
       }
     };
 
@@ -52,7 +57,7 @@ const TaskPriority = ({ taskId, priority}) => {
   };
 
   const handleAddPriority = () => {
-    if (newPriority.trim() !== '') {
+    if (newPriority.trim() !== '' && newPriority !== 'Type name here') {
       const submitData = {
         name: newPriority,
         project_id: projectId,
@@ -84,53 +89,72 @@ const TaskPriority = ({ taskId, priority}) => {
       <div className="priority-wrapper">
         <div className="priority-btn cursor-pointer inline-flex" onClick={handlePriorityListShow}>
           {!selectedPriority ? (
-            <div className="px-3 py-1 items-center gap-2 inline-flex">
+            <div className="px-1 py-1 items-center gap-2 inline-flex">
               <IconMinus color="#4d4d4d" size="22" />
               <IconChevronDown color="#4d4d4d" size="22" />
             </div>
           ) : (
             <div style={{ backgroundColor: selectedPriorityColor }} className="flex px-2 py-0 rounded-[25px] items-center gap-2 inline-flex">
-              <div className="text-white text-[14px]">{selectedPriorityName}</div>
-              <IconChevronDown color="#ffffff" size="22" />
+              <Text c="white" size="sm" fw={400}>{selectedPriorityName}</Text>
+              {/*<div className="text-white text-[14px]"></div>*/}
+              <IconChevronDown color="#ffffff" size="22"/>
             </div>
           )}
         </div>
 
-        {showPriorityList && (
-          <div ref={selectPriorityRef} className="selectpriority-list border rounded-lg bg-white shadow p-2 absolute">
+        {showPriorityList && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (
+          <div ref={selectPriorityRef} className="selectpriority-list border rounded-lg bg-white shadow p-2 absolute z-10 min-w-[250px]">
             {projectPriorities && projectPriorities.length>0 &&  projectPriorities.map((priority, index) => (
-              <span
-                className={`flex items-center w-full cursor-pointer text-[12px] p-1 ${
+              <div
+                className={`flex items-center gap-2 w-full cursor-pointer text-[12px] p-1 ${
                   selectedPriority === priority.id ? 'bg-[#ebf1f4]' : 'hover:bg-[#ebf1f4]'
                 }`}
                 key={index}
                 onClick={() => handleSelectPriority(priority)}
               >
-                {selectedPriority === priority.id ? <IconCheck size="14" /> : null} {priority.name}
-              </span>
+                {selectedPriority === priority.id ? <IconCheck size="14" /> : null}
+                <Text c="black" size="xs" fw={400}>{ priority.name}</Text>
+              </div>
             ))}
 
-            {showPriorityAddInput ? (
-              <div className="flex">
-                <input
-                  className="w-full text-[12px]"
-                  type="color"
-                  value={newPriorityColor}
-                  onChange={handleColorInputChange}
-                  placeholder="Color"
-                />
-                <input
-                  className="w-full text-[12px]"
-                  type="text"
-                  value={newPriority}
-                  onChange={handleInputChange}
-                  placeholder="Name"
-                />
-                <button onClick={handleAddPriority}><IconCheck color="#4d4d4d" size="22" /></button>
-              </div>
-            ) : (
-              <span className="block cursor-pointer text-[12px] p-1 text-[#ED7D31]" onClick={handleCreatePriority}>+ Create Priority</span>
-            )}
+            {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) &&
+              <Box className={`border-t border-t-[#C8C8C8] pt-1.5 mt-2`}>
+                {showPriorityAddInput ? (
+                    <div className="flex items-center gap-1 py-1">
+                      {/*<ColorInput
+                          size="xs"
+                          radius="md"
+                          value={newPriorityColor}
+                          onChange={handleColorInputChange}
+                          withEyeDropper={false}
+                      />*/}
+                      <input
+                          className="w-[30px] h-[30px] rounded-sm text-[12px]"
+                          type="color"
+                          value={newPriorityColor}
+                          onChange={handleColorInputChange}
+                          placeholder="Color"
+                      />
+                      <TextInput
+                          size="xs"
+                          className="w-full text-[12px]"
+                          defaultValue={newPriority}
+                          onChange={handleInputChange}
+                          placeholder={'Type name here'}
+                      />
+
+                      <Button onClick={handleAddPriority} className={`!px-1 !py-2.5`} variant={newPriority.length>0?'filled':'default'} color="orange" size={`xs`} >
+                        <IconCheck color={newPriority.length>0?'white':'gray'} size="24" stroke={1.5} />
+                      </Button>
+                      {/*<button className={`border rounded-md w-[35px] h-[30px]`} onClick={handleAddPriority}><IconCheck color="#4d4d4d" size="22" /></button>*/}
+                    </div>
+                ) : (
+                    <span className="block cursor-pointer text-[12px] p-1 text-[#ED7D31] " onClick={handleCreatePriority}>+ Create Priority</span>
+                )}
+              </Box>
+            }
+
+
           </div>
         )}
       </div>

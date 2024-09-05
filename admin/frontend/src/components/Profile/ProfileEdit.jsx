@@ -9,7 +9,7 @@ import {
     Text,
     Title,
     FileInput,
-    rem
+    rem, Avatar, Flex
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import Header from '../Header';
@@ -21,6 +21,7 @@ import {useDispatch, useSelector} from "react-redux";
 import {fetchAllRoles} from "../../store/auth/roleSlice";
 import {createUser, editUser, fetchUser, uploadProfilePhoto} from "../../store/auth/userSlice";
 import {IconFileCv, IconPhoto} from "@tabler/icons-react";
+import {hasPermission} from "../ui/permissions";
 
 const ProfileEdit = () => {
     const {id} = useParams();
@@ -31,6 +32,7 @@ const ProfileEdit = () => {
     const [loading, setLoading] = useState(true);
     const {user} = useSelector((state) => state.auth.user);
     const icon = <IconPhoto style={{ width: "32px", height: "32px" }} stroke={1.5} />;
+    const { loggedInUser } = useSelector((state) => state.auth.session)
 
     useEffect(() => {
         dispatch(fetchAllRoles());
@@ -128,25 +130,28 @@ const ProfileEdit = () => {
 
                                         </div>
                                     </div>
-                                    <div className="mb-4">
-                                        <Select
-                                            size="md"
-                                            placeholder="Select Role"
-                                            data={roles && roles.length > 0 && roles.map((role) => ({
-                                                value: role.id,
-                                                label: role.name
-                                            }))}
-                                            defaultValue={user && user.llc_roles && user.llc_roles.length>0 ? user.llc_roles[0].id.toString() : ''}
-                                            searchable
-                                            allowDeselect
-                                            onChange={(e, option) => {
-                                                onUserRoleChangeHandler(option);
-                                                if (form.getInputProps('roles').onChange)
-                                                    form.getInputProps('roles').onChange((option) => option);
-                                            }}
-                                        />
+                                    {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin']) &&
+                                        <div className="mb-4">
+                                            <Select
+                                                size="md"
+                                                placeholder="Select Role"
+                                                data={roles && roles.length > 0 && roles.map((role) => ({
+                                                    value: role.id,
+                                                    label: role.name
+                                                }))}
+                                                defaultValue={user && user.llc_roles && user.llc_roles.length > 0 ? user.llc_roles[0].id.toString() : ''}
+                                                searchable
+                                                allowDeselect
+                                                onChange={(e, option) => {
+                                                    onUserRoleChangeHandler(option);
+                                                    if (form.getInputProps('roles').onChange)
+                                                        form.getInputProps('roles').onChange((option) => option);
+                                                }}
+                                            />
 
-                                    </div>
+                                        </div>
+                                    }
+
                                     <div className="mb-4">
                                         <PhoneInput
                                             international
@@ -165,7 +170,7 @@ const ProfileEdit = () => {
                                         )}
                                     </div>
                                     <div className="mb-4">
-                                        <TextInput
+                                    <TextInput
                                             size="md"
                                             withAsterisk
                                             // label="Last Name"
@@ -180,31 +185,33 @@ const ProfileEdit = () => {
                                         onChange={(e) => setEmail(e.target.value)}
                                     />*/}
                                     </div>
-                                    <div className="mb-4">
-                                        <FileInput
-                                            size="md"
-                                            accept="image/png,image/jpeg,image/jpg"
-                                            clearable
-                                            placeholder="Upload Profile Picture"
-                                            leftSection={icon}
-                                            leftSectionPointerEvents="none"
-                                            onChange={handleFileUpload}
-                                        />
-                                    </div>
-                                    <div className="mb-4 text-center">
-                                        <Link to="/resetpassword"
-                                              className="text-orange-500 font-semibold text-base leading-normal text-center mt-24 mb-24">
-                                            Reset Password
-                                        </Link>
+                                    <div className="mb-8">
+                                        <Flex gap="md" align="center">
+                                            { user && user.avatar &&
+                                                <Avatar src={user?.avatar} alt={user?.name} radius="xl" size={40} />
+                                            }
+                                            <FileInput
+                                                className={`!w-full`}
+                                                size="md"
+                                                accept="image/png,image/jpeg,image/jpg"
+                                                clearable
+                                                placeholder="Upload Profile Picture"
+                                                leftSection={icon}
+                                                leftSectionPointerEvents="none"
+                                                onChange={handleFileUpload}
+                                            />
+                                        </Flex>
                                     </div>
                                     <div>
                                         <Button
                                             type="submit"
-                                            variant="gradient"
-                                            gradient={{from: 'orange', to: 'orange'}}
+                                            // gradient={{from: 'orange', to: 'orange'}}
                                             radius="sm"
                                             size="md"
-                                            style={{width: '100%'}}
+                                            fullWidth
+                                            variant="filled"
+                                            color="#ED7D31"
+                                            justify="center"
                                         >
                                             Save Changes
                                         </Button>

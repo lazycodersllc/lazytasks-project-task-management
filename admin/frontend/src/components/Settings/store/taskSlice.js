@@ -5,11 +5,20 @@ import {
     addComments,
     addProjectPriority,
     addTask,
-    addTaskSection, assignTagToTask, getTask,
-    getTaskListsByProject, removeAttachments, removeTagFromTask,
+    addTaskSection,
+    assignTagToTask,
+    getTask,
+    getTaskListsByProject,
+    markIsCompleteTaskSection,
+    removeAttachments,
+    removeComments,
+    removeTagFromTask,
+    removeTask,
+    removeTaskSection,
     updateSectionSortOrder,
     updateTask,
-    updateTaskSection, updateTaskSortOrder
+    updateTaskSection,
+    updateTaskSortOrder
 } from "../../../services/TaskService";
 
 export const fetchTasksByProject = createAsyncThunk(
@@ -50,6 +59,18 @@ export const editTaskSection = createAsyncThunk(
     return updateTaskSection(id, data)
 })
 
+export const markIsCompletedTaskSection = createAsyncThunk(
+    'tasks/markIsCompletedTaskSection',
+    async ({id, data}) => {
+    return markIsCompleteTaskSection(id, data)
+})
+
+export const deleteTaskSection = createAsyncThunk(
+    'tasks/deleteTaskSection',
+    async ({id, data}) => {
+    return removeTaskSection(id, data)
+})
+
 export const editSectionSortOrder = createAsyncThunk(
     'tasks/editSectionSortOrder',
     async ({data}) => {
@@ -58,6 +79,13 @@ export const editSectionSortOrder = createAsyncThunk(
 
 export const createComment = createAsyncThunk('tasks/createComment', async (data) => {
     return addComments(data)
+})
+
+
+export const deleteComment = createAsyncThunk(
+    'tasks/deleteComment',
+    async ({ id, data}) => {
+        return removeComments(id, data)
 })
 
 export const createAttachment = createAsyncThunk('tasks/createAttachment', async ({data}) => {
@@ -81,6 +109,12 @@ export const fetchTask = createAsyncThunk(
     'tasks/fetchTask',
     async ({ id }) => {
         return getTask(id)
+    }
+)
+export const deleteTask = createAsyncThunk(
+    'tasks/deleteTask',
+    async ({ id, data }) => {
+        return removeTask(id, data)
     }
 )
 
@@ -132,13 +166,35 @@ const taskSlice = createSlice({
                 (task) => task.id === action.payload
             )*/
 
-            Object.entries(state.columns).forEach(([key, tasks]) => {
+            if(action.payload && action.payload.section_slug && action.payload.parent===null){
+                Object.entries(state.columns).forEach(([key, tasks]) => {
+                    if (key === action.payload.section_slug) {
+                        state.columns[key] = tasks.map(task =>
+                            task.id === action.payload.id ? action.payload : {...task}
+                        );
+                    }
+                });
+            }
+
+            // for sub task
+            if (action.payload && action.payload.section_slug && action.payload.parent && action.payload.parent.slug) {
+                Object.entries(state.childColumns).forEach(([key, tasks]) => {
+                    if (key === action.payload.parent.slug) {
+                        state.childColumns[key] = tasks.map(task =>
+                            task.id === action.payload.id ? action.payload : {...task}
+                        );
+                    }
+                });
+            }
+
+            state.task = action.payload
+            /*Object.entries(state.columns).forEach(([key, tasks]) => {
                 if (key === action.payload.section_slug) {
                     state.columns[key] = tasks.map(task =>
                         task.id === action.payload.id ? action.payload : task
                     );
                 }
-            });
+            });*/
 
         },
         updateTaskListSections: (state, action) => {
@@ -275,6 +331,7 @@ const taskSlice = createSlice({
                 state.isLoading = false
                 state.isError = false
                 state.error = action.error?.message
+                console.log(action)
             })
             .addCase(editTaskSortOrder.pending, (state) => {
                 state.isLoading = true
@@ -289,7 +346,7 @@ const taskSlice = createSlice({
                         state.columns[key].push(action.payload.data)
                     }
                 })*/
-                state.success = `Task update successfully`
+                // state.success = `Task update successfully`
             })
             .addCase(editTaskSortOrder.rejected, (state, action) => {
                 state.isLoading = false
@@ -334,6 +391,65 @@ const taskSlice = createSlice({
                 state.isError = false
                 state.error = action.error?.message
             })
+            .addCase(markIsCompletedTaskSection.pending, (state) => {
+                state.isLoading = true
+                state.isError = false
+            })
+            .addCase(markIsCompletedTaskSection.fulfilled, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+
+
+                if (action.payload && action.payload.status === 200) {
+                    if (action.payload.data && action.payload.data.taskSections) {
+                        /*state.taskListSections[action.payload.data.taskSections] = {
+                            ...state.taskListSections[action.payload.data.taskSections],
+                            ...action.payload.data.section
+                        };*/
+
+                        state.taskListSections =   {
+                        ...state.taskListSections,
+                            [action.payload.data.taskSections]: {
+                        ...state.taskListSections[action.payload.data.taskSections],
+                                mark_is_complete: action.payload.data.section.mark_is_complete
+                        }
+                        };
+                    }
+                    state.success = `Task Section Updated Successfully`
+                }
+                // state.ordered = [...state.ordered, addedData]
+                // state.taskListSections = {...state.taskListSections, ...addedTaskListSection}
+            })
+            .addCase(markIsCompletedTaskSection.rejected, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.error = action.error?.message
+            })
+            .addCase(deleteTaskSection.pending, (state) => {
+                state.isLoading = true
+                state.isError = false
+            })
+            .addCase(deleteTaskSection.fulfilled, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+
+                // deleted section remove
+                state.ordered = state.ordered.filter(section => section !== action.payload.data.taskSections)
+                state.taskListSections = Object.keys(state.taskListSections).reduce((object, key) => {
+                    if (key !== action.payload.data.taskListSectionsName) {
+                        object[key] = state.taskListSections[key]
+                    }
+                    return object
+                    },
+                    {})
+
+                state.success = `Task Section Deleted Successfully`
+            })
+            .addCase(deleteTaskSection.rejected, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.error = action.error?.message
+            })
             .addCase(editSectionSortOrder.pending, (state) => {
                 state.isLoading = true
                 state.isError = false
@@ -372,6 +488,28 @@ const taskSlice = createSlice({
             .addCase(createComment.fulfilled, (state, action) => {
                 state.isLoading = false
                 state.isError = false
+
+                if(action.payload.task && action.payload.task.section_slug && action.payload.task.parent===null){
+                    Object.entries(state.columns).forEach(([key, tasks]) => {
+                        if (key === action.payload.task.section_slug) {
+                            state.columns[key] = tasks.map(task =>
+                                task.id === action.payload.task.id ? action.payload.task : {...task}
+                            );
+                        }
+                    });
+                }
+
+                // for sub task
+                if (action.payload.task && action.payload.task.section_slug && action.payload.task.parent && action.payload.task.parent.slug) {
+                    Object.entries(state.childColumns).forEach(([key, tasks]) => {
+                        if (key === action.payload.task.parent.slug) {
+                            state.childColumns[key] = tasks.map(task =>
+                                task.id === action.payload.task.id ? action.payload.task : {...task}
+                            );
+                        }
+                    });
+                }
+
                 state.comment = action.payload.data
                 state.success = `Comment Created Successfully`
             })
@@ -380,6 +518,51 @@ const taskSlice = createSlice({
                 state.isError = false
                 state.error = action.error?.message
             })
+            .addCase(deleteComment.pending, (state) => {
+                state.isLoading = true
+                state.isError = false
+            })
+            .addCase(deleteComment.fulfilled, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.attachments = action.payload.data
+                /*Object.entries(state.columns).forEach(([key, tasks]) => {
+                    if (action.payload.task && key === action.payload.task.section_slug) {
+                        state.columns[key] = tasks.map(task =>
+                            task.id === action.payload.task.id ? action.payload.task : task
+                        );
+                    }
+                });*/
+
+                if(action.payload.task && action.payload.task.section_slug && action.payload.task.parent===null){
+                    Object.entries(state.columns).forEach(([key, tasks]) => {
+                        if (key === action.payload.task.section_slug) {
+                            state.columns[key] = tasks.map(task =>
+                                task.id === action.payload.task.id ? action.payload.task : {...task}
+                            );
+                        }
+                    });
+                }
+
+                // for sub task
+                if (action.payload.task && action.payload.task.section_slug && action.payload.task.parent && action.payload.task.parent.slug) {
+                    Object.entries(state.childColumns).forEach(([key, tasks]) => {
+                        if (key === action.payload.task.parent.slug) {
+                            state.childColumns[key] = tasks.map(task =>
+                                task.id === action.payload.task.id ? action.payload.task : {...task}
+                            );
+                        }
+                    });
+                }
+                state.success = `Attachment Upload Successfully`
+                console.log(action.payload.data)
+            })
+            .addCase(deleteComment.rejected, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.error = action.error?.message
+            })
+            // attachment start
             .addCase(createAttachment.pending, (state) => {
                 state.isLoading = true
                 state.isError = false
@@ -539,6 +722,56 @@ const taskSlice = createSlice({
                 state.success = `Attachment Upload Successfully`
             })
             .addCase(deleteTagFromTask.rejected, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.error = action.error?.message
+            })
+            .addCase(deleteTask.pending, (state) => {
+                state.isLoading = true
+                state.isError = false
+            })
+            .addCase(deleteTask.fulfilled, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                console.log(action.payload.task)
+                // for task
+                if(action.payload.task && action.payload.task.section_slug && action.payload.task.parent===null){
+                    Object.entries(state.columns).forEach(([key, tasks]) => {
+                        if (key === action.payload.task.section_slug) {
+                            // item remove
+                            state.columns[key] = tasks.filter(task => task.id !== action.payload.task.id)
+                        }
+                    });
+                }
+
+
+                // for sub task
+                if (action.payload.task && action.payload.task.section_slug && action.payload.task.parent && action.payload.task.parent.slug) {
+                    /*Object.entries(state.childColumns).forEach(([key, tasks]) => {
+                        if (key === action.payload.task.parent.slug) {
+                            // item remove
+                            state.childColumns[key] = tasks.filter(task => task.id !== action.payload.task.id)
+                        }
+                    });*/
+                    // remove children
+                    state.childColumns[action.payload.task.parent.slug] = state.childColumns[action.payload.task.parent.slug].filter(task => task.id !== action.payload.task.id)
+
+                    //remove children into parent
+                    state.columns[action.payload.task.parent.section_slug] = state.columns[action.payload.task.parent.section_slug].map(task => {
+                        if( parseInt(task.id) === parseInt(action.payload.task.parent.id)){
+                            return {
+                                ...task,
+                                children: task.children.filter(child => parseInt(child.id) !== parseInt(action.payload.task.id))
+                            }
+                        }
+                        return task
+                    }
+                    )
+                }
+
+                state.success = `Task deleted Successfully`
+            })
+            .addCase(deleteTask.rejected, (state, action) => {
                 state.isLoading = false
                 state.isError = false
                 state.error = action.error?.message

@@ -14,6 +14,10 @@
     "postcss-nesting": "^12.1.5"
   },
   "dependencies": {
+    "@fullcalendar/core": "^6.1.15",
+    "@fullcalendar/daygrid": "^6.1.15",
+    "@fullcalendar/interaction": "^6.1.15",
+    "@fullcalendar/react": "^6.1.15",
     "@mantine/charts": "^7.10.2",
     "@mantine/core": "^7.10.2",
     "@mantine/dates": "^7.10.2",

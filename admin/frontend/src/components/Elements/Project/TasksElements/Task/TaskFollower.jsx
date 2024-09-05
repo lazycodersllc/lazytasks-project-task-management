@@ -4,6 +4,8 @@ import { Avatar, ScrollArea, Text, Tooltip } from '@mantine/core';
 import {useDispatch, useSelector} from 'react-redux';
 import UsersAvatarGroup from "../../../../ui/UsersAvatarGroup";
 import {editTask} from "../../../../Settings/store/taskSlice";
+import {hasPermission} from "../../../../ui/permissions";
+import UserAvatarSingle from "../../../../ui/UserAvatarSingle";
 const TaskFollower = ({taskId, followers, editHandler=[]}) => {
     const dispatch = useDispatch();
     const {boardMembers} = useSelector((state) => state.settings.task);
@@ -11,6 +13,7 @@ const TaskFollower = ({taskId, followers, editHandler=[]}) => {
     const [selectedMembers, setSelectedMembers] = useState(followers || []);
     const membersListRef = useRef(null);
     const {loggedUserId} = useSelector((state) => state.auth.user)
+    const {loggedInUser} = useSelector((state) => state.auth.session)
 
 
     // console.log(followers); 
@@ -53,6 +56,10 @@ const TaskFollower = ({taskId, followers, editHandler=[]}) => {
         }
     };
 
+    useEffect(() => {
+        setSelectedMembers(followers && followers.length > 0 ? followers : []);
+    }, [followers]);
+
 
     // const handleRemoveButtonClick = (selectedMember) => {
     //     setSelectedMembers(selectedMembers.filter((member) => member.id !== selectedMember.id));
@@ -63,34 +70,35 @@ const TaskFollower = ({taskId, followers, editHandler=[]}) => {
 
     return (
         <> 
-            <div onClick={handleAssignedToButtonClick} className="assignto-btn cursor-pointer inline-block">
+            <div className="assignto-btn flex items-center">
                 {selectedMembers && selectedMembers.length > 0 ? (
-                    <div className="flex items-center">
-                        <UsersAvatarGroup users={selectedMembers} size={40} maxCount={3} />
+                    <div onClick={handleAssignedToButtonClick} className="flex-inline items-center cursor-pointer">
+                        <UsersAvatarGroup users={selectedMembers} size={36} maxCount={3} />
                     </div>
-                ) : ( 
-                    <div className="h-[32px] w-[32px] border border-dashed border-[#4d4d4d] rounded-full p-1">
-                        <IconUsers color="#4d4d4d" size="22" />
+                ) : (
+                    <div onClick={handleAssignedToButtonClick} className="h-[30px] w-[30px] border border-dashed border-[#4d4d4d] rounded-full p-1 cursor-pointer">
+                        <IconUsers color="#4d4d4d" size="20" stroke={1.25} />
                     </div>
-                )} 
+                )}
             </div>
             
 
-            {showMembersList && (
-                <div ref={membersListRef} className="z-[9] members-lists absolute w-[272px] bg-white mt-3 border border-solid border-[#6191A4] rounded-lg">
+            {showMembersList && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (
+                <div ref={membersListRef} className="shadow-lg z-[9] members-lists absolute w-[368px] bg-white mt-1 border border-solid border-[#ffffff] rounded-lg">
                     <ScrollArea h={272}>
                         <div className="p-3">
                             <Text size="sm" fw={700} c="#202020">{boardMembers && boardMembers.length>0 ? boardMembers.length: 0 } people available</Text>
                             <div className="mt-3">  
                                 {boardMembers && boardMembers.length>0 && boardMembers.map((member) => (
                                     <div key={member.id} className="ml-single flex items-center border-b border-solid border-[#C2D4DC] py-1 justify-between">
-                                        <Avatar src={member.avatar} size={32} radius={32} />
-                                        <div className="mls-ne ml-3 w-[115px]">
+                                        {/*<Avatar src={member.avatar} size={32} radius={32} />*/}
+                                        <UserAvatarSingle user={member} size={32} />
+                                        <div className="mls-ne ml-3 w-[80%]">
                                             <Text size="sm" fw={700} c="#202020">{member.name}</Text>
                                         </div> 
                                         <button
                                             onClick={() => handleAssignButtonClick(member)}
-                                            className={`rounded-[25px] h-[32px] px-2 py-0 w-[70px] ml-3 ${selectedMembers.some((selectedMember) => parseInt(selectedMember.id) === parseInt(member.id)) ? 'bg-[#f00]' : 'bg-[#39758D]'}`}
+                                            className={`rounded-[5px] h-[32px] px-2 py-0 w-[100px] ml-2 ${selectedMembers.some((selectedMember) => parseInt(selectedMember.id) === parseInt(member.id)) ? 'bg-[#f00]' : 'bg-[#39758D]'}`}
                                         >
                                             <Text size="sm" fw={400} c="#fff">
                                                 {selectedMembers.some((selectedMember) => parseInt(selectedMember.id) === parseInt(member.id) ) ? 'Remove' : 'Assign'}

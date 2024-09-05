@@ -43,19 +43,32 @@ BaseService.interceptors.response.use(
         switch (response.status) {
 
             case 401: {
-                store.dispatch(onSignOutSuccess())
+                // store.dispatch(onSignOutSuccess())
+                // window.location = `${appLocalizer?.homeUrl}/lazy-task/#/dashboard`;
                 return Promise.reject(error)
             }
 
             // forbidden (permission related issues)
             case 403: {
+                if(response.data.message ==='Expired token' || response.data.message === 'Token has expired'){
+                    store.dispatch(onSignOutSuccess())
+                    window.location = `${appLocalizer?.homeUrl}/lazy-task/#/lazy-login`;
+                    return Promise.reject(error)
+                    }
+                console.log(error)
+                // store.dispatch(onSignOutSuccess())
+                return Promise.reject(error.response.data)
+            }
+            // expired token
+            case 408: {
                 store.dispatch(onSignOutSuccess())
-                return Promise.reject(error)
+                window.location = `${appLocalizer?.homeUrl}/lazy-task/#/lazy-login`;
+                return Promise.reject(error.response.data)
             }
 
             // bad request
             case 400: {
-                store.dispatch(onSignOutSuccess())
+                // store.dispatch(onSignOutSuccess())
                 return Promise.reject(error)
             }
 

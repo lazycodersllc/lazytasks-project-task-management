@@ -25,7 +25,7 @@ const DashboardBarChart = ({slug, header}) => {
                 </Group>
             </Card.Section>
 
-            <Card.Section px="xs">
+            <Card.Section px="xs" pt="xs">
                 <BarChart
                     h={250}
                     data={userProjects}

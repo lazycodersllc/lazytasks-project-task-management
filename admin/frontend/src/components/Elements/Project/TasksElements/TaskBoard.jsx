@@ -1,10 +1,10 @@
 import React, {useState, useEffect, Fragment} from 'react';
-import { IconGripVertical } from '@tabler/icons-react';
+import {IconGripVertical, IconTrash} from '@tabler/icons-react';
 import { useSelector, useDispatch } from 'react-redux';
 import AddTaskDrawer from './AddTaskDrawer';
 import {useParams} from "react-router-dom";
 import {
-  createTaskSection,
+  createTaskSection, deleteTaskSection,
   editSectionSortOrder, editTaskSortOrder,
   fetchTasksByProject, updateChildColumns, updateColumns,
   updateOrdered
@@ -13,10 +13,14 @@ import TaskSectionName from "./Task/TaskSectionName";
 import {DragDropContext, Draggable, Droppable} from "react-beautiful-dnd";
 import {reorder, reorderQuoteMap} from "./utils";
 import TaskBoardContent from "./TaskBoardContent";
+import {modals} from "@mantine/modals";
+import {Button, Text, Title} from "@mantine/core";
+import {hasPermission} from "../../../ui/permissions";
 
 const TaskBoard = () => {
   const {projectInfo, tasks, columns, ordered, taskListSections, childColumns} = useSelector((state) => state.settings.task);
   const {loggedUserId} = useSelector((state) => state.auth.user)
+  const {loggedInUser} = useSelector((state) => state.auth.session)
 
   const dispatch = useDispatch();
   const {id}= useParams();
@@ -147,6 +151,50 @@ const TaskBoard = () => {
 
   };
 
+  //taskDeleteHandler
+  const taskSectionDeleteHandler = (taskSectionId, noOfTasks) => modals.openConfirmModal({
+    title: (
+        <Title order={5}>Are you sure this section delete?</Title>
+    ),
+    centered: true,
+    size: 'sm',
+    radius: 'md',
+    withCloseButton: false,
+    children: (
+        <Text size="sm">
+          This action is so important that you are required to confirm it with a modal. Please click
+          one of these buttons to proceed.
+        </Text>
+    ),
+    labels: { confirm: 'Confirm', cancel: 'Cancel' },
+    onCancel: () => console.log('Cancel'),
+    onConfirm: () => {
+      if(taskSectionId && taskSectionId!=='undefined'){
+        if(noOfTasks > 0){
+          modals.open({
+            withCloseButton: false,
+            centered: true,
+            children: (
+                <Fragment>
+                  <Text size="sm">
+                    This section has {noOfTasks} tasks. Please delete all tasks before deleting this section.
+                  </Text>
+                  <div className="!grid w-full !justify-items-center">
+                    <Button justify="center" onClick={() => modals.closeAll()} mt="md">
+                      Ok
+                    </Button>
+                  </div>
+                </Fragment>
+            ),
+          });
+        }else {
+            dispatch(deleteTaskSection({id: taskSectionId, data: {'deleted_by': loggedUserId}}));
+        }
+      }
+    },
+  });
+
+
   return (
     <Fragment>
 
@@ -174,20 +222,37 @@ const TaskBoard = () => {
                                       ref={provided.innerRef}
                                       {...provided.draggableProps}
                                   >
-                                    <div
+                                    <div {...provided.dragHandleProps}
                                         className="project-section-title p-3 flex items-center justify-between bg-[#EBF1F4]">
-                                      <div {...provided.dragHandleProps} className="flex gap-1 items-center">
-                                        <IconGripVertical size="18" className="mr-1 cursor-move"/>
+                                      <div className="flex gap-1 items-center">
+                                        {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-delete']) &&
+                                            <IconTrash
+                                                className="cursor-pointer"
+                                                onClick={()=> {
+                                                  taskSectionDeleteHandler(taskListSections[taskListSection] && taskListSections[taskListSection].id, columns && columns && columns[taskListSection] ? columns[taskListSection].length:0 )
+                                                }}
+                                                size={20}
+                                                stroke={1}
+                                                color="var(--mantine-color-red-filled)"
+                                            />
+                                        }
+                                        <IconGripVertical
+                                            size={20}
+                                            stroke={1.25}
+                                            className="mr-1 cursor-move"/>
                                         <TaskSectionName
                                             taskSectionId={taskListSections[taskListSection] && taskListSections[taskListSection].id}
                                             nameOfTaskSection={taskListSections[taskListSection] && taskListSections[taskListSection].name}
+                                            view="cardView"
                                         />
                                       </div>
-                                      <AddTaskDrawer projectId={id}
+                                      {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee']) &&
+                                          <AddTaskDrawer projectId={id}
                                                      taskSectionId={taskListSections[taskListSection] && taskListSections[taskListSection].id}/>
+                                      }
                                     </div>
                                     <div className="flex items-stretch items-center pb-3"
-                                         style={{height: 'calc(100% - 60px)', minHeight: '250px'}}>
+                                         style={{height: 'calc(100% - 60px)', minHeight: '350px'}}>
                                       <TaskBoardContent
                                           className={snapshot.isDragging ? 'is-dragging' : ''}
                                           listType="CONTENT"
@@ -211,14 +276,16 @@ const TaskBoard = () => {
 
             </div>
         }
-        <div style={{minHeight:'235px', maxHeight: '800px'}} className={`w-[280px] mt-16 rounded-md border border-dashed border-1 border-[#ED7D31] text-center ${ ordered && ordered.length > 3 ? 'flex-1':''}`}>
-          <button
-              className="px-4 py-2 w-full h-full coursor-pointer"
-              onClick={handleAddSection}
-          >
-            <span className="text-[#ED7D31] font-semibold text-[14px]">+ Add Section</span>
-          </button>
-        </div>
+        {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-add']) &&
+          <div style={{minHeight:'335px', maxHeight: '800px'}} className={`w-[280px] rounded-md border border-dashed border-1 border-[#ED7D31] text-center ${ ordered && ordered.length > 3 ? 'flex-1':''}`}>
+            <button
+                className="px-4 py-2 w-full h-full coursor-pointer"
+                onClick={handleAddSection}
+            >
+              <span className="text-lg font-bold text-[#ED7D31]"> + Add Section</span>
+            </button>
+          </div>
+        }
       </div>
 
 

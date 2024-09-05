@@ -24,6 +24,18 @@ export async function getTask(id) {
         return error.message;
     }
 }
+export async function removeTask(id, data) {
+    try {
+        const response = await ApiService.fetchData({
+            url: `/tasks/delete/${id}`,
+            method: 'put',
+            data,
+        })
+        return response.data;
+    } catch (error) {
+        return error.message;
+    }
+}
 
 export async function addTask( data ) {
     try {
@@ -93,6 +105,33 @@ export async function updateTaskSection( id, data ) {
     }
 }
 
+export async function markIsCompleteTaskSection( id, data ) {
+    try {
+        const response = await ApiService.fetchData({
+            url: `/sections/mark-is-complete/${id}`,
+            method: 'put',
+            data,
+        })
+        console.log(data)
+        return response.data;
+    } catch (error) {
+        return error.message;
+    }
+}
+
+export async function removeTaskSection( id, data ) {
+    try {
+        const response = await ApiService.fetchData({
+            url: `/sections/delete/${id}`,
+            method: 'put',
+            data,
+        })
+        return response.data;
+    } catch (error) {
+        return error.message;
+    }
+}
+
 
 // Update Section Sort Order
 
@@ -130,6 +169,19 @@ export async function addComments( data ) {
             url: '/comments/create',
             method: 'post',
             data,
+        })
+        return response.data;
+    } catch (error) {
+        return error.message;
+    }
+}
+
+export async function removeComments( id, data ) {
+    try {
+        const response = await ApiService.fetchData({
+            url: `/comments/delete/${id}`,
+            method: 'put',
+            data
         })
         return response.data;
     } catch (error) {
@@ -215,6 +267,18 @@ export async function getQuickTaskListsByUser(id, data) {
             url: `/quick-tasks/by/user/${id}`,
             method: 'get',
             params: data
+        })
+        return response.data;
+    } catch (error) {
+        return error.message;
+    }
+}
+
+export async function deleteQuickTaskAfterConvertTask(id) {
+    try {
+        const response = await ApiService.fetchData({
+            url: `/quick-tasks/delete/${id}`,
+            method: 'delete',
         })
         return response.data;
     } catch (error) {

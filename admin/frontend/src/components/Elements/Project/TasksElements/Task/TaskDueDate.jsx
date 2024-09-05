@@ -5,6 +5,7 @@ import '@mantine/dates/styles.css';
 import {useDispatch, useSelector} from "react-redux";
 import {editTask} from "../../../../Settings/store/taskSlice";
 import dayjs from "dayjs";
+import {hasPermission} from "../../../../ui/permissions";
 
 const formatDate = (date) => {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -42,6 +43,7 @@ const TaskDueDate = ({ taskId, dueDate}) => {
   const [calendarVisible, setCalendarVisible] = useState(false);
   const calendarRef = useRef(null);
   const {loggedUserId} = useSelector((state) => state.auth.user)
+  const {loggedInUser} = useSelector((state) => state.auth.session)
 
 
   
@@ -78,24 +80,24 @@ const TaskDueDate = ({ taskId, dueDate}) => {
   };
 
   return (
-    <div className="due-select-btn cursor-pointer inline-block" onClick={toggleCalendar}>
+    <div className="due-select-btn" onClick={toggleCalendar}>
       {selectedDate ? (
-          <div className="due-selected text-[#4d4d4d] font-semibold text-[14px]">
+          <div className="due-selected text-[#202020] font-medium text-[14px] cursor-pointer">
               {formatDate(selectedDate)} {/* Render formatted date */}
           </div>
       ) : (
           dueDate === null ? (
-              <div className="h-[32px] w-[32px] border border-dashed border-[#4d4d4d] rounded-full p-1">
-                  <IconCalendarEvent color="#4d4d4d" size="22" /> 
+              <div className="h-[30px] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer">
+                  <IconCalendarEvent color="#4d4d4d" size="20" stroke={1.25} />
               </div>
           ) : (
-              <div className="due-selected text-[#4d4d4d] font-semibold text-[14px]">
+              <div className="due-selected text-[#202020] font-medium text-[14px] cursor-pointer">
                   {dbdateFormate(dueDate)}
               </div>
           )
       )}
 
-      {calendarVisible && (
+      {calendarVisible && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (
         <div ref={calendarRef} className="absolute bg-white border border-solid border-[#6191A4] rounded-sm p-2 z-[9]" onClick={handleCalendarClick}>
           <Calendar
             getDayProps={(date) => ({ 

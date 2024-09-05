@@ -26,7 +26,7 @@ const Login = () => {
 
         const result = await signIn({ email, password })
         console.log(result)
-       /* if (result.status === 'failed') {
+        /*if (result.status === 'error') {
             setMessage(result.message)
         }*/
 
@@ -89,9 +89,9 @@ const Login = () => {
                                     }}
                                 />
                                 <div className="mb-4 text-center">
-                                    <Link to="/resetpassword"
+                                    <Link to="/forget-password"
                                           className="text-orange-500 font-semibold text-base leading-normal text-center mt-24 mb-24 focus:shadow-none">
-                                        Reset Password
+                                        Forget Password
                                     </Link>
                                 </div>
                                 <Button

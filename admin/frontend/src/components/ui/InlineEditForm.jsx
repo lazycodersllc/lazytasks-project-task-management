@@ -22,7 +22,6 @@ const InlineEditForm = ({ editHandler, value }) => {
     const handlerOnBlur = (values) => {
         if(form.isDirty('input')){
             editHandler(values);
-            console.log(values)
         }
     };
 

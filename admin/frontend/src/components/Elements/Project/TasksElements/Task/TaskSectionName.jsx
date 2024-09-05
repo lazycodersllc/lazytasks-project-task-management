@@ -3,10 +3,12 @@ import React, {useRef, useState} from 'react';
 import ContentEditable from 'react-contenteditable';
 import { useSelector, useDispatch } from 'react-redux';
 import {editTaskSection} from "../../../../Settings/store/taskSlice";
+import {hasPermission} from "../../../../ui/permissions";
 
-const TaskSectionName = ({ taskSectionId, nameOfTaskSection }) => {
+const TaskSectionName = ({ taskSectionId, nameOfTaskSection, view }) => {
     const dispatch = useDispatch();
     const {loggedUserId} = useSelector((state) => state.auth.user)
+    const {loggedInUser} = useSelector((state) => state.auth.session)
 
     const defaultTaskName = (nameOfTaskSection || "Type section name here")
     const contentEditableRef = useRef('');
@@ -32,18 +34,28 @@ const TaskSectionName = ({ taskSectionId, nameOfTaskSection }) => {
             setTaskName(taskEditableName);
         }
     };
+    const previewTextLength = view === 'cardView' ? 17 : 70; // Adjust the number of characters to show
+    const isLongText = taskName.length > previewTextLength;
+    const previewText = isLongText ? taskName.slice(0, previewTextLength) + '...' : taskName;
 
     return (
-        <div className={isFocused ? 'border border-solid border-[#000000] rounded-md min-w-[150px]' : ''}>
-            <ContentEditable
-                // disabled={false}
-                innerRef={contentEditableRef}
-                html={taskName} // Inner HTML content
-                onChange={handleChange} // Handle changes
-                onBlur={handlerBlur} // Handle changes
-                tagName="p" // Use a paragraph tag
-                className="text-[#4d4d4d] font-semibold text-[14px] px-1 !outline-none pr-1"
-            />
+        <div className={isFocused ? 'border border-solid border-[#000000] rounded-md min-w-[150px]' : 'cursor-pointer'}>
+            {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-edit']) ?
+                <ContentEditable
+                    innerRef={contentEditableRef}
+                    html={isFocused ? taskName : previewText} // Inner HTML content
+                    onChange={handleChange} // Handle changes
+                    onBlur={()=>{
+                        handlerBlur()
+                        handleBlur()
+                    }} // Handle changes
+                    onFocus={handleFocus}
+                    tagName="p" // Use a paragraph tag
+                    className="text-[#4d4d4d] font-semibold text-[14px] px-1 !outline-none pr-1 leading-6"
+                />
+                :
+                <p className="text-[#4d4d4d] font-semibold text-[14px] px-1 leading-6">{taskName}</p>
+            }
         </div>
     );
 };

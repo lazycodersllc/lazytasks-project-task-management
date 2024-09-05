@@ -1,9 +1,9 @@
 import React, {useEffect, useState} from 'react';
-import {Button, Container, Group, ScrollArea, Select, TextInput, Text, Box} from '@mantine/core';
+import {Button, Container, Group, ScrollArea, Select, TextInput, Text, Box, Title} from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { IconX } from '@tabler/icons-react';
 import Header from '../Header';
-import { Link } from 'react-router-dom';
+import {Link, useNavigate} from 'react-router-dom';
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css'; // Import the CSS for react-phone-number-input
 import { isValidPhoneNumber } from 'react-phone-number-input';
@@ -14,7 +14,9 @@ import {createUser} from "../../store/auth/userSlice";
 
 const Profile = () => {
 
+    const navigate = useNavigate()
     const dispatch = useDispatch();
+    const {loggedInUser} = useSelector((state) => state.auth.session)
     useEffect(() => {
         dispatch(fetchAllRoles());
     }, []);
@@ -46,10 +48,11 @@ const Profile = () => {
     };
 
     const handleSubmit = (values) => {
-        console.log(values);
+        values['loggedInUserId'] = loggedInUser ? loggedInUser.loggedUserId : null;
         dispatch(createUser(values))
         form.reset();
         // Perform form submission or other actions here
+        navigate('/settings');
     };
 
     return (
@@ -60,8 +63,8 @@ const Profile = () => {
                     <div className="lm-profile-form flex items-center justify-center h-[calc(100vh-165px)]">
                         <Box m={4} p={32} radius="md" bg="white" shadow="sm" style={{ maxWidth: '416px' }}>
                             <div className="flex justify-between mb-8">
-                                <h2 className="text-lg font-semibold">Edit Profile</h2> 
-                                <Link to="/dashboard" className="text-gray-600 hover:text-gray-800 focus:shadow-none">
+                                <Title className="text-center" order={4}>Create Profile</Title>
+                                <Link to="/settings" className="text-gray-600 hover:text-gray-800 focus:shadow-none">
                                     <IconX size={24} color="#202020" /> 
                                 </Link> 
                             </div>
@@ -118,7 +121,7 @@ const Profile = () => {
                                 <div className="mb-4">
                                     <PhoneInput
                                         international
-                                        defaultCountry="US"
+                                        defaultCountry="BD"
                                         className="w-full"
                                         numberInputProps={{
                                             className: "border !border-gray-300 rounded-md focus:outline-none focus:ring focus:border-blue-300 h-[40px]"
@@ -132,38 +135,35 @@ const Profile = () => {
                                         </Text>
                                     )}
                                 </div>
-                                <TextInput
-                                    type="email"
-                                    placeholder="Email"
-                                    mb={16}
-                                    {...form.getInputProps('email')}
-                                    radius="sm"
-                                    size="md"
-                                    styles={{
-                                        width: '100%',
-                                        borderColor: 'gray.3',
-                                        backgroundColor: 'white',
-                                        focus: {
-                                            borderColor: 'blue.5',
-                                        },
-                                    }}
-                                />
-                                <div className="mb-4 text-center">
-                                    <Link to="/resetpassword"
-                                          className="text-orange-500 font-semibold text-base leading-normal text-center mt-24 mb-24 focus:shadow-none">
-                                        Reset Password
-                                    </Link>
+                                <div className="mb-8">
+                                    <TextInput
+                                        type="email"
+                                        placeholder="Email"
+                                        mb={16}
+                                        {...form.getInputProps('email')}
+                                        radius="sm"
+                                        size="md"
+                                        styles={{
+                                            width: '100%',
+                                            borderColor: 'gray.3',
+                                            backgroundColor: 'white',
+                                            focus: {
+                                                borderColor: 'blue.5',
+                                            },
+                                        }}
+                                    />
                                 </div>
-                                <Button
-                                    type="submit"
-                                    variant="gradient"
-                                    gradient={{from: 'orange', to: 'orange'}}
-                                    radius="sm"
-                                    size="md"
-                                    style={{width: '100%'}}
-                                >
-                                    Save Changes
-                                </Button>
+
+                                    <Button
+                                        type="submit"
+                                        variant="gradient"
+                                        gradient={{from: 'orange', to: 'orange'}}
+                                        radius="sm"
+                                        size="md"
+                                        style={{width: '100%'}}
+                                    >
+                                        Save Changes
+                                    </Button>
                             </form>
                         </Box>
                     </div>

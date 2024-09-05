@@ -4,6 +4,7 @@ import task from './taskSlice'
 import tag from './tagSlice'
 import myTask from './myTaskSlice'
 import quickTask from './quickTaskSlice'
+import setting from './settingSlice'
 import { combineReducers } from 'redux'
 const reducer = combineReducers({
     company: company,
@@ -11,6 +12,8 @@ const reducer = combineReducers({
     task: task,
     myTask: myTask,
     tag: tag,
-    quickTask: quickTask
+    quickTask: quickTask,
+    setting: setting
+
 })
 export default reducer

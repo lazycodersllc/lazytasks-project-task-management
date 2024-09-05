@@ -17,36 +17,36 @@ const [taskEditDrawerOpen, { open: openTaskEditDrawer, close: closeTaskEditDrawe
     };
   return (
     <>
-        <div onDoubleClickCapture={()=>{handleEditTaskDrawerOpen(task)}} className="flex single-task-content main-task">
-            <div className="task-name w-[28%] pr-2 items-center">
-                <div className="flex gap-2 items-center">
-                    <div className="inline-block" onClick={(e) => e.stopPropagation()}>
-                        <TaskName taskId={task.id} nameOfTask={task.name}/>
+        <div onDoubleClickCapture={()=>{handleEditTaskDrawerOpen(task)}} className="flex single-task-content main-task items-center w-full">
+            <div className="task-name w-[30%] pr-2 items-center">
+                <div className="flex gap-2 items-center w-full">
+                    <div className="w-full" onClick={(e) => e.stopPropagation()}>
+                        <TaskName task={task && task} taskId={task.id} nameOfTask={task.name}/>
                     </div>
                 </div>
             </div>
             <div className="assign-to w-[10%] pr-2">
-                <div className="inline-block" onClick={(e) => e.stopPropagation()}>
+                <div onClick={(e) => e.stopPropagation()}>
                     <TaskAssignTo task={task} assigned={task.assigned_to} />
                 </div>
             </div>
-            <div className="following w-[15%] text-center items-center">
-                <div className="inline-block" onClick={(e) => e.stopPropagation()}>
+            <div className="following w-[12%] items-center">
+                <div onClick={(e) => e.stopPropagation()}>
                     <TaskFollower task={task} followers={task.members} />
                 </div>
             </div>
             <div className="due-date w-[10%]">
-                <div className="inline-block" onClick={(e) => e.stopPropagation()}>
+                <div onClick={(e) => e.stopPropagation()}>
                     <TaskDueDate taskId={task.id} dueDate={task.end_date}/>
                 </div>
             </div>
             <div className="priority w-[10%]">
-                <div className="inline-block" onClick={(e) => e.stopPropagation()}>
+                <div onClick={(e) => e.stopPropagation()}>
                     <TaskPriority task={task} priority={task.priority}/>
                 </div>
             </div>
             <div className="tags w-[28%]">
-                <div className="inline-block" onClick={(e) => e.stopPropagation()}>
+                <div onClick={(e) => e.stopPropagation()}>
                     <TaskTag task={task} taskTags={task.tags}/>
                 </div>
             </div>

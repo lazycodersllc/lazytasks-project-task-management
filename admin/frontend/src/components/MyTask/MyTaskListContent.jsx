@@ -33,7 +33,7 @@ const MyTaskListContent = ({ contents }) => {
           {tasks && tasks.length>0 && tasks.map((task, taskIndex) => (
               <div
                   key={taskIndex}
-                  className='relative my-2 single-task'
+                  className='relative w-full items-center py-1.5'
               >
 
                   <MyTaskRow task={task} />

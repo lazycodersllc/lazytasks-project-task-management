@@ -1,25 +1,38 @@
 import React, {useState, useEffect, Fragment, useRef} from 'react';
-import { Accordion } from '@mantine/core';
-import { IconGripVertical } from '@tabler/icons-react';
+import {Accordion, Button, Checkbox, Flex, Group, List, Popover, Text, Title, useMantineTheme} from '@mantine/core';
+import {
+  IconAngle, IconCheck,
+  IconChevronDown,
+  IconDotsVertical,
+  IconGripVertical,
+  IconInputCheck,
+  IconPlus,
+  IconTrash, IconX
+} from '@tabler/icons-react';
 import { useSelector, useDispatch } from 'react-redux';
 import {
-  createTaskSection,
-  editSectionSortOrder, editTaskSortOrder,
-  fetchTasksByProject, updateChildColumns, updateColumns,
+  createTaskSection, deleteTaskSection,
+  editSectionSortOrder, editTaskSection, editTaskSortOrder,
+  fetchTasksByProject, markIsCompletedTaskSection, updateChildColumns, updateColumns,
   updateOrdered
 } from "../../../Settings/store/taskSlice";
 import TaskSectionName from "./Task/TaskSectionName";
-import TaskName from "./Task/TaskName";
 import {DragDropContext, Draggable, Droppable} from "react-beautiful-dnd";
 import {reorder, reorderQuoteMap} from "./utils";
 import TaskListContent from "./TaskListContent";
+import {modals} from "@mantine/modals";
+
+import {hasPermission} from "../../../ui/permissions";
+import {notifications} from "@mantine/notifications";
 
 const TaskList = () => {
+  const theme = useMantineTheme();
   // const tasks = useSelector(state => state.task);
-const dispatch = useDispatch();
+  const dispatch = useDispatch();
   const {loggedUserId} = useSelector((state) => state.auth.user)
+  const {loggedInUser} = useSelector((state) => state.auth.session)
 
-const {projectInfo, tasks, columns, ordered, taskListSections, childColumns} = useSelector((state) => state.settings.task);
+  const {projectInfo, tasks, columns, ordered, taskListSections, childColumns} = useSelector((state) => state.settings.task);
   const contentEditableRef = useRef('');
 
 
@@ -37,8 +50,9 @@ const {projectInfo, tasks, columns, ordered, taskListSections, childColumns} = u
       // Set all accordion items as expanded
       setExpandedItems(transformedItems.map(item => item.value));
     }
+
   }, [ordered]);
-  
+
   const [hoveredItem, setHoveredItem] = useState(null);
 
   const handleToggle = (itemValue) => {
@@ -56,7 +70,6 @@ const {projectInfo, tasks, columns, ordered, taskListSections, childColumns} = u
       }
       return item;
     });
-    console.log(e.target.value, itemValue)
     setAccordionItems(newAccordionItems);
   };
 
@@ -80,8 +93,6 @@ const {projectInfo, tasks, columns, ordered, taskListSections, childColumns} = u
   };
 
   const onDragEnd = (result) => {
-    console.log(result)
-
     if (!result.destination) {
       return
     }
@@ -159,9 +170,94 @@ const {projectInfo, tasks, columns, ordered, taskListSections, childColumns} = u
     dispatch(updateColumns(updateColumnData))
   };
 
+
+  //taskDeleteHandler
+  const taskSectionDeleteHandler = (taskSectionId, noOfTasks) => modals.openConfirmModal({
+    title: (
+        <Title order={5}>Are you sure this section delete?</Title>
+    ),
+    centered: true,
+    size: 'sm',
+    radius: 'md',
+    withCloseButton: false,
+    children: (
+        <Text size="sm">
+          This action is so important that you are required to confirm it with a modal. Please click
+          one of these buttons to proceed.
+        </Text>
+    ),
+    labels: { confirm: 'Confirm', cancel: 'Cancel' },
+    onCancel: () => console.log('Cancel'),
+    onConfirm: () => {
+      if(taskSectionId && taskSectionId!=='undefined'){
+        if(noOfTasks > 0){
+          modals.open({
+            withCloseButton: false,
+            centered: true,
+            children: (
+                <Fragment>
+                  <Text size="sm">
+                      This section has {noOfTasks} tasks. Please delete all tasks before deleting this section.
+                  </Text>
+                  <div className="!grid w-full !justify-items-center">
+                    <Button justify="center" onClick={() => modals.closeAll()} mt="md">
+                      Ok
+                    </Button>
+                  </div>
+                </Fragment>
+            ),
+          });
+        }else {
+          console.log(taskSectionId, noOfTasks)
+          dispatch(deleteTaskSection({id: taskSectionId, data: {'deleted_by': loggedUserId}}));
+        }
+      }
+    },
+  });
+
+
+  const [disableOthers, setDisableOthers] = useState(false);
+  const [ selectedMarkSectionName, setSelectedMarkSectionName] = useState('One');
+
+  useEffect(() => {
+    //selectedMarkSectionName
+    const selectedMarkSection = Object.entries(taskListSections).filter(([key, value]) => value.mark_is_complete === 'complete');
+    setSelectedMarkSectionName(selectedMarkSection.length > 0 ? selectedMarkSection[0][1].name : '');
+    const isAnyComplete = Object.values(taskListSections).some(task => task.mark_is_complete === 'complete');
+    setDisableOthers(isAnyComplete);
+  }, [taskListSections]);
+
+  // checkbox handler
+  const markIsCompleteHandler = (event, markIsComplete) => {
+    console.log(markIsComplete)
+    if(markIsComplete==='disable'){
+      notifications.show({
+        color: theme.errorColor,
+        title: 'Already '+selectedMarkSectionName+' section is marked as complete',
+        icon: <IconX />,
+        autoClose: 5000,
+      });
+      //event target unchecked
+        event.target.checked = false;
+    }else{
+      dispatch(markIsCompletedTaskSection({id: event.target.value, data: { project_id: projectInfo ? projectInfo.id:null, markIsChecked: event.target.checked, updated_by: loggedInUser && loggedInUser.id ? loggedInUser.id : loggedUserId}}))
+    }
+  }
+
   return (
     <Fragment>
-      <Accordion variant="separated" multiple={true} value={expandedItems} onChange={setExpandedItems}>
+      <Accordion
+          variant="separated"
+          multiple={true}
+          value={expandedItems}
+          onChange={setExpandedItems}
+         chevron={<IconChevronDown size={30} stroke={2} />}
+         classNames={{
+           control: '!w-[18px] !pl-0 !pr-2',
+           content: '!pb-0 !pt-0',
+         }}
+
+      >
 
         <DragDropContext onDragEnd={(result) => onDragEnd(result)}>
           <Droppable
@@ -172,6 +268,7 @@ const {projectInfo, tasks, columns, ordered, taskListSections, childColumns} = u
                 <div {...provided.droppableProps} ref={provided.innerRef}>
 
                   {ordered && ordered.length > 0 && ordered.map((taskListSection, index) => (
+
                       <Draggable key={taskListSection} draggableId={taskListSection} index={index}>
                         {(provided, snapshot) => (
                             <Accordion.Item
@@ -182,16 +279,64 @@ const {projectInfo, tasks, columns, ordered, taskListSections, childColumns} = u
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                             >
-                              <div {...provided.dragHandleProps} className="flex items-center border-b border-solid border-[#dddddd]" >
-                                <IconGripVertical size="16" className="pl-2 px-1 w-[30px] mt-[2px] cursor-move" />
-                                <Accordion.Control
-                                    className="!bg-[#fcfcfc] font-bold py-3 pr-3 !pl-0"
-                                >
+                              <div {...provided.dragHandleProps} className="flex items-center w-full border-b border-solid border-[#dddddd] !bg-[#fcfcfc]" >
+                                <div className="flex w-full items-center font-bold py-3 pr-3 !pl-1">
+                                  <IconGripVertical
+                                      size={24}
+                                      stroke={1.25}
+                                      className="pl-2 px-1 w-[30px]" />
                                   <TaskSectionName
                                       taskSectionId={taskListSections[taskListSection] && taskListSections[taskListSection].id}
                                       nameOfTaskSection={taskListSections[taskListSection] && taskListSections[taskListSection].name}
+                                      view="listView"
                                   />
-                                </Accordion.Control>
+                                </div>
+                                {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-delete']) &&
+                                    <div className="flex items-center gap-2 cursor-pointer">
+                                      <Popover width={200} position="bottom-end" withArrow shadow="md">
+                                        <Popover.Target>
+                                          <IconDotsVertical size={20} stroke={1.25}/>
+                                        </Popover.Target>
+                                        <Popover.Dropdown>
+                                          {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-delete']) &&
+
+                                             <List
+                                                 spacing="xs"
+                                                 size="sm">
+                                               <List.Item>
+                                                 <Checkbox
+                                                     label="Mark as complete"
+                                                     defaultChecked={!!(taskListSections[taskListSection] && taskListSections[taskListSection].mark_is_complete === 'complete')}
+                                                     onChange={(event) => {
+                                                       const markIsComplete = disableOthers && taskListSections[taskListSection].mark_is_complete !== 'complete'? 'disable' : 'enable';
+                                                       markIsCompleteHandler(event, markIsComplete)
+                                                     }}
+                                                     color="orange"
+                                                     value={taskListSections[taskListSection] && taskListSections[taskListSection].id}
+                                                 />
+                                               </List.Item>
+                                               <List.Item>
+                                                 <Flex className={`cursor-pointer`} onClick={() => {
+                                                      taskSectionDeleteHandler(taskListSections[taskListSection] && taskListSections[taskListSection].id, columns && columns && columns[taskListSection] ? columns[taskListSection].length : 0)
+                                                      }}
+                                                       gap={`sm`}>
+                                                       <IconTrash
+                                                           className="cursor-pointer"
+                                                           size={20}
+                                                           stroke={1.25}
+                                                           color="var(--mantine-color-red-filled)"
+                                                       /> <Text>Delete</Text>
+                                                 </Flex>
+                                               </List.Item>
+                                             </List>
+                                          }
+                                        </Popover.Dropdown>
+                                      </Popover>
+
+                                      <Accordion.Control>
+                                      </Accordion.Control>
+                                    </div>
+                                }
                               </div>
                               <Accordion.Panel>
                                 <TaskListContent
@@ -203,7 +348,7 @@ const {projectInfo, tasks, columns, ordered, taskListSections, childColumns} = u
                                     projectId={projectInfo.id}
                                     taskSection={taskListSection}
                                     taskSectionId={taskListSections[taskListSection] && taskListSections[taskListSection].id}
-                                    contents={columns && columns && columns[taskListSection] ? columns[taskListSection]:[]}
+                                    contents={columns && columns && columns[taskListSection] ? columns[taskListSection] : []}
                                 />
                               </Accordion.Panel>
                             </Accordion.Item>
@@ -217,12 +362,15 @@ const {projectInfo, tasks, columns, ordered, taskListSections, childColumns} = u
           </Droppable>
         </DragDropContext>
       </Accordion>
-      <button
-        className="rounded-md border border-solid border-[#dddddd] px-4 py-2 mt-4 w-full"
-        onClick={handleAddSection}
-      >
-        <span className="text-sm font-medium text-[#ED7D31]">+ Add Section</span>
-      </button>
+      {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-add']) &&
+          <button
+              className="rounded-md border border-dashed border-[#ED7D31] px-4 py-2 mt-4 w-full"
+              onClick={handleAddSection}
+          >
+            <span className="text-lg font-bold text-[#ED7D31]"> + Add Section</span>
+          </button>
+      }
+
     </Fragment>
   );
 };

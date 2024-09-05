@@ -4,7 +4,7 @@ import useQuery from './useQuery'
 import {onSignInSuccess, onSignOutSuccess, setLoggedInUser, setToken} from "../store/auth/sessionSlice";
 import {initialState, setUser} from "../store/auth/userSlice";
 import appConfig from "../configs/app.config";
-import {apiSignIn, apiSignOut} from "../services/AuthService";
+import {apiForgotPassword, apiSignIn, apiSignOut} from "../services/AuthService";
 import Cookies from 'js-cookie';
 import {jwtDecode} from "jwt-decode";
 import {REDIRECT_URL_KEY} from "../constants/app.constant";
@@ -76,6 +76,19 @@ function useAuth() {
             }
         }
     }
+    const forgetPassword = async (values) => {
+        try {
+            const resp = await apiForgotPassword(values)
+            if (resp) {
+                return resp;
+            }
+        } catch (errors) {
+            return {
+                status: 'failed',
+                message: errors?.response?.data?.message || errors.toString(),
+            }
+        }
+    }
 
     /*const signUp = async (values) => {
         try {
@@ -131,6 +144,7 @@ function useAuth() {
         signIn,
         // signUp,
         signOut,
+        forgetPassword,
     }
 }
 

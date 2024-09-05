@@ -41,42 +41,27 @@ const {userTaskOrdered, userTaskListSections, userTaskColumns} = useSelector((st
               </Tabs.Tab>
           ))}
         </Tabs.List>
-        {userTaskOrdered && userTaskOrdered.length > 0 && userTaskOrdered.map((taskListSection, index) => (
-            <Tabs.Panel value={taskListSection}>
-              <TaskHeader />
-              <ScrollArea className="h-[calc(100vh-260px)] p-[3px]" scrollbarSize={4}>
-                {/*<LoadingOverlay
+        {userTaskOrdered && userTaskOrdered.length > 0 ?
+            userTaskOrdered.map((taskListSection, index) => (
+                <Tabs.Panel value={taskListSection}>
+                  <TaskHeader />
+                  <ScrollArea className="h-[calc(100vh-260px)] p-[3px]" scrollbarSize={4}>
+                    {/*<LoadingOverlay
                                     visible={taskReload}
                                     zIndex={1000}
                                     overlayProps={{ radius: 'xs', blur: 1 }}
                                     loaderProps={{ color: 'red', type: 'bars' }}
                                 />*/}
-                <MyTaskListContent
-                    contents={userTaskColumns && userTaskColumns[taskListSection] ? userTaskColumns[taskListSection]:[]}
-                />
-              </ScrollArea>
+                    <MyTaskListContent
+                        contents={userTaskColumns && userTaskColumns[taskListSection] ? userTaskColumns[taskListSection]:[]}
+                    />
+                  </ScrollArea>
 
-            </Tabs.Panel>
-        ))}
+                </Tabs.Panel>
+            )) : <div className="text-center">No Task Found</div>
+        }
 
       </Tabs>
-      {/*<Accordion variant="separated" multiple={true} value={expandedItems} onChange={setExpandedItems}>
-        {userTaskOrdered && userTaskOrdered.length > 0 && userTaskOrdered.map((taskListSection, index) => (
-            <Accordion.Item
-                value={taskListSection}
-                className="!border-solid !border-[#dddddd] !rounded-t-md accordion-item !bg-[#fcfcfc]"
-                expanded={expandedItems.includes(taskListSection)}
-            >
-              <div className="items-center border-b border-solid border-[#dddddd]">
-                <Accordion.Control className="!bg-[#fcfcfc] font-bold">{userTaskListSections && userTaskListSections[taskListSection] && userTaskListSections[taskListSection]} ({userTaskColumns && userTaskColumns[taskListSection] ? userTaskColumns[taskListSection].length:0})</Accordion.Control>
-              </div>
-              <Accordion.Panel>
-
-
-              </Accordion.Panel>
-            </Accordion.Item>
-        ))}
-      </Accordion>*/}
 
     </Fragment>
   );

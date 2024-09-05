@@ -1,14 +1,20 @@
 import {
     addProject,
-    getAllProjects, getProject, getProjectMembers, removeProject, restoreFromDeleteProject, updateProject,
+    getAllProjects,
+    getProject,
+    getProjectMembers, getProjectPriorities,
+    getProjectSections,
+    removeProject,
+    restoreFromDeleteProject,
+    updateProject,
 } from '../../../services/ProjectService'
 
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 
 export const fetchAllProjects = createAsyncThunk(
     'projects/fetchAllProject',
-    async () => {
-        return getAllProjects()
+    async (data) => {
+        return getAllProjects(data)
     }
 )
 
@@ -32,8 +38,8 @@ export const editProject = createAsyncThunk(
 )
 
 // Delete Project thunk
-export const deleteProject = createAsyncThunk('projects/deleteProject', async (id) => {
-    return removeProject(id);
+export const deleteProject = createAsyncThunk('projects/deleteProject', async ({id, data}) => {
+    return removeProject(id, data);
 })
 
 // Restore Project thunk
@@ -48,10 +54,26 @@ export const fetchProjectMembers = createAsyncThunk(
     }
 )
 
+export const fetchProjectTaskSections = createAsyncThunk(
+    'projects/fetchProjectTaskSections',
+    async (id) => {
+        return getProjectSections(id);
+    }
+)
+
+export const fetchProjectPriorities = createAsyncThunk(
+    'projects/fetchProjectPriorities',
+    async (id) => {
+        return getProjectPriorities(id);
+    }
+)
+
 const initialState = {
     projects: [],
     project:{},
     projectMembers:[],
+    projectSections:[],
+    projectPriorities:[],
     isLoading: false,
     isError: false,
     error: '',
@@ -69,6 +91,9 @@ const projectSlice = createSlice({
         },
         removeSuccessMessage: (state) => {
             state.success = null
+        },
+        emptyProjectSection: (state) => {
+            state.projectSections = []
         },
         removeProjectFromState: (state,action) => {
             state.project = action.payload
@@ -171,8 +196,9 @@ const projectSlice = createSlice({
                         return project
                     })
                 }
-                state.project={}
-                state.success = `${action.payload.data.name} Update Successfully`
+                state.project={ ...action.payload.data }
+                console.log(action.payload)
+                // state.success = `${action.payload.data.name} Update Successfully`
             })
             .addCase(editProject.rejected, (state, action) => {
                 state.isLoading = false
@@ -194,11 +220,40 @@ const projectSlice = createSlice({
                 state.isError = false
                 state.error = action.error?.message
             })
+            .addCase(fetchProjectTaskSections.pending, (state) => {
+                state.isLoading = true
+                state.isError = false
+            })
+            .addCase(fetchProjectTaskSections.fulfilled, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.projectSections = action.payload.data
+            })
+            .addCase(fetchProjectTaskSections.rejected, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.error = action.error?.message
+            })
+            .addCase(fetchProjectPriorities.pending, (state) => {
+                state.isLoading = true
+                state.isError = false
+            })
+            .addCase(fetchProjectPriorities.fulfilled, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.projectPriorities = action.payload.data
+            })
+            .addCase(fetchProjectPriorities.rejected, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.error = action.error?.message
+            })
     },
 })
 export const {
     setEditableProject,
     removeSuccessMessage,
     removeProjectFromState,
+    emptyProjectSection
 } = projectSlice.actions
 export default projectSlice.reducer

@@ -12,7 +12,8 @@ const TaskComment = ({task, selectedValue}) => {
 
   const [comments, setComments] = useState(task && task.comments ? task.comments : []);
   const [commentText, setCommentText] = useState('');
-  const {loggedUserId, name, avatar, user} = useSelector((state) => state.auth.user)
+  const {loggedUserId, name} = useSelector((state) => state.auth.user)
+  const {loggedInUser} = useSelector((state) => state.auth.session)
 
   const formatTimestamp = (timestamp) => {
     const now = new Date();
@@ -68,9 +69,10 @@ const TaskComment = ({task, selectedValue}) => {
       {selectedValue === 'Only Comments' &&
           <div className="write-comments">
             <div className="flex gap-2 mb-2">
+
               <Avatar size={32}
-                      src={user && user.avatar ? user.avatar : avatar}
-                      alt={name}/>
+                      src={loggedInUser && loggedInUser.avatar ? loggedInUser.avatar : ''}
+                      alt={loggedInUser && loggedInUser.name}/>
               <Textarea
                   description=""
                   style={{width: '100%'}}

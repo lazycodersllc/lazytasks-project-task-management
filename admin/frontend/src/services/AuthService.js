@@ -54,11 +54,12 @@ export async function apiSignUp(data) {
     }
 }
 
-export async function getAllMembers() {
+export async function getAllMembers(data) {
     try {
         const response = await ApiService.fetchData({
             url: '/all-members',
             method: 'get',
+            params: data,
         })
         return response.data;
     } catch (error) {
@@ -139,11 +140,21 @@ export async function apiSignOut(data) {
 }
 
 export async function apiForgotPassword(data) {
-    return ApiService.fetchData({
-        url: '/forgot-password',
-        method: 'post',
-        data,
-    })
+    const response = await fetch(`${appConfig.liveApiUrl}/forget-password-request`, {
+        method: 'POST',
+        headers: {
+            'Content-type': 'application/json; charset=UTF-8',
+        },
+        body: JSON.stringify(data),
+    }).then((response) => response.json())
+        .then((responseJson) => {
+            return responseJson;
+        })
+        .catch((error) => {
+            console.error(error);
+        });
+
+    return response;
 }
 
 export async function apiResetPassword(data) {

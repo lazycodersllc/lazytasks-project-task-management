@@ -1,9 +1,9 @@
 <?php return array(
     'root' => array(
-        'name' => 'rbs-03/pms-rbs',
-        'pretty_version' => '1.0.0+no-version-set',
-        'version' => '1.0.0.0',
-        'reference' => NULL,
+        'name' => 'rbs-03/lazytask',
+        'pretty_version' => 'dev-master',
+        'version' => 'dev-master',
+        'reference' => '762631b77be0e56ee76f07d175c5e26878f296d1',
         'type' => 'library',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -19,10 +19,10 @@
             'aliases' => array(),
             'dev_requirement' => false,
         ),
-        'rbs-03/pms-rbs' => array(
-            'pretty_version' => '1.0.0+no-version-set',
-            'version' => '1.0.0.0',
-            'reference' => NULL,
+        'rbs-03/lazytask' => array(
+            'pretty_version' => 'dev-master',
+            'version' => 'dev-master',
+            'reference' => '762631b77be0e56ee76f07d175c5e26878f296d1',
             'type' => 'library',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

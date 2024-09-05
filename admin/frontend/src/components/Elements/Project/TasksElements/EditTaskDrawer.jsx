@@ -1,7 +1,19 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {Fragment, useEffect, useRef, useState} from 'react';
 import { useDisclosure } from '@mantine/hooks';
-import {Drawer, Button, FileInput, rem, Textarea, Text, ScrollArea, Select, Loader} from '@mantine/core';
-import {IconChevronDown, IconColumnRemove, IconFile, IconPaperclip, IconTrashX} from '@tabler/icons-react';
+import {
+    Drawer,
+    Button,
+    FileInput,
+    rem,
+    Textarea,
+    Text,
+    ScrollArea,
+    Select,
+    Loader,
+    Title,
+    LoadingOverlay
+} from '@mantine/core';
+import {IconChevronDown, IconColumnRemove, IconFile, IconPaperclip, IconTrash} from '@tabler/icons-react';
 import ContentEditable from 'react-contenteditable'; 
 import TaskAssignTo from './Task/TaskAssignTo';
 import TaskFollower from './Task/TaskFollower';
@@ -13,19 +25,29 @@ import {useDispatch, useSelector} from "react-redux";
 import {
     createAttachment,
     createTask,
-    deleteAttachment,
-    editTask,
+    deleteAttachment, deleteTask,
+    editTask, fetchTask,
     setEditableTask
 } from "../../../Settings/store/taskSlice";
 import DueDate from "./Task/DueDate";
 import dayjs from "dayjs";
-import Priority from "./Task/Priority";
 import TaskActivity from "./TaskActivity";
+import {modals} from "@mantine/modals";
+import {hasPermission} from "../../../ui/permissions";
 
-const EditTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeTaskEditDrawer }) => {
-    console.log(task)
+const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer, closeTaskEditDrawer, isCalendar, submit }) => {
+
     const dispatch = useDispatch();
     const {loggedUserId} = useSelector((state) => state.auth.user)
+    const {loggedInUser} = useSelector((state) => state.auth.session)
+    const {task} = useSelector((state) => state.settings.task);
+
+    useEffect(() => {
+        if(taskId){
+            dispatch(fetchTask({id: taskId}))
+        }
+    }, [taskId])
+
     const contentEditableRef = useRef('');
 
     const icon = <IconPaperclip style={{ width: rem(18), height: rem(18) }} stroke={1.5} />;
@@ -40,13 +62,19 @@ const EditTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeTas
 
 
   const [attachments, setAttachments] = useState( task.attachments && task.attachments.length>0 ? task.attachments : []);
+  const [subTask, setSubTask] = useState(task.children && task.children.length>0 ? task.children : []);
+
+  const [visible, setVisible] = useState(false);
 
     const handleAssignButtonClick = (member) => {
         setSelectedMember(member);
     }
     const handleDrawerClose = () => {
-        dispatch(setEditableTask(task))
-
+        if(isCalendar){
+            submit(taskObj);
+        }else {
+            dispatch(setEditableTask(taskObj))
+        }
     }
 
     const handleAssignFollower = (members) => {
@@ -75,27 +103,18 @@ const EditTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeTas
     // setAttachments(Array.from(files)); // Convert files to an array
 };
     useEffect(() => {
-        if(taskEditDrawerOpen===false){
-            // setShowMembersList(workspaceCreateModalOpen);
-            handleTaskCreation();
+        if(taskEditDrawerOpen===true){
+            setVisible(true);
+            setTaskDescription(task && task.description ? task.description: '')
         }
         setAttachments(task.attachments && task.attachments.length>0 ? task.attachments : [])
-    }, [taskEditDrawerOpen]);
-    const handleTaskCreation = () => {
-        const newTaskData = {
-            name: taskName,
-            // project_id: projectId,
-            // task_section_id: taskSectionId,
-            created_by: loggedUserId,
-            assigned_to: selectedMember,
-            members: selectedFollower,
-            start_date: selectedDueDate,
-            end_date: selectedDueDate,
-            priority: selectedPriority,
-            type:'task'
-        };
+        setSubTask(task.children && task.children.length>0 ? task.children : [])
 
-    };
+        setTimeout(() => {
+            setVisible(false);
+        }, 1000);
+
+    }, [taskEditDrawerOpen]);
 
     const [commentDropdownOpened, { toggle }] = useDisclosure();
     const [selectedValue, setSelectedValue] = useState('Only Comments');
@@ -112,19 +131,21 @@ const EditTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeTas
         if( task && task.id && task.id!=='undefined' && taskEditableName !== taskName){
             dispatch(editTask({id: task.id, data: {name: taskEditableName, 'updated_by': loggedUserId}}))
             setTaskName(taskEditableName);
+            dispatch(setEditableTask({...task, name: taskEditableName}))
         }
     };
 
     const handleTaskDescription = (description) => {
-        if(description && description!=='' && description !== task.description){
+
+        if(description && description!=='' && description !== task.description && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit'])){
             const updatedTask = {
                 description: description,
                 updated_by: loggedUserId
             }
             dispatch(editTask({ id:task.id, data: updatedTask}))
             setTaskDescription(description);
+            dispatch(setEditableTask({...task, description: description}))
         }
-
     }
     const handleAttachmentDelete = (id) => {
         const deletedTaskAttachment = {
@@ -136,8 +157,61 @@ const EditTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeTas
 
     useEffect(() => {
         setTaskName(task && task.name ? task.name: 'Type task name here')
+        setTaskDescription(task && task.description ? task.description: '')
         setAttachments(task.attachments && task.attachments.length>0 ? task.attachments : [])
+        setSubTask(task.children && task.children.length>0 ? task.children : [])
         },[task]);
+
+    const taskDeleteHandler = (taskId) => modals.openConfirmModal({
+        title: (
+            <Title order={5}>Are you sure this task delete?</Title>
+        ),
+        size: 'sm',
+        radius: 'md',
+        withCloseButton: false,
+        children: (
+            <Text size="sm">
+                This action is so important that you are required to confirm it with a modal. Please click
+                one of these buttons to proceed.
+            </Text>
+        ),
+        labels: { confirm: 'Confirm', cancel: 'Cancel' },
+        onCancel: () => console.log('Cancel'),
+        onConfirm: () => {
+            if(taskId && taskId!=='undefined'){
+                if(task && (subTask && subTask.length > 0 || attachments && attachments.length > 0)){
+                    modals.open({
+                        withCloseButton: false,
+                        centered: true,
+                        children: (
+                            <Fragment>
+                                { subTask && subTask.length > 0 &&
+                                    <Text size="sm">
+                                        This task has {subTask.length} sub-tasks. Please delete all sub-tasks before deleting this task.
+                                    </Text>
+                                }
+                                { attachments && attachments.length > 0 &&
+                                    <Text size="sm">
+                                        This task has {attachments.length} attachments. Please delete all attachments before deleting this task.
+                                    </Text>
+                                }
+                                <div className="!grid w-full !justify-items-center">
+                                    <Button justify="center" onClick={() => modals.closeAll()} mt="md">
+                                        Ok
+                                    </Button>
+                                </div>
+                            </Fragment>
+                        ),
+                    });
+                }else{
+                    const taskType = task && task.parent ? 'sub-task' : 'task';
+                    dispatch(deleteTask({id: taskId, data: {'deleted_by': loggedUserId, 'type': taskType}}));
+                }
+
+            }
+        },
+    });
+
 
   return (
     <>
@@ -150,23 +224,39 @@ const EditTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeTas
                   handleDrawerClose();
               }}
               position="right"
-              withCloseButton={false} size="lg" closeOnClickOutside={false}
-          overlayProps={{ backgroundOpacity: 0, blur: 0 }}
+              withCloseButton={false} size="lg" closeOnClickOutside={true}
+              overlayProps={{ backgroundOpacity: 0, blur: 0 }}
           >
               <div className="mt-4">
+                  <LoadingOverlay
+                      visible={visible}
+                      zIndex={1000}
+                      overlayProps={{ radius: 'sm', blur: 4 }}
+                  />
 
-                  <div className="drawer-head flex mb-4">
+                  <div className="drawer-head flex items-center mb-4">
                       <div className="w-[85%]">
-                          <ContentEditable
-                              innerRef={contentEditableRef}
-                              onChange={(e) => setTaskName(e.target.value)}
-                              onBlur={handlerBlur} // Handle changes
-                              html={taskName}
-                              className="inline-block w-full text-[#4d4d4d] font-bold text-[16px]"
-                          />
+                          {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) ?
+                              <ContentEditable
+                                  innerRef={contentEditableRef}
+                                  onChange={(e) => setTaskName(e.target.value)}
+                                  onBlur={handlerBlur} // Handle changes
+                                  html={taskName}
+                                  className="inline-block w-full text-[#4d4d4d] font-bold text-[16px]"
+                              />
+                              :
+                              <Text size="sm" className="text-[#000000] font-semibold text-[14px] px-0 !outline-none pr-1">{taskName}</Text>
+                          }
                       </div>
                       <div className="dh-btn flex w-[10%]">
-                          <div className="attachment w-[35px] mt-[-3px]">
+                          <div className="flex gap-1 items-center">
+                              {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-delete']) &&
+                                  <IconTrash
+                                      onClick={()=> {taskDeleteHandler(task && task.id)}}
+                                      size="20"
+                                      color="var(--mantine-color-red-filled)"
+                                  />
+                              }
                               <FileInput
                                   multiple
                                   variant="unstyled"
@@ -175,9 +265,8 @@ const EditTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeTas
                                   clearable
                                   onChange={handleFileUpload}
                               />
+                              <Drawer.CloseButton/>
                           </div>
-                          <Drawer.CloseButton/>
-
                       </div>
                   </div>
                   <ScrollArea className="h-[calc(100vh-130px)]" scrollbarSize={4}>
@@ -186,20 +275,21 @@ const EditTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeTas
                               <div className="w-1/3">
                                   <Text fw={400} fz={14} c="#202020">Assign To</Text>
                               </div>
-                              {/*<TaskAssignTo assignedMember={(props) => {
-                                handleAssignButtonClick(props);
-                            }} />*/}
-                              <TaskAssignTo taskId={task.id} assigned={task.assigned_to} assignedMember={(props) => {
-                                  console.log('')
-                              }}/>
+                              <div className={`relative`}>
+                                  <TaskAssignTo taskId={task.id} assigned={task.assigned_to} assignedMember={(props) => {
+                                      console.log('')
+                                  }}/>
+                              </div>
                           </div>
                           <div className="flex z-[103]">
                               <div className="w-1/3">
                                   <Text fw={400} fz={14} c="#202020">Following</Text>
                               </div>
-                              <TaskFollower taskId={task.id} followers={task.members} editHandler={(props) => {
-                                  console.log('')
-                              }}/>
+                              <div className={`relative`}>
+                                  <TaskFollower taskId={task.id} followers={task.members} editHandler={(props) => {
+                                      console.log('')
+                                  }}/>
+                              </div>
                           </div>
                           <div className="flex z-[102]">
                               <div className="w-1/3">
@@ -231,19 +321,23 @@ const EditTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeTas
                                            className='bg-[#EBF1F4] rounded-[20px] px-2 py-1 flex gap-2 items-center'>
                                           <IconFile size={14}/>
                                           <Text size="xs" lineClamp={1} fw={300} fz={14} c="#202020">{attachment.name}</Text>
-                                          <IconTrashX onClick={()=>handleAttachmentDelete(attachment.id)} size={18} stroke={1} color="red"/>
+                                          {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-delete']) &&
+                                              <IconTrash onClick={()=>handleAttachmentDelete(attachment.id)} size={20} stroke={1} color="red"/>
+                                          }
                                       </div>
                                   ))}
-                                  <div className="attachment w-[35px]">
-                                      <FileInput
-                                          multiple
-                                          variant="unstyled"
-                                          rightSection={icon}
-                                          rightSectionPointerEvents="none"
-                                          clearable
-                                          onChange={handleFileUpload}
-                                      />
-                                  </div>
+                                  {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) &&
+                                      <div className="attachment w-[35px]">
+                                          <FileInput
+                                              multiple
+                                              variant="unstyled"
+                                              rightSection={icon}
+                                              rightSectionPointerEvents="none"
+                                              clearable
+                                              onChange={handleFileUpload}
+                                          />
+                                      </div>
+                                  }
                               </div>
                           </div>
                           <div className="flex z-0">
@@ -263,7 +357,7 @@ const EditTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeTas
                           </div>
                           <div className="flex">
                               <button className="mt-1">
-                                  <span className="text-sm font-medium text-[#ED7D31]">+ Add sub task</span>
+                                  {/*<span className="text-sm font-medium text-[#ED7D31]">+ Add sub task</span>*/}
                               </button>
                           </div>
 

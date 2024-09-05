@@ -38,9 +38,8 @@ class Lazytask_Activator {
 
 		// Create pages if not exist
 
-		$login_page_id = get_option('lazytask_login_page_id');
-		$dashboard_page_id = get_option('lazytask_dashboard_page_id');
-		if(!$login_page_id || !$dashboard_page_id)
+		$login_page_id = get_option('lazytask_page_id');
+		if(!$login_page_id)
 			self::create_pages();
 
 //		Database_Table_Schema::create();
@@ -49,8 +48,7 @@ class Lazytask_Activator {
 	private static function create_pages()
 	{
 		$pages = array(
-			'Lazy Login' => 'lazy-login',
-			'Lazy Dashboard' => 'lazy-dashboard',
+			'Lazy Task' => 'lazy-task',
 		);
 		foreach ($pages as $title => $page_slug) {
 			$saved_page_args = array(
@@ -65,11 +63,9 @@ class Lazytask_Activator {
 
 			// Insert the page and get its id.
 			$saved_page_id = wp_insert_post( $saved_page_args );
-			if($title == 'Lazy Login')
+			if($title == 'Lazy Task')
 				// Save page id to the database.
-				add_option( 'lazytask_login_page_id', $saved_page_id );
-			elseif ($title == 'Lazy Dashboard')
-				add_option( 'lazytask_dashboard_page_id', $saved_page_id );
+				add_option( 'lazytask_page_id', $saved_page_id );
 			// Save  id to the database.
 		}
 	}

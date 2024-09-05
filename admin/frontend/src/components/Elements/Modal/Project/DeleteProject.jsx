@@ -2,11 +2,13 @@ import { Button, Group, Modal, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks'; 
 import ProjectDeleteButton from '../../Button/ProjectDeleteButton'; 
 import { IconAlertTriangleFilled } from '@tabler/icons-react';
-import {useDispatch} from "react-redux";
+import {useDispatch, useSelector} from "react-redux";
 import {deleteProject} from "../../../Settings/store/projectSlice";
 const DeleteProjectModal = ({id}) => {
 
     const dispatch = useDispatch();
+
+    const {loggedUserId} = useSelector((state) => state.auth.user)
 
     const [projectDeleteModalOpen, { open: deleteProjectModal, close: closeProjectDeleteModal }] = useDisclosure(false);
 
@@ -14,7 +16,7 @@ const DeleteProjectModal = ({id}) => {
         if(id === undefined || id === null || id === ''){
             return;
         }
-        dispatch(deleteProject(id))
+        dispatch(deleteProject({id:id, data: {'deleted_by': loggedUserId}}));
     }
 
     return (

@@ -5,11 +5,11 @@ import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import EditProjectModal from './Modal/Project/EditProjectModal';
 import DeleteProjectModal from './Modal/Project/DeleteProject';
 import { NavLink } from 'react-router-dom';
-import { setUsers } from '../../reducers/usersSlice';
 import UsersAvatarGroup from "../ui/UsersAvatarGroup";
 import CreateProjectModal from "./Modal/Project/CreateProjectModal";
 import EditWorkspaceModal from "./Modal/Workspace/EditWorkspaceModal";
 import DeleteWorkspaceModal from "./Modal/Workspace/DeleteWorkspace";
+import {hasPermission} from "../ui/permissions";
 
 const ProjectCard = (props) => {
     const {
@@ -19,10 +19,11 @@ const ProjectCard = (props) => {
         members,
         parent
     } = props;
+    const { loggedInUser } = useSelector((state) => state.auth.session)
 
     // Filter usersData based on members IDs
     return (
-        <Paper radius="md" withBorder p="10px" bg="var(--mantine-color-body)" style={{ border: '1px solid #A4C0CB', width: '100%', height:'100%' }}>
+        <Paper className="min-h-[193px]" radius="md" withBorder p="15px" bg="var(--mantine-color-body)" style={{ border: '1px solid #A4C0CB', width: '100%', height:'100%' }}>
 
             <Text ta="left" fz="md" fw={500} c="#202020">
                 <NavLink to={`/project/task/list/${id}`}>
@@ -48,13 +49,15 @@ const ProjectCard = (props) => {
 
             <UsersAvatarGroup users={members} size={40} maxCount={4} />
 
-            <div className="flex justify-end gap-3 mt-4"> 
-                {/* <button className="text-center rounded-md border border-solid border-orange-500 px-2 py-1" onClick={onEditClick}>
-                    <IconEdit size={20} color="#ED7D31" />
-                </button> */}
-                <EditProjectModal projectData={{ id, name, members, parent }} />
-                <DeleteProjectModal id={id} />
-            </div>
+            {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) &&
+                <div className="flex justify-end gap-2.5 mt-4">
+                    {/* <button className="text-center rounded-md border border-solid border-orange-500 px-2 py-1" onClick={onEditClick}>
+                        <IconEdit size={20} color="#ED7D31" />
+                    </button> */}
+                    <EditProjectModal projectData={{ id, name, members, parent }} />
+                    <DeleteProjectModal id={id} />
+                </div>
+            }
         </Paper>
     );
 }

@@ -1,18 +1,21 @@
 import { useCallback } from 'react'
 
 const whiteListTwColor = [
-    'indigo-600',
-    'emerald-500',
-    'cyan-500',
-    'blue-600',
-    'teal-500',
-    'fuchsia-500',
-    'pink-500',
-    'rose-500',
-    'red-500',
-    'amber-500',
-    'violet-500',
-    'purple-500',
+    '#FF6B6B',
+    '#26313B',
+    '#1D3557',
+    '#F96854',
+    '#6D6875',
+    '#2E9FFF',
+    '#335D6F',
+    '#9952FC',
+    '#F6BD60',
+    '#5C5C00',
+    '#B5838D',
+    '#98CE1E',
+    '#8038A9',
+    '#557665',
+    '#537BC4',
 ]
 
 function useTwColorByName(prefix = 'bg') {
@@ -30,7 +33,9 @@ function useTwColorByName(prefix = 'bg') {
             const hash = hashName(name)
             const index = hash % whiteListTwColor.length
             const color = whiteListTwColor[index]
-            return `${prefix}-${color} dark:${prefix}-${color}`
+            // return `!${prefix}-${color} !dark:${prefix}-${color}`
+            return {'bg-color': `${color}`, 'font-color': `white`}
+            // return `${color}`
         },
         [prefix]
     )

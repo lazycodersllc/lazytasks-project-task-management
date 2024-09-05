@@ -5,10 +5,12 @@ import { ReactSortable } from 'react-sortablejs';
 import AddTaskDrawer from './AddTaskDrawer'; 
 import { useSelector, useDispatch } from 'react-redux';
 import {Draggable, Droppable} from "react-beautiful-dnd";
+import {hasPermission} from "../../../ui/permissions";
 
 const TaskListContent = ({ listType, view, taskSection, projectId, taskSectionId, contents }) => {
   // const sectionTasks = contents;
   const [tasks, setTasks] = useState(contents || []);
+    const {loggedInUser} = useSelector((state) => state.auth.session)
 
 // console.log(sectionTasks)
   useEffect(() => {
@@ -36,7 +38,7 @@ const TaskListContent = ({ listType, view, taskSection, projectId, taskSectionId
         {(dropProvided, snapshot) => (
             <div
                 style={{ transition: 'background-color 0.3s ease' }}
-                className="w-full h-full min-h-[25px]"
+                className={`w-full h-full min-h-[25px] ${tasks && tasks.length ===0 ? 'border-b border-gray-200' : ''}`}
                 ref={dropProvided.innerRef}
                 {...dropProvided.droppableProps}
             >
@@ -49,7 +51,7 @@ const TaskListContent = ({ listType, view, taskSection, projectId, taskSectionId
                         {(dragProvided) => (
                             <div
                                 key={taskIndex}
-                                className='mb-1 single-task'
+                                className='mb-0 mt-0 single-task'
                                 ref={dragProvided.innerRef}
                                 {...dragProvided.draggableProps}
                                 {...dragProvided.dragHandleProps}
@@ -66,9 +68,9 @@ const TaskListContent = ({ listType, view, taskSection, projectId, taskSectionId
 
       </Droppable>
 
-      {view === 'listView' && ( 
-        <AddTaskDrawer projectId={projectId} taskSectionId={taskSectionId} />
-      )}
+        { view === 'listView' && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee']) && (
+            <AddTaskDrawer view = 'listView' projectId={projectId} taskSectionId={taskSectionId} />
+        )}
 
     </Fragment>
   );

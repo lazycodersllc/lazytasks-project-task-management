@@ -33,7 +33,7 @@ const ProjectSummery = () => {
                 </Group>
             </Card.Section>
 
-            <Card.Section px="xs">
+            <Card.Section px="xs" pb="xs">
                 <ScrollArea className="relative h-[250px] pb-[2px]" scrollbarSize={4}>
                     <Table>
                         <Table.Thead>

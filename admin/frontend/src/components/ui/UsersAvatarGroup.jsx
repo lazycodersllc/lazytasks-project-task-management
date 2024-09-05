@@ -21,11 +21,14 @@ const UsersAvatarGroup = (props) => {
                             {users.slice(sliceStart, sliceStart + maxCount).map((user, index) => (
                                 <Tooltip key={index} label={user.name} withArrow={withArrow}>
                                     <Avatar
+                                        color={ `${bgColor(user.name)["font-color"]}` }
+                                        bg={ `${bgColor(user.name)["bg-color"]}` }
                                         size={size} mr="-2"
                                         src={user.avatar?user.avatar:null}
-                                        // className={`${bgColor(user.name)}`}
+
                                     >
-                                        {/*{user.avatar?user.avatar:acronym(user.name)}*/}
+                                        { user.avatar ? '' : <Text style={{ "lineHeight":"14px"}} size="xs">{acronym(user.name)}</Text> }
+                                        {/*<Text size="xs">{user.avatar?user.avatar:acronym(user.name)}</Text>*/}
                                     </Avatar>
                                 </Tooltip>
                             ))}

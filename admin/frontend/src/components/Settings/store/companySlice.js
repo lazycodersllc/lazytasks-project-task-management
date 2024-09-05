@@ -37,8 +37,8 @@ export const editCompany = createAsyncThunk(
 )
 
 // Delete Company thunk
-export const deleteCompany = createAsyncThunk('companies/deleteCompany', async (id) => {
-    return removeCompany(id);
+export const deleteCompany = createAsyncThunk('companies/deleteCompany', async ({id, data}) => {
+    return removeCompany(id, data);
 })
 
 // Restore Company thunk
@@ -135,8 +135,9 @@ const companySlice = createSlice({
                 state.isError = false
 
                 state.companies = state.companies.filter(company => parseInt(company.id) !== parseInt(action.payload.data.id))
-
-                state.success = `${action.payload.data.name} Deleted Successfully`
+                if(action.payload.status && action.payload.status === 200){
+                    state.success = `${action.payload.data.name} Deleted Successfully`
+                }
             })
             .addCase(deleteCompany.rejected, (state, action) => {
                 state.isLoading = false
@@ -174,7 +175,7 @@ const companySlice = createSlice({
                 )
 
                 state.companies[indexToUpdate] = action.payload.data
-                state.company={}
+                state.company={ ...action.payload.data }
                 state.success = `${action.payload.data.name} Update Successfully`
             })
             .addCase(editCompany.rejected, (state, action) => {

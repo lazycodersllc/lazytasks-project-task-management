@@ -17,6 +17,8 @@ import {createQuickTask} from "../Settings/store/quickTaskSlice";
 import dayjs from "dayjs";
 import {IconDeviceFloppy, IconEdit} from "@tabler/icons-react";
 import {Link} from "react-router-dom";
+import {useDisclosure} from "@mantine/hooks";
+import AddTaskFromQuickTaskDrawer from "../QuickTask/AddTaskFromQuickTaskDrawer";
 
 const QuickTaskList = () => {
 
@@ -53,58 +55,73 @@ const QuickTaskList = () => {
     };
 
     const theme = useMantineTheme();
-  return (
-      <Card withBorder shadow="sm" radius="md">
-          <Card.Section withBorder inheritPadding py="xs" className="bg-[#EBF1F4]">
-              <Group>
-                  {/*<IconGripVertical size="20" />*/}
-                  {/*<IconCalendar size={20} />*/}
-                  <Title order={6}>Quick Task</Title>
-              </Group>
-          </Card.Section>
 
-          <Card.Section mt="xs" px="xs">
-              <TextInput
-                  radius="xl"
-                  size="sm"
-                  placeholder="Enter task title"
-                  onKeyDown={handleKeyDown}
-                  onChange={handleInputChange}
-                  value={newQuickTask}
-                  rightSectionWidth={42}
-                  rightSection={
-                      <ActionIcon onClick={handleInputClick} size={24} radius="xl" color="#ED7D31" variant="filled">
-                          <IconDeviceFloppy style={{width: '18px', height: '18px'}} stroke={1.5}/>
-                      </ActionIcon>
-                  }
-              />
-          </Card.Section>
-          <Card.Section px="xs">
-              <ScrollArea className="relative h-[202px] pb-[3px]" scrollbarSize={4}>
-                  <div className="">
-                      {tasks && tasks.length > 0 && tasks.map((task, index) => (
-                          <div className="border-b px-2 py-2">
-                              <div className="content">
-                                  <Text fz="sm">{task.name}</Text>
+    const [selectedTask, setSelectedTask] = useState(null);
+
+    const [taskEditDrawerOpen, { open: openTaskEditDrawer, close: closeTaskEditDrawer }] = useDisclosure(false);
+    const handleEditTaskDrawerOpen = (task) => {
+        setSelectedTask(task)
+        openTaskEditDrawer();
+    };
+
+
+  return (
+      <>
+          <Card withBorder shadow="sm" radius="md">
+              <Card.Section withBorder inheritPadding py="xs" className="bg-[#EBF1F4]">
+                  <Group>
+                      {/*<IconGripVertical size="20" />*/}
+                      {/*<IconCalendar size={20} />*/}
+                      <Title order={6}>Quick Task</Title>
+                  </Group>
+              </Card.Section>
+
+              <Card.Section mt="xs" px="xs">
+                  <TextInput
+                      radius="xl"
+                      size="sm"
+                      placeholder="Enter task title"
+                      onKeyDown={handleKeyDown}
+                      onChange={handleInputChange}
+                      value={newQuickTask}
+                      rightSectionWidth={42}
+                      rightSection={
+                          <ActionIcon onClick={handleInputClick} size={24} radius="xl" color="#ED7D31" variant="filled">
+                              <IconDeviceFloppy style={{width: '18px', height: '18px'}} stroke={1.5}/>
+                          </ActionIcon>
+                      }
+                  />
+              </Card.Section>
+              <Card.Section px="xs" pb="xs">
+                  <ScrollArea className="relative h-[202px] pb-[3px]" scrollbarSize={4}>
+                      <div className="">
+                          {tasks && tasks.length > 0 && tasks.map((task, index) => (
+                              <div className="border-b">
+                                  <div onDoubleClickCapture={()=>{handleEditTaskDrawerOpen(task)}} className="content px-2 py-2 cursor-pointer">
+                                      <Text fz="sm">{task.name}</Text>
+                                  </div>
                               </div>
+                          ))
+                          }
+
+                      </div>
+                      {tasks && tasks.length > 0 &&
+                          <div className="absolute bottom-2 right-0 bg-white">
+                              <Link to={`/my-task`}>
+                                  <Button color="#ED7D31" radius="xl" size="compact-xs">
+                                      More...
+                                  </Button>
+                              </Link>
                           </div>
-                      ))
                       }
 
-                  </div>
-                  {tasks && tasks.length > 0 &&
-                      <div className="absolute bottom-2 right-0 bg-white">
-                          <Link to={`/my-task`}>
-                              <Button color="#ED7D31" radius="xl" size="compact-xs">
-                                  More...
-                              </Button>
-                          </Link>
-                      </div>
-                  }
-
-              </ScrollArea>
-          </Card.Section>
-      </Card>
+                  </ScrollArea>
+              </Card.Section>
+          </Card>
+          {
+              selectedTask && ( <AddTaskFromQuickTaskDrawer task={selectedTask} taskEditDrawerOpen={taskEditDrawerOpen} openTaskEditDrawer={openTaskEditDrawer} closeTaskEditDrawer={closeTaskEditDrawer}  />)
+            }
+      </>
   );
 };
 

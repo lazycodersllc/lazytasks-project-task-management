@@ -6,8 +6,10 @@ import CreateWorkspaceModal from '../Elements/Modal/Workspace/CreateWorkspaceMod
 import {useDispatch, useSelector} from "react-redux";
 import {fetchAllCompanies} from "./store/companySlice";
 import WorkspaceCard from "../Elements/WorkspaceCard";
+import {hasPermission} from "../ui/permissions";
 const Workspace = () => {
     const dispatch = useDispatch();
+    const { loggedInUser } = useSelector((state) => state.auth.session)
 
     useEffect(() => {
         dispatch(fetchAllCompanies());
@@ -22,11 +24,14 @@ const Workspace = () => {
                 <Container size="full">
                     <div className="settings-page-card bg-white rounded-xl p-6 pt-3 my-5 mb-0">
                         <SettingsNav />
-                        <ScrollArea className="h-[calc(100vh-300px)] pb-[2px]" scrollbarSize={4}>
+                        <ScrollArea className="h-[calc(100vh-230px)] pb-[2px]" scrollbarSize={4}>
                             <Grid gutter={{base: 20}} overflow="hidden" align="stretch" spacing="sm" verticalSpacing="sm">
-                                <Grid.Col  span={{ base: 12, xs:6, sm:4, md: 3, lg: 3 }}>
-                                    <CreateWorkspaceModal />
-                                </Grid.Col>
+                                {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin']) &&
+                                    <Grid.Col  span={{ base: 12, xs:6, sm:4, md: 3, lg: 3 }}>
+                                        <CreateWorkspaceModal />
+                                    </Grid.Col>
+                                }
+
                                 {Array.isArray(companies) &&
                                     companies && companies.length>0 && companies.map((workspace, index) => (
                                         <Grid.Col key={index} span={{ base: 12, xs:6, sm:4, md: 3, lg: 3 }}>

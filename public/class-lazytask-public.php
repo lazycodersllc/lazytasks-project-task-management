@@ -73,8 +73,7 @@ class Lazytask_Public {
 		 * class.
 		 */
 
-//		wp_enqueue_style( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'css/pms-rbs-public.css', array(), $this->version, 'all' );
-		if (is_page('lazy-login')) {
+		if (is_page('lazy-task')) {
 			// phpcs:ignore WordPress.WP.EnqueuedStylesScope
 			wp_enqueue_style( 'lazy-task-style', plugin_dir_url( __DIR__ ) . 'admin/frontend/build/index.css', array(), $this->version, 'all');
 		}
@@ -100,7 +99,7 @@ class Lazytask_Public {
 		 * class.
 		 */
 
-		if (is_page('lazy-login')) {
+		if (is_page('lazy-task')) {
 			// phpcs:ignore WordPress.WP.EnqueuedScriptsScope
 			wp_enqueue_script('pms-rbs', plugin_dir_url( __DIR__ ) . 'admin/frontend/build/index.js', array('jquery', 'wp-element'), '1.0.0', true);
 			wp_localize_script('pms-rbs', 'appLocalizer', [

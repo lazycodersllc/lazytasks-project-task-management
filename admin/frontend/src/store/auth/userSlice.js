@@ -1,8 +1,10 @@
 import {createAsyncThunk, createSlice} from '@reduxjs/toolkit'
 import {apiSignUp, getAllMembers, getUser, updateUser} from "../../services/AuthService";
 
-export const fetchAllMembers = createAsyncThunk('auth/fetchAllMember', async () => {
-    return getAllMembers();
+export const fetchAllMembers = createAsyncThunk(
+    'auth/fetchAllMember',
+    async (data) => {
+    return getAllMembers(data);
 })
 export const createUser = createAsyncThunk('auth/createUser', async (data) => {
     return apiSignUp(data);
@@ -43,7 +45,6 @@ export const userSlice = createSlice({
     extraReducers: (builder) => {
         builder
             .addCase(createUser.fulfilled, (state, action) => {
-                console.log(action.payload)
                 return action.payload.data
             })
             .addCase(createUser.rejected, (state, action) => {
@@ -68,10 +69,12 @@ export const userSlice = createSlice({
                 state.isLoading = true
             })
             .addCase(editUser.fulfilled, (state, action) => {
-                const indexToUpdate = state.allMembers.findIndex(
-                    (user) => parseInt(user.id) === parseInt(action.payload.data.id)
-                )
-                state.allMembers[indexToUpdate] = action.payload.data
+                if(state.allMembers && state.allMembers.length > 0){
+                    const indexToUpdate = state.allMembers && state.allMembers.length > 0 && state.allMembers.findIndex(
+                        (user) => parseInt(user.id) === parseInt(action.payload.data.id)
+                    )
+                    state.allMembers[indexToUpdate] = action.payload.data
+                }
             })
             .addCase(editUser.rejected, (state, action) => {
                 state.isLoading = false

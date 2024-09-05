@@ -4,6 +4,8 @@ import { useSelector, useDispatch } from 'react-redux';
 import {createQuickTask} from "../Settings/store/quickTaskSlice";
 import dayjs from "dayjs";
 import {IconArrowRight, IconDeviceFloppy} from "@tabler/icons-react";
+import {useDisclosure} from "@mantine/hooks";
+import AddTaskFromQuickTaskDrawer from "../QuickTask/AddTaskFromQuickTaskDrawer";
 
 const QuickTaskList = () => {
 
@@ -40,6 +42,14 @@ const QuickTaskList = () => {
     };
 
     const theme = useMantineTheme();
+
+    const [selectedTask, setSelectedTask] = useState(null);
+
+    const [taskEditDrawerOpen, { open: openTaskEditDrawer, close: closeTaskEditDrawer }] = useDisclosure(false);
+    const handleEditTaskDrawerOpen = (task) => {
+        setSelectedTask(task)
+        openTaskEditDrawer();
+    };
   return (
       <div className="bg-white p-2 border-l-2">
           {/*<h3> Quick Task</h3>*/}
@@ -64,8 +74,8 @@ const QuickTaskList = () => {
         </div>
         <ScrollArea className="h-[calc(100vh-270px)] pb-[2px]" scrollbarSize={4}>
             {tasks && tasks.length > 0 && tasks.map((task, index) => (
-                <div className="border rounded-md px-2 py-2 my-3">
-                  <div className="content">
+                <div className="border rounded-md my-3">
+                  <div onDoubleClickCapture={()=>{handleEditTaskDrawerOpen(task)}} className="content px-2 py-2 cursor-pointer">
                       <Text fz="sm">{task.name}</Text>
                       <span className="text-xs text-blue-600">{dayjs(task.created_at).format('MMM D, YYYY')}</span>
                   </div>
@@ -74,7 +84,9 @@ const QuickTaskList = () => {
             }
 
         </ScrollArea>
-
+          {
+              selectedTask && ( <AddTaskFromQuickTaskDrawer task={selectedTask} taskEditDrawerOpen={taskEditDrawerOpen} openTaskEditDrawer={openTaskEditDrawer} closeTaskEditDrawer={closeTaskEditDrawer}  />)
+          }
       </div>
   );
 };

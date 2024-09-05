@@ -8,24 +8,24 @@ const ProjectDetailsList = (props) => {
     return (
         <Fragment>
             <div className="border rounded-lg px-2 py-1 bg-blue-100">
-                <div className="flex">
+                <div className="flex items-justified-start md:w-[94%] 2xl:w-[96%]">
                     <div className="text-base font-medium w-[30%]">
-                        <Text fz="sm">Task Name</Text>
+                        <Text className={`!pl-[30px]`} fz="md" fw={700}>Task Name</Text>
                     </div>
                     <div className="text-base font-medium w-[10%]">
-                        <Text fz="sm">Assign To</Text>
+                        <Text className={`!pl-[0px]`} fz="md" fw={700}>Assign To</Text>
                     </div>
                     <div className="text-base font-medium w-[12%]">
-                        <Text fz="sm">Following</Text>
+                        <Text fz="md" fw={700}>Following</Text>
                     </div>
                     <div className="text-base font-medium w-[10%]">
-                        <Text fz="sm">Due Date</Text>
+                        <Text fz="md" fw={700}>Due Date</Text>
                     </div>
                     <div className="text-base font-medium w-[10%]">
-                        <Text fz="sm">Priority</Text>
+                        <Text fz="md" fw={700}>Priority</Text>
                     </div>
                     <div className="text-base font-medium w-[28%]">
-                        <Text fz="sm">Tags</Text>
+                        <Text fz="md" fw={700}>Tags</Text>
                     </div>
                 </div>
             </div>

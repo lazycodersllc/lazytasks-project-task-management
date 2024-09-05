@@ -6,6 +6,7 @@ import projectReducer from '../reducers/projectSlice';
 import taskReducer from '../reducers/taskSlice';
 import authReducer from './auth';
 import baseReducer from './base';
+import notificationReducer from '../components/Notification/store';
 
 /*const rootReducer = (asyncReducers) => (state, action) => {
     const combinedReducer = combineReducers({
@@ -28,6 +29,7 @@ const rootReducer = combineReducers({
     project: projectReducer,
     task: taskReducer,
     settings: settingsReducer,
+    notifications: notificationReducer,
     base: baseReducer
 
 });
