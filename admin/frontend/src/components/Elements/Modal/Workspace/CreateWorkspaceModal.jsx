@@ -4,7 +4,7 @@ import { useDisclosure } from '@mantine/hooks';
 import WorkspaceCreateButton from '../../Button/WorkspaceCreateButton';
 import { IconSearch } from '@tabler/icons-react';
 import { IconX } from '@tabler/icons-react';
-import { notifications } from '@mantine/notifications';
+import {notifications, showNotification} from '@mantine/notifications';
 import { useSelector, useDispatch } from 'react-redux';
 import { workspace, addWorkspace, updateWorkspaceUsers } from '../../../../reducers/workspaceSlice';
 import {fetchAllMembers} from "../../../../store/auth/userSlice";
@@ -91,7 +91,31 @@ const CreateWorkspaceModal = () => {
             created_by: loggedUserId
         };
         if(newWorkspace.name!==''){
-            dispatch(createCompany(newWorkspace));
+            dispatch(createCompany(newWorkspace)).then((response) => {
+                    if(response.payload && response.payload.status && response.payload.status === 200){
+                        showNotification({
+                            id: 'load-data',
+                            loading: true,
+                            title: 'Workspace',
+                            message: response.payload && response.payload.message && response.payload.message,
+                            autoClose: 2000,
+                            disallowClose: true,
+                            color: 'green',
+                        });
+                    }
+                    if (response.payload && response.payload.status && response.payload.status !== 200) {
+                        showNotification({
+                            id: 'load-data',
+                            loading: true,
+                            title: 'Workspace',
+                            message: response.payload && response.payload.message && response.payload.message,
+                            autoClose: 2000,
+                            disallowClose: true,
+                            color: 'red',
+                        });
+                    }
+                }
+            );
         }
         setWorkspaceName('');
         setCurrentMemberData([]);

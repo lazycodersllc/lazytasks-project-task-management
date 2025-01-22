@@ -2,6 +2,7 @@ import React, {Fragment, useCallback, useEffect, useState} from 'react';
 import {Modal, Select, Tabs, Textarea, TextInput, Title} from '@mantine/core';
 import { useSelector, useDispatch } from 'react-redux';
 import {createNotificationTemplate} from "../store/notificationTemplateSlice";
+import {showNotification} from "@mantine/notifications";
 
 const CreateTemplateModal = ({modalOpened, closeModal }) => {
     const dispatch = useDispatch();
@@ -12,6 +13,7 @@ const CreateTemplateModal = ({modalOpened, closeModal }) => {
     const [content, setContent] = useState([]);
     const [notificationAction, setNotificationAction] = useState(null);
     const [emailSubject, setEmailSubject] = useState( null);
+    const [mobileNotificationTitle, setMobileNotificationTitle] = useState( null);
 
     const handleTemplateCreation = () => {
         const newTemplateData = {
@@ -20,16 +22,31 @@ const CreateTemplateModal = ({modalOpened, closeModal }) => {
             description: description,
             content: content,
             notification_action_name: notificationAction,
-            email_subject: emailSubject
+            email_subject: emailSubject,
+            mobile_notification_title: mobileNotificationTitle
         };
 
         if(newTemplateData.title!=='' && newTemplateData.title!=='Type title here'){
-            dispatch(createNotificationTemplate(newTemplateData));
+            dispatch(createNotificationTemplate(newTemplateData)).then((response) => {
+                    if (response.payload && response.payload.status && response.payload.status === 200) {
+                        showNotification({
+                            id: 'load-data',
+                            loading: true,
+                            title: 'Notification Template',
+                            message: response.payload && response.payload.message && response.payload.message,
+                            autoClose: 2000,
+                            disallowClose: true,
+                            color: 'green',
+                        });
+                    }
+                }
+            );
             setTitle('Type title here');
             setDescription('');
             setContent([]);
             setNotificationAction(null);
             setEmailSubject('');
+            setMobileNotificationTitle('');
         }
     };
 
@@ -126,6 +143,26 @@ const CreateTemplateModal = ({modalOpened, closeModal }) => {
                                                             }}
                                                             onChange={(e) => setEmailSubject(e.target.value)}
                                                             value={emailSubject}
+                                                        />
+                                                    </div>
+                                                }
+
+                                                {channel.slug === 'mobile' &&
+                                                    <div className="mt-2">
+                                                        <TextInput
+                                                            label="Notification title"
+                                                            placeholder="Enter notification title"
+                                                            radius="md"
+                                                            size="md"
+                                                            styles={{
+                                                                borderColor: "gray.3",
+                                                                backgroundColor: "white",
+                                                                focus: {
+                                                                    borderColor: "blue.5",
+                                                                },
+                                                            }}
+                                                            onChange={(e) => setMobileNotificationTitle(e.target.value)}
+                                                            value={mobileNotificationTitle}
                                                         />
                                                     </div>
                                                 }

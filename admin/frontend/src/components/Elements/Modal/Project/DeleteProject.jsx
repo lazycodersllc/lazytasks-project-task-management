@@ -1,10 +1,17 @@
-import { Button, Group, Modal, Text } from '@mantine/core'; 
+import {Button, Group, Modal, Text, Title} from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks'; 
 import ProjectDeleteButton from '../../Button/ProjectDeleteButton'; 
-import { IconAlertTriangleFilled } from '@tabler/icons-react';
+import {IconAlertTriangleFilled, IconCheck} from '@tabler/icons-react';
 import {useDispatch, useSelector} from "react-redux";
 import {deleteProject} from "../../../Settings/store/projectSlice";
-const DeleteProjectModal = ({id}) => {
+import {modals} from "@mantine/modals";
+import React, {Fragment} from "react";
+import {deleteCompany, removeSuccessMessage} from "../../../Settings/store/companySlice";
+import {notifications, showNotification} from "@mantine/notifications";
+const DeleteProjectModal = (props) => {
+    const { id, members, total_tasks } = props;
+
+    console.log(total_tasks);
 
     const dispatch = useDispatch();
 
@@ -12,18 +19,91 @@ const DeleteProjectModal = ({id}) => {
 
     const [projectDeleteModalOpen, { open: deleteProjectModal, close: closeProjectDeleteModal }] = useDisclosure(false);
 
-    const deleteHandler = () => {
+    /*const deleteHandler = () => {
         if(id === undefined || id === null || id === ''){
             return;
         }
         dispatch(deleteProject({id:id, data: {'deleted_by': loggedUserId}}));
-    }
+    }*/
+    const deleteHandler = () => modals.openConfirmModal({
+        title: (
+            <Title order={5}>Are you sure this project delete?</Title>
+        ),
+        size: 'sm',
+        radius: 'md',
+        withCloseButton: false,
+        centered: true,
+        children: (
+            <Text size="sm">
+                This action is so important that you are required to confirm it with a modal. Please click
+                one of these buttons to proceed.
+            </Text>
+        ),
+        labels: { confirm: 'Confirm', cancel: 'Cancel' },
+        onCancel: () => console.log('Cancel'),
+        onConfirm: () => {
+            if(id && id!=='undefined'){
+                    if((members && members.length > 0) || (total_tasks && total_tasks > 0)){
+                    modals.open({
+                        withCloseButton: false,
+                        centered: true,
+                        children: (
+                            <Fragment>
+                                { members && members.length > 0 &&
+                                    <Text size="sm">
+                                        This project has {members.length} members. Please delete all members before deleting this project.
+                                    </Text>
+                                }
+                                { total_tasks > 0 &&
+                                    <Text size="sm">
+                                        This project has {total_tasks} tasks. Please delete all tasks before deleting this project.
+                                    </Text>
+                                }
+
+                                <div className="!grid w-full !justify-items-center">
+                                    <Button justify="center" onClick={() => modals.closeAll()} mt="md">
+                                        Ok
+                                    </Button>
+                                </div>
+                            </Fragment>
+                        ),
+                    });
+                }else{
+                    dispatch(deleteProject({id:id, data: {'deleted_by': loggedUserId}})).then((response) => {
+                        if(response && response.payload && response.payload.status && response.payload.status===200){
+                            showNotification({
+                                id: 'load-data',
+                                loading: true,
+                                title: 'Project',
+                                message: response.payload && response.payload.message && response.payload.message,
+                                autoClose: 2000,
+                                disallowClose: true,
+                                color: 'green',
+                            });
+                            dispatch(removeSuccessMessage());
+                        }else {
+                            showNotification({
+                                id: 'load-data',
+                                loading: true,
+                                title: 'Project',
+                                message: response.payload && response.payload.message && response.payload.message,
+                                autoClose: 2000,
+                                disallowClose: true,
+                                color: 'red',
+                            });
+                        }
+                    });
+                }
+
+            }
+        },
+    });
 
     return (
         <>
-            <ProjectDeleteButton onClick={deleteProjectModal} />
+            <ProjectDeleteButton onClick={deleteHandler} />
             
-            <Modal radius="15px" opened={projectDeleteModalOpen} centered size={475} padding="0px" withCloseButton={false}>
+            {/*<Modal radius="15px" opened={projectDeleteModalOpen} centered size={475} padding="0px" withCloseButton={false}>
                 <div className="dm-head flex justify-center items-center gap-2 p-6 border-b border-gray-300">
                 
                     <IconAlertTriangleFilled style={{ color: 'orange' }} />
@@ -47,7 +127,7 @@ const DeleteProjectModal = ({id}) => {
                         }} color="orange">Yes, Delete !</Button>
                     </Group>
                 </div>
-            </Modal>
+            </Modal>*/}
             </>
     );
 }

@@ -7,6 +7,7 @@ import taskReducer from '../reducers/taskSlice';
 import authReducer from './auth';
 import baseReducer from './base';
 import notificationReducer from '../components/Notification/store';
+import myZenReducer from '../components/MyZen/store';
 
 /*const rootReducer = (asyncReducers) => (state, action) => {
     const combinedReducer = combineReducers({
@@ -30,7 +31,8 @@ const rootReducer = combineReducers({
     task: taskReducer,
     settings: settingsReducer,
     notifications: notificationReducer,
-    base: baseReducer
+    base: baseReducer,
+    zen: myZenReducer,
 
 });
 

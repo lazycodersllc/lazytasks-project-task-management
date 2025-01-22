@@ -2,6 +2,7 @@ import React, {Fragment, useCallback, useEffect, useState} from 'react';
 import {Modal, Select, Tabs, Textarea, TextInput, Title} from '@mantine/core';
 import { useSelector, useDispatch } from 'react-redux';
 import { updateNotificationTemplate} from "../store/notificationTemplateSlice";
+import {showNotification} from "@mantine/notifications";
 
 const EditTemplateModal = ({modalOpened, closeModal }) => {
     const dispatch = useDispatch();
@@ -12,6 +13,7 @@ const EditTemplateModal = ({modalOpened, closeModal }) => {
     const [content, setContent] = useState( notificationTemplate && notificationTemplate.content ? notificationTemplate.content : {});
     const [notificationAction, setNotificationAction] = useState(notificationTemplate && notificationTemplate.notification_action_name ? notificationTemplate.notification_action_name : '');
     const [emailSubject, setEmailSubject] = useState( notificationTemplate && notificationTemplate.email_subject ? notificationTemplate.email_subject : '');
+    const [mobileNotificationTitle, setMobileNotificationTitle] = useState(notificationTemplate && notificationTemplate.mobile_notification_title ? notificationTemplate.mobile_notification_title : '');
 
     useEffect(() => {
         setTitle(notificationTemplate && notificationTemplate.title ? notificationTemplate.title : 'Type title here');
@@ -19,6 +21,7 @@ const EditTemplateModal = ({modalOpened, closeModal }) => {
         setContent(notificationTemplate && notificationTemplate.content ? notificationTemplate.content : {});
         setNotificationAction(notificationTemplate && notificationTemplate.notification_action_name ? notificationTemplate.notification_action_name : '');
         setEmailSubject(notificationTemplate && notificationTemplate.email_subject ? notificationTemplate.email_subject : '')
+        setMobileNotificationTitle(notificationTemplate && notificationTemplate.mobile_notification_title ? notificationTemplate.mobile_notification_title : '');
     }, [notificationTemplate]);
 
     const handleTemplateUpdate = () => {
@@ -28,15 +31,30 @@ const EditTemplateModal = ({modalOpened, closeModal }) => {
             description: description,
             content: content,
             notification_action_name: notificationAction,
-            email_subject: emailSubject
+            email_subject: emailSubject,
+            mobile_notification_title: mobileNotificationTitle
         };
 
         if(newTemplateData.title!=='' && newTemplateData.title!=='Type title here'){
-            dispatch(updateNotificationTemplate({id: notificationTemplate.id, data: newTemplateData}));
+            dispatch(updateNotificationTemplate({id: notificationTemplate.id, data: newTemplateData})).then((response) => {
+                if (response.payload && response.payload.status && response.payload.status === 200) {
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'Notification Template',
+                        message: response.payload && response.payload.message && response.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'green',
+                    });
+                }
+            }
+            );
             setTitle('Type title here');
             setDescription('');
             setContent([]);
             setEmailSubject('');
+            setMobileNotificationTitle('');
         }
     };
 
@@ -137,6 +155,25 @@ const EditTemplateModal = ({modalOpened, closeModal }) => {
                                                                 }}
                                                                 onChange={(e) => setEmailSubject(e.target.value)}
                                                                 value={emailSubject}
+                                                            />
+                                                        </div>
+                                                    }
+                                                    {channel.slug === 'mobile' &&
+                                                        <div className="mt-2">
+                                                            <TextInput
+                                                                label="Notification title"
+                                                                placeholder="Enter notification title"
+                                                                radius="md"
+                                                                size="md"
+                                                                styles={{
+                                                                    borderColor: "gray.3",
+                                                                    backgroundColor: "white",
+                                                                    focus: {
+                                                                        borderColor: "blue.5",
+                                                                    },
+                                                                }}
+                                                                onChange={(e) => setMobileNotificationTitle(e.target.value)}
+                                                                value={mobileNotificationTitle}
                                                             />
                                                         </div>
                                                     }

@@ -11,6 +11,7 @@ import {IconChevronDown, IconPlus, IconTrash} from "@tabler/icons-react";
 import {modals} from "@mantine/modals";
 import TaskDelete from "./TaskDelete";
 import {updateInputFieldFocus} from "../../../../../store/base/commonSlice";
+import MyZenButton from "./MyZenButton";
 
 const TaskContent = ({ view, taskData }) => {
     const dispatch = useDispatch();
@@ -70,7 +71,10 @@ const TaskContent = ({ view, taskData }) => {
                               {/*<Pill className="!bg-[#ED7D31] !text-white !px-2">{childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 ? childColumns[taskData.slug].length : 0 }</Pill>*/}
                               <MainTask addSubtask={addSubtask} task={taskData}/>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center justify-end gap-2 min-w-28">
+                              {/*{ loggedInUser && loggedUserId === parseInt(taskData.assignedTo_id) &&
+                                  <MyZenButton task={taskData} taskId={taskData && taskData.id} />
+                              }*/}
 
                               {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'sub-task-add']) &&
                                   <div onClick={(e) => e.stopPropagation()}>

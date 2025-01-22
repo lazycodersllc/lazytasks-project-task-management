@@ -83,8 +83,6 @@ export const updateUser = async (id, data) => {
             data,
         })
 
-        console.log(response.data)
-
         return response.data;
     } catch (error) {
         return error.message

@@ -15,6 +15,7 @@ import {
 } from '@mantine/core';
 import {useForm} from "@mantine/form";
 import {editSetting, fetchSettings} from "../../Settings/store/settingSlice";
+import {showNotification} from "@mantine/notifications";
 const SMSConfiguration = () => {
     // const users = useSelector((state) => state.users);
     const { loggedInUser } = useSelector((state) => state.auth.session)
@@ -80,7 +81,30 @@ const SMSConfiguration = () => {
     const handlerSMSConfigurationSubmit = (values) => {
         const formData = new FormData();
         formData.append('settings', JSON.stringify({...settings, sms_configuration: values , type:'sms'}));
-        dispatch(editSetting({ data: formData }));
+        dispatch(editSetting({ data: formData })).then((response) => {
+            if(response.payload && response.payload.status && response.payload.status===200){
+                showNotification({
+                    id: 'load-data',
+                    loading: true,
+                    title: 'SMS Settings',
+                    message: response.payload && response.payload.message && response.payload.message,
+                    autoClose: 2000,
+                    disallowClose: true,
+                    color: 'green',
+                });
+            }
+            if(response.payload && response.payload.status && response.payload.status !== 200){
+                showNotification({
+                    id: 'load-data',
+                    loading: true,
+                    title: 'SMS Settings',
+                    message: response.payload && response.payload.message && response.payload.message,
+                    autoClose: 2000,
+                    disallowClose: true,
+                    color: 'red',
+                });
+            }
+        });
         // dispatch(editSetting({ data: {...settings, sms_configuration: values , type:'sms'} }));
     };
 

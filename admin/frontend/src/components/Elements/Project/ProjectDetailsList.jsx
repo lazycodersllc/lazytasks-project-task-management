@@ -29,7 +29,7 @@ const ProjectDetailsList = (props) => {
                     </div>
                 </div>
             </div>
-            <ScrollArea className="h-[calc(100vh-270px)] pb-[1px]" scrollbarSize={4}>
+            <ScrollArea className="h-[calc(100vh-300px)] pb-[1px]" scrollbarSize={4}>
                 <div className="relative w-full pt-4">
                     <TaskList/>
                 </div>

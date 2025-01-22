@@ -45,7 +45,7 @@ const {userTaskOrdered, userTaskListSections, userTaskColumns} = useSelector((st
             userTaskOrdered.map((taskListSection, index) => (
                 <Tabs.Panel value={taskListSection}>
                   <TaskHeader />
-                  <ScrollArea className="h-[calc(100vh-260px)] p-[3px]" scrollbarSize={4}>
+                  <ScrollArea className="h-[calc(100vh-300px)] p-[3px]" scrollbarSize={4}>
                     {/*<LoadingOverlay
                                     visible={taskReload}
                                     zIndex={1000}

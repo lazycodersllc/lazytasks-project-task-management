@@ -9,7 +9,7 @@ import {
     Text,
     Title,
     FileInput,
-    rem, Avatar, Flex
+    rem, Avatar, Flex, LoadingOverlay
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import Header from '../Header';
@@ -22,6 +22,7 @@ import {fetchAllRoles} from "../../store/auth/roleSlice";
 import {createUser, editUser, fetchUser, uploadProfilePhoto} from "../../store/auth/userSlice";
 import {IconFileCv, IconPhoto} from "@tabler/icons-react";
 import {hasPermission} from "../ui/permissions";
+import {showNotification} from "@mantine/notifications";
 
 const ProfileEdit = () => {
     const {id} = useParams();
@@ -36,10 +37,15 @@ const ProfileEdit = () => {
 
     useEffect(() => {
         dispatch(fetchAllRoles());
-        dispatch(fetchUser(id)).then(() => setLoading(false));
+        dispatch(fetchUser(id)).then((response) => {
+            if(response.payload && response.payload.status && response.payload.status === 200){
+                setTimeout(() => {
+                    setLoading(false);
+                }, 500);
+            }
+        });
     }, [dispatch]);
     const {roles} = useSelector((state) => state.auth.role);
-
     const [file, setFile] = useState(null);
     const handleFileUpload = (file) => {
         setFile(file);
@@ -55,8 +61,37 @@ const ProfileEdit = () => {
         formData.append('roles', JSON.stringify(values.roles));
         formData.append('file', file);
 
-        dispatch(editUser({id: id, data: formData}))
-        navigate('/dashboard');
+        dispatch(editUser({id: id, data: formData})).then((response) => {
+                if(response.payload && response.payload.status && response.payload.status === 200){
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'User',
+                        message: response.payload && response.payload.message && response.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'green',
+                    });
+
+                    if(hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin'])){
+                        navigate('/users');
+                    }else {
+                        navigate('/dashboard');
+                    }
+                }
+                if (response.payload && response.payload.status && response.payload.status !== 200) {
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'User',
+                        message: response.payload && response.payload.message && response.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'red',
+                    });
+                }
+            }
+        );
     };
 
 
@@ -101,7 +136,12 @@ const ProfileEdit = () => {
 
             <div className='dashboard'>
                 <Container size="full">
-                    <div className="h-[calc(100vh-65px)] lm-profile-form flex items-center justify-center">
+                    <div className="h-[calc(100vh-90px)] lm-profile-form flex items-center justify-center">
+                        <LoadingOverlay
+                            visible={loading}
+                            zIndex={1000}
+                            overlayProps={{ radius: 'sm', blur: 4 }}
+                        />
                         {!loading && (
                             <form onSubmit={form.onSubmit((values) => handleSubmit(values))}>
                                 <div
@@ -139,13 +179,11 @@ const ProfileEdit = () => {
                                                     value: role.id,
                                                     label: role.name
                                                 }))}
-                                                defaultValue={user && user.llc_roles && user.llc_roles.length > 0 ? user.llc_roles[0].id.toString() : ''}
+                                                defaultValue={user && user.llc_roles && user.llc_roles.length > 0 ? user.llc_roles[0].id.toString() : null}
                                                 searchable
-                                                allowDeselect
+                                                allowDeselect={false}
                                                 onChange={(e, option) => {
                                                     onUserRoleChangeHandler(option);
-                                                    if (form.getInputProps('roles').onChange)
-                                                        form.getInputProps('roles').onChange((option) => option);
                                                 }}
                                             />
 

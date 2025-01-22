@@ -186,7 +186,7 @@ final class Lazytask_TaskController {
 					'creator_name'=>$loggedInUser?$loggedInUser->display_name:''
 				];
 
-				do_action('lazytask_task_assigned_member',  $referenceInfo, ['web-app', 'email'], [$task['assignedTo_id']], $placeholdersArray);
+				do_action('lazytask_task_assigned_member',  $referenceInfo, ['web-app', 'email', 'mobile'], [$task['assignedTo_id']], $placeholdersArray);
 			}
 
 			if($task['members'] && sizeof($task['members'])>0){
@@ -200,7 +200,7 @@ final class Lazytask_TaskController {
 							'creator_name'=> $loggedInUser ? $loggedInUser->display_name : ''
 						];
 
-						do_action('lazytask_task_follow_by_own', $referenceInfo, ['web-app', 'email'], [$assignedToId], $placeholdersArray);
+						do_action('lazytask_task_follow_by_own', $referenceInfo, ['web-app', 'email', 'mobile'], [$assignedToId], $placeholdersArray);
 
 					}elseif ($member['id'] != $createdBy){
 						$memberName = $member['name'];
@@ -213,7 +213,7 @@ final class Lazytask_TaskController {
 							'creator_name'=> $loggedInUser ? $loggedInUser->display_name : ''
 						];
 
-						do_action('lazytask_task_follow_to_other', $referenceInfo, ['web-app', 'email'], [$member['id']], $placeholdersArray);
+						do_action('lazytask_task_follow_to_other', $referenceInfo, ['web-app', 'email', 'mobile'], [$member['id']], $placeholdersArray);
 					}
 				}
 			}
@@ -320,6 +320,7 @@ final class Lazytask_TaskController {
 				$properties['attributes']['assigned_to'] = (int)$submittedData['assigned_to'];
 				$properties['attributes']['assignedTo_name'] = $requestData['assigned_to'] != "" ? $requestData['assigned_to']['name'] : '';
 			}
+
 		}
 		if(isset($requestData['description'])){
 			$submittedData['description'] = sanitize_textarea_field($requestData['description']);
@@ -407,14 +408,14 @@ final class Lazytask_TaskController {
 					$referenceInfo = ['id'=>$id, 'name'=>$prevTask['name'], 'type'=>'task'];
 					$placeholdersArray = ['member_name' => $assignedToName, 'task_name'=>$prevTask['name'], 'creator_name'=> $memberName];
 
-					do_action('lazytask_task_follow_by_own', $referenceInfo, ['web-app', 'email'], [$assigned_to_id], $placeholdersArray);
+					do_action('lazytask_task_follow_by_own', $referenceInfo, ['web-app', 'email', 'mobile'], [$assigned_to_id], $placeholdersArray);
 				}elseif(!in_array($member['id'], $prevTaskMembersId) && $member['id'] != $loggedInUserId){
 					$memberName = $members[array_search($member['id'], array_column($members, 'id'))]['name'];
 
 					$referenceInfo = ['id'=>$id, 'name'=>$prevTask['name'], 'type'=>'task'];
 					$placeholdersArray = ['member_name' => $memberName, 'task_name'=>$prevTask['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name : ''];
 
-					do_action('lazytask_task_follow_to_other', $referenceInfo, ['web-app', 'email'], [$member['id']], $placeholdersArray);
+					do_action('lazytask_task_follow_to_other', $referenceInfo, ['web-app', 'email', 'mobile'], [$member['id']], $placeholdersArray);
 				}
 			}
 		}
@@ -442,7 +443,6 @@ final class Lazytask_TaskController {
 		$task = $this->getTaskById($id);
 
 		if(isset($requestData['assigned_to'])){
-
 			$assigned_to_id = isset($requestData['assigned_to']) && $requestData['assigned_to'] != "" ? $requestData['assigned_to']['id'] : null;
 
 			if($prevTask['assignedTo_id'] != $assigned_to_id){
@@ -458,7 +458,7 @@ final class Lazytask_TaskController {
 					'creator_name'=>$loggedInUser?$loggedInUser->display_name:''
 				];
 
-				do_action('lazytask_task_assigned_member',  $referenceInfo, ['web-app', 'email'], [$task['assignedTo_id']], $placeholdersArray);
+				do_action('lazytask_task_assigned_member',  $referenceInfo, ['web-app', 'email', 'mobile'], [$task['assignedTo_id']], $placeholdersArray);
 			}
 		}
 
@@ -480,7 +480,7 @@ final class Lazytask_TaskController {
 					'creator_name'=>$loggedInUser?$loggedInUser->display_name:''
 				];
 				if($task['assignedTo_id']){
-					do_action('lazytask_task_deadline_changed',  $referenceInfo, ['web-app', 'email'], [$task['assignedTo_id']], $placeholdersArray);
+					do_action('lazytask_task_deadline_changed',  $referenceInfo, ['web-app', 'email', 'mobile'], [$task['assignedTo_id']], $placeholdersArray);
 				}
 
 			}

@@ -7,7 +7,7 @@ const Settings = () => {
 
   return (
     <Fragment>
-        <ScrollArea className="h-[calc(100vh-230px)] pb-[2px]" scrollbarSize={4}>
+        <ScrollArea className="h-[calc(100vh-250px)] pb-[2px]" scrollbarSize={4}>
             <Tabs color="orange" variant="outline" orientation="vertical" defaultValue="general-setting">
                 <Tabs.List>
                     <Tabs.Tab value="general-setting" >

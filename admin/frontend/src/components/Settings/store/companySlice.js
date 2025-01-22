@@ -89,7 +89,7 @@ const companySlice = createSlice({
             .addCase(fetchAllCompanies.fulfilled, (state, action) => {
                 state.isLoading = false
                 state.isError = false
-                state.companies = action.payload.data
+                state.companies = action.payload && action.payload.data && action.payload.data
             })
             .addCase(fetchAllCompanies.rejected, (state, action) => {
                 state.isLoading = false
@@ -103,9 +103,11 @@ const companySlice = createSlice({
             .addCase(createCompany.fulfilled, (state, action) => {
                 state.isLoading = false
                 state.isError = false
-                state.companies.push(action.payload.data)
-                state.company = action.payload.data
-                state.success = `${action.payload.data.name} Created Successfully`
+                if(action.payload && action.payload.status && action.payload.status === 200){
+                    state.companies.push(action.payload && action.payload.data && action.payload.data)
+                    state.company = action.payload && action.payload.data && action.payload.data
+                    state.success =action.payload && action.payload.data && `${action.payload.data.name} Created Successfully`
+                }
             })
             .addCase(createCompany.rejected, (state, action) => {
                 state.isLoading = false
@@ -119,7 +121,7 @@ const companySlice = createSlice({
             .addCase(fetchCompany.fulfilled, (state, action) => {
                 state.isLoading = false
                 state.isError = false
-                state.company = action.payload.data
+                state.company = action.payload && action.payload.data ? action.payload.data:{}
             })
             .addCase(fetchCompany.rejected, (state, action) => {
                 state.isLoading = false
@@ -133,9 +135,8 @@ const companySlice = createSlice({
             .addCase(deleteCompany.fulfilled, (state, action) => {
                 state.isLoading = false
                 state.isError = false
-
-                state.companies = state.companies.filter(company => parseInt(company.id) !== parseInt(action.payload.data.id))
                 if(action.payload.status && action.payload.status === 200){
+                    state.companies = state.companies.filter(company => parseInt(company.id) !== parseInt(action.payload.data.id))
                     state.success = `${action.payload.data.name} Deleted Successfully`
                 }
             })
@@ -170,13 +171,14 @@ const companySlice = createSlice({
             .addCase(editCompany.fulfilled, (state, action) => {
                 state.isLoading = false
                 state.isError = false
-                const indexToUpdate = state.companies.findIndex(
-                    (company) => parseInt(company.id) === parseInt(action.payload.data.id)
-                )
-
-                state.companies[indexToUpdate] = action.payload.data
-                state.company={ ...action.payload.data }
-                state.success = `${action.payload.data.name} Update Successfully`
+                if(action.payload && action.payload.status && action.payload.status === 200){
+                    const indexToUpdate = state.companies.findIndex(
+                        (company) => parseInt(company.id) === parseInt(action.payload.data.id)
+                    )
+                    state.companies[indexToUpdate] = action.payload.data
+                    state.company={ ...action.payload.data }
+                    state.success = `${action.payload.data.name} Update Successfully`
+                }
             })
             .addCase(editCompany.rejected, (state, action) => {
                 state.isLoading = false
@@ -190,8 +192,7 @@ const companySlice = createSlice({
             .addCase(fetchCompanyMembers.fulfilled, (state, action) => {
                 state.isLoading = false
                 state.isError = false
-                state.companyMembers = action.payload.data
-                console.log(action.payload)
+                state.companyMembers = action.payload && action.payload.data ? action.payload.data : []
             })
             .addCase(fetchCompanyMembers.rejected, (state, action) => {
                 state.isLoading = false

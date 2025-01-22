@@ -13,9 +13,8 @@ class SmsGateWay
 	   $smsServiceProvider = isset($smsConfig['sms_service_provider']) && $smsConfig['sms_service_provider'] ? $smsConfig['sms_service_provider'] : '';
 	   if($smsServiceProvider && $smsServiceProvider=='reve') {
 		   return $this->sendReveSms($phone, $msg, $sender);
-	   }else{
-		   return 'service provider not found';
 	   }
+	   return true;
     }
 
 	private function sendReveSms($phone, $msg, $sender) {

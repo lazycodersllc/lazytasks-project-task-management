@@ -27,7 +27,7 @@ const Users = () => {
     // console.log(usersData);
   return (
     <Fragment>
-        <ScrollArea className="h-[calc(100vh-230px)] pb-[2px]" scrollbarSize={4}>
+        <ScrollArea className="h-[calc(100vh-250px)] pb-[2px]" scrollbarSize={4}>
             <Grid gutter={{base: 20}} overflow="hidden" align="stretch" spacing="sm" verticalSpacing="sm">
                 {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) &&
                     <Grid.Col  span={{ base: 12, xs:4, sm:3, md: 3, lg: 3 }}>

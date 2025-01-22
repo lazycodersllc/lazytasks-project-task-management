@@ -10,6 +10,7 @@ import { isValidPhoneNumber } from 'react-phone-number-input';
 import {useDispatch, useSelector} from "react-redux";
 import {fetchAllRoles} from "../../store/auth/roleSlice";
 import {createUser} from "../../store/auth/userSlice";
+import {showNotification} from "@mantine/notifications";
 // Import function for phone number validation
 
 const Profile = () => {
@@ -49,10 +50,34 @@ const Profile = () => {
 
     const handleSubmit = (values) => {
         values['loggedInUserId'] = loggedInUser ? loggedInUser.loggedUserId : null;
-        dispatch(createUser(values))
+        dispatch(createUser(values)).then((response) => {
+                if(response.payload && response.payload.status && response.payload.status === 200){
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'User',
+                        message: response.payload && response.payload.message && response.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'green',
+                    });
+                }
+                if (response.payload && response.payload.status && response.payload.status !== 200) {
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'User',
+                        message: response.payload && response.payload.message && response.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'red',
+                    });
+                }
+            }
+        );
         form.reset();
         // Perform form submission or other actions here
-        navigate('/settings');
+        navigate('/users');
     };
 
     return (

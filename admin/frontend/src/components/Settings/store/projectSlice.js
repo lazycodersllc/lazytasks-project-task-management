@@ -153,9 +153,14 @@ const projectSlice = createSlice({
                 state.isLoading = false
                 state.isError = false
 
-                state.projects = state.projects.filter(project => parseInt(project.id) !== parseInt(action.payload.data.id))
+                if(action.payload.data && action.payload.data.id){
+                    //remove project from state
+                    state.projects = state.projects.filter(project => parseInt(project.id) !== parseInt(action.payload.data.id))
+                    state.success = `${action.payload.data.name} Deleted Successfully`
+                }
+                // state.projects = state.projects.filter(project => parseInt(project.id) !== parseInt(action.payload.data.id))
+                // state.success = `${action.payload.data.name} Deleted Successfully`
 
-                state.success = `${action.payload.data.name} Deleted Successfully`
             })
             .addCase(deleteProject.rejected, (state, action) => {
                 state.isLoading = false
@@ -195,10 +200,9 @@ const projectSlice = createSlice({
                         }
                         return project
                     })
+                    state.project={ ...action.payload.data }
+                    state.success = `${action.payload.data.name} Update Successfully`
                 }
-                state.project={ ...action.payload.data }
-                console.log(action.payload)
-                // state.success = `${action.payload.data.name} Update Successfully`
             })
             .addCase(editProject.rejected, (state, action) => {
                 state.isLoading = false
@@ -212,8 +216,7 @@ const projectSlice = createSlice({
             .addCase(fetchProjectMembers.fulfilled, (state, action) => {
                 state.isLoading = false
                 state.isError = false
-                state.projectMembers = action.payload.data
-                console.log(action.payload)
+                state.projectMembers = action.payload && action.payload.data && action.payload.data
             })
             .addCase(fetchProjectMembers.rejected, (state, action) => {
                 state.isLoading = false

@@ -10,6 +10,7 @@ import InlineEditForm from "../../../ui/InlineEditForm";
 import {editCompany, fetchCompany, removeSuccessMessage} from "../../../Settings/store/companySlice";
 import UserAvatarSingle from "../../../ui/UserAvatarSingle";
 import {modals} from "@mantine/modals";
+import {showNotification} from "@mantine/notifications";
 
 const EditWorkspaceModal = ({ workspaceData }) => {
     const dispatch = useDispatch();
@@ -34,7 +35,31 @@ const EditWorkspaceModal = ({ workspaceData }) => {
             return;
         }
         setIsLoading(true)
-        dispatch(editCompany({id: id, data: {[fieldName]: input, 'updated_by': loggedUserId}}))
+        dispatch(editCompany({id: id, data: {[fieldName]: input, 'updated_by': loggedUserId}})).then((response) => {
+                if(response.payload && response.payload.status && response.payload.status === 200){
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'Workspace',
+                        message: response.payload && response.payload.message && response.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'green',
+                    });
+                }
+                if (response.payload && response.payload.status && response.payload.status !== 200) {
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'Workspace',
+                        message: response.payload && response.payload.message && response.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'red',
+                    });
+                }
+            }
+        );
         setEditedName(input)
         setIsLoading(false)
     }
@@ -43,8 +68,6 @@ const EditWorkspaceModal = ({ workspaceData }) => {
 
     const handleDeleteCurrentMember = (id) => {
         setIsLoading(true);
-        console.log(`Member with ID ${id} deleted`);
-        console.log(company.projects);
         const isExistingMemberCheck = company.projects.filter(project =>
             project.members.some(member => member.id === id.toString())
         );
@@ -76,7 +99,31 @@ const EditWorkspaceModal = ({ workspaceData }) => {
 
             // Remove the member's ID from the addedMembers array
             setAddedMembers((prevMembers) => prevMembers.filter((memberId) => memberId !== id));
-            dispatch(editCompany({id: workspaceData.id, data: {'members': updatedCurrentMembers, 'updated_by': loggedUserId}}))
+            dispatch(editCompany({id: workspaceData.id, data: {'members': updatedCurrentMembers, 'updated_by': loggedUserId}})).then((response) => {
+                    if(response.payload && response.payload.status && response.payload.status === 200){
+                        showNotification({
+                            id: 'load-data',
+                            loading: true,
+                            title: 'Workspace',
+                            message: 'Member access has been revoked successfully',
+                            autoClose: 2000,
+                            disallowClose: true,
+                            color: 'green',
+                        });
+                    }
+                    if (response.payload && response.payload.status && response.payload.status !== 200) {
+                        showNotification({
+                            id: 'load-data',
+                            loading: true,
+                            title: 'Workspace',
+                            message: response.payload && response.payload.message && response.payload.message,
+                            autoClose: 2000,
+                            disallowClose: true,
+                            color: 'red',
+                        });
+                    }
+                }
+            );
             setIsLoading(false);
         }
 
@@ -125,7 +172,31 @@ const EditWorkspaceModal = ({ workspaceData }) => {
             // Update the state to indicate that the member has been added
             setAddedMembers((prevMembers) => [...prevMembers, clickedMember.id]);
             setIsLoading(true);
-            dispatch(editCompany({id: workspaceData.id, data: {'members': updatedMembers, 'updated_by': loggedUserId}}))
+            dispatch(editCompany({id: workspaceData.id, data: {'members': updatedMembers, 'updated_by': loggedUserId}})).then((response) => {
+                    if(response.payload && response.payload.status && response.payload.status === 200){
+                        showNotification({
+                            id: 'load-data',
+                            loading: true,
+                            title: 'Workspace',
+                            message: 'Member assigned successfully',
+                            autoClose: 2000,
+                            disallowClose: true,
+                            color: 'green',
+                        });
+                    }
+                    if (response.payload && response.payload.status && response.payload.status !== 200) {
+                        showNotification({
+                            id: 'load-data',
+                            loading: true,
+                            title: 'Workspace',
+                            message: response.payload && response.payload.message && response.payload.message,
+                            autoClose: 2000,
+                            disallowClose: true,
+                            color: 'red',
+                        });
+                    }
+                }
+            );
             setIsLoading(false);
 
         }

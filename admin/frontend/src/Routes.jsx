@@ -27,6 +27,9 @@ import Users from "./components/Settings/Users";
 import PremiumRoute from "./route/PremiumRoute";
 import Header from './components/Header';
 import SettingMain from "./components/Settings/SettingMain";
+import MyZen from "./components/MyZen";
+
+// import License from "./view/license/License"
 
 const AppRoutes = () => {
 
@@ -95,6 +98,7 @@ const AppRoutes = () => {
                         {/*<Route path="/" element={<Dashboard />} />*/}
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/my-task" element={<MyTask />} />
+                        <Route path="/my-zen" element={<MyZen />} />
                         <Route path="/profile" element={<Profile />} />
                         <Route path="/profile/:id" element={<ProfileEdit />} />
                         <Route path="/resetpassword" element={<ResetPassword />} />

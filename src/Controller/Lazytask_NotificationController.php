@@ -98,7 +98,8 @@ final class Lazytask_NotificationController {
 				'email_subject' => isset($data['email_subject']) && $data['email_subject'] ? $data['email_subject'] : null,
 				'status' => 1,
 				'created_at' => gmdate('Y-m-d H:i:s'),
-				'updated_at' => gmdate('Y-m-d H:i:s')
+				'updated_at' => gmdate('Y-m-d H:i:s'),
+				'mobile_notification_title' => isset($data['mobile_notification_title']) && $data['mobile_notification_title']!='' ? sanitize_text_field($data['mobile_notification_title']) : null,
 			];
 			$notificationTemplateInsert = $db->insert($notificationTemplateTable, $notificationTemplateData);
 			if($notificationTemplateInsert) {
@@ -164,7 +165,8 @@ final class Lazytask_NotificationController {
 				'content' => isset($data['content']) && $data['content'] ? wp_json_encode($data['content']) : null,
 				'notification_action_name' => isset($data['notification_action_name']) && $data['notification_action_name'] ? $data['notification_action_name'] : null,
 				'email_subject' => isset($data['email_subject']) && $data['email_subject'] ? $data['email_subject'] : null,
-				'updated_at' => gmdate('Y-m-d H:i:s')
+				'updated_at' => gmdate('Y-m-d H:i:s'),
+				'mobile_notification_title' => isset($data['mobile_notification_title']) && $data['mobile_notification_title']!='' ? sanitize_text_field($data['mobile_notification_title']) : null,
 			];
 			$notificationTemplateUpdate = $db->update($notificationTemplateTable, $notificationTemplateData, ['id'=>$templateId]);
 			if($notificationTemplateUpdate) {
@@ -199,5 +201,29 @@ final class Lazytask_NotificationController {
 		}
 	}
 
+	//get notification history by user id and array channels read or unread
+	public function getNotificationHistoryByUserId(WP_REST_Request $request) {
+		global $wpdb;
+		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+		$notificationHistoriesTable = LAZYTASK_TABLE_PREFIX . 'notification_histories';
+		$notificationTemplatesTable = LAZYTASK_TABLE_PREFIX . 'notification_templates';
+		$userId = $request->get_param('user_id');
+		$channels = $request->get_param('channels');
+		//$channels array check
+		if(is_array($channels) && count($channels) > 0) {
+			$channels = array_map('sanitize_text_field', $channels);
+		} else {
+			$channels = [$channels];
+		}
+		$notificationHistories = $db->get_results($db->prepare("SELECT nh.*, nt.title, nt.description, nt.email_subject, nt.mobile_notification_title FROM {$notificationHistoriesTable} nh LEFT JOIN {$notificationTemplatesTable} nt ON nh.notification_template_id=nt.id WHERE nh.user_id=%d AND nh.channel IN ('".implode("','", $channels)."') ORDER BY nh.created_at DESC", $userId), ARRAY_A);
+		try {
+			if($notificationHistories) {
+				return new WP_REST_Response(['status'=>200, 'message'=>'Success', 'data'=>$notificationHistories], 200);
+			}
+			return new WP_REST_Response(['status'=>200, 'message'=>'No notification history found', 'data'=>[]], 200);
+		} catch (\Exception $e) {
+			return new WP_REST_Response(['status'=>400, 'message'=>'Error', 'data'=>[]], 400);
+		}
+	}
 
 }

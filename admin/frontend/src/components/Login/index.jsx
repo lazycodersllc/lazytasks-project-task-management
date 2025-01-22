@@ -4,6 +4,7 @@ import { useForm } from '@mantine/form';
 import { Link } from 'react-router-dom';
 import useAuth from "../../utils/useAuth";
 import logo from "../../img/logo.png"
+import {showNotification} from "@mantine/notifications";
 
 const Login = () => {
 
@@ -25,15 +26,21 @@ const Login = () => {
         const { email, password } = values
 
         const result = await signIn({ email, password })
-        console.log(result)
-        /*if (result.status === 'error') {
-            setMessage(result.message)
-        }*/
+        // console.log(result)
+        if (result.status !== 200) {
+            showNotification({
+                title: 'Error',
+                message: result && result.message && result.message,
+                color: 'red',
+                autoClose: 2000,
+                disallowClose: true,
+            });
+
+        }
 
     }
     const handleSubmit = (values) => {
         onSignIn(values)
-        // dispatch(createUser(values))
         form.reset();
         // Perform form submission or other actions here
     };

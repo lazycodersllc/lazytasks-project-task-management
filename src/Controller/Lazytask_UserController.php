@@ -237,13 +237,7 @@ final class Lazytask_UserController {
 		$secret_key = defined( 'LAZYTASK_JWT_SECRET_KEY' ) ? LAZYTASK_JWT_SECRET_KEY : false;
 
 		if ( ! $secret_key ) {
-			return new WP_Error(
-				'jwt_auth_bad_config',
-				__( 'JWT is not configured properly, please contact the administration', 'lazytasks-project-task-management' ),
-				[
-					'status' => 403,
-				]
-			);
+			return new WP_REST_Response(array( 'status'=> 403, 'code'=>'jwt_auth_bad_config', 'message'=>__('JWT is not configured properly, please contact the administration', 'lazytasks-project-task-management')));
 		}
 		$username = $request->get_param('email');
 		$password = $request->get_param('password');
@@ -251,7 +245,7 @@ final class Lazytask_UserController {
 		$user = wp_authenticate($username, $password);
 
 		if (is_wp_error($user)) {
-			return new WP_Error('invalid_credentials', __('Invalid credentials', 'lazytasks-project-task-management'), array('status' => 401));
+			return new WP_REST_Response(array( 'status'=> 401, 'code'=>'invalid_credentials', 'message'=>__('Invalid credentials', 'lazytasks-project-task-management')));
 		}
 
 		$issued_at = time();
@@ -272,10 +266,15 @@ final class Lazytask_UserController {
 				'llc_permissions' => isset($roles['permissions']) && sizeof($roles['permissions'])>0 ? array_unique($this->array_flatten( $roles['permissions'])) : [],
 			),
 		);
+		//add user meta data for apps development fcm token after login
+		$lazytask_fcm_token = $request->get_param('lazytask_fcm_token');
+		if($lazytask_fcm_token != ''){
+			update_user_meta($user->ID, 'lazytask_fcm_token', $lazytask_fcm_token);
+		}
 
 		$token =  JWT::encode($token, $secret_key, 'HS256');
 
-		return new WP_REST_Response(array('code'=>'is_valid', 'message'=> 'Success', 'token' => $token));
+		return new WP_REST_Response(array( 'status'=> 200, 'code'=>'is_valid', 'message'=> 'Success', 'token' => $token));
 	}
 
 // Function to generate JWT token
@@ -636,12 +635,12 @@ final class Lazytask_UserController {
 				if($user && sizeof($user)>0){
 					return new WP_REST_Response(['status'=>200, 'message'=>'Registration has been Successfully', 'data'=>$user]);
 				}
-
-				return new WP_REST_Response(['status'=>404, 'data'=>[]]);
+				return new WP_REST_Response(['status'=>404, 'message'=>__("User not found", "lazytasks-project-task-management")]);
 				}
-			return new WP_Error('error', __("User Registration Failed", "lazytasks-project-task-management"), array('status' => 500));
+			return new WP_REST_Response(['status'=>500, 'message'=>__("User Registration Failed", "lazytasks-project-task-management")]);
 			} else {
-				return $user_id;
+			//email already exists
+			return new WP_REST_Response(['status'=>409, 'message'=>__("User already exists", "lazytasks-project-task-management")]);
 			}
 		}
 
@@ -748,10 +747,10 @@ final class Lazytask_UserController {
 					if($user && sizeof($user)>0){
 						return new WP_REST_Response(['status'=>200, 'message'=>'Update has been Successfully', 'data'=>$user]);
 					}
-					return new WP_REST_Response(['status'=>404, 'data'=>[]]);
+					return new WP_REST_Response(['status'=>404, 'message'=>__("User not found", "lazytasks-project-task-management")]);
 				}
 			}
-			return new WP_Error('error', __("User Update Failed", "lazytasks-project-task-management"), array('status' => 500));
+			return new WP_REST_Response(['status'=>500, 'message'=>__("User Update Failed", "lazytasks-project-task-management")]);
 		}
 
 		private function addUserRole($userId, $roles) {
@@ -843,7 +842,7 @@ final class Lazytask_UserController {
 			$sql = "SELECT companies.* FROM `{$usersTable}` as users
 				JOIN `{$companyMembersTable}` as companyMembers  ON users.ID = companyMembers.user_id
 						JOIN `{$companyTable}` as companies ON companyMembers.company_id = companies.id
-			WHERE companyMembers.user_id IN ($ids) group by companies.id";
+			WHERE companies.deleted_at IS NULL and companyMembers.user_id IN ($ids) group by companies.id";
 
 			$query = call_user_func_array(array($wpdb, 'prepare'), array_merge(array($sql), $userId));
 

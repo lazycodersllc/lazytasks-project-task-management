@@ -55,7 +55,7 @@ const ProjectCard = (props) => {
                         <IconEdit size={20} color="#ED7D31" />
                     </button> */}
                     <EditProjectModal projectData={{ id, name, members, parent }} />
-                    <DeleteProjectModal id={id} />
+                    <DeleteProjectModal key={id} {...props}/>
                 </div>
             }
         </Paper>

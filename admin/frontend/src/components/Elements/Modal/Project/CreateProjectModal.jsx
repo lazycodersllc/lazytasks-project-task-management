@@ -9,6 +9,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import {createProject} from "../../../Settings/store/projectSlice";
 import {fetchAllCompanies, fetchCompany} from "../../../Settings/store/companySlice";
 import UserAvatarSingle from "../../../ui/UserAvatarSingle";
+import {showNotification} from "@mantine/notifications";
 
 const CreateProjectModal = ({ buttonStyle, companyId, companyName, members }) => {
     const dispatch = useDispatch();
@@ -76,7 +77,31 @@ const CreateProjectModal = ({ buttonStyle, companyId, companyName, members }) =>
             created_by: loggedUserId,
         };
         if(newProject.name!==''){
-            dispatch(createProject(newProject));
+            dispatch(createProject(newProject)).then((response) => {
+                if(response.payload && response.payload.status && response.payload.status === 200){
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'Project',
+                        message: response.payload && response.payload.message && response.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'green',
+                    });
+                }
+                if (response.payload && response.payload.status && response.payload.status !== 200) {
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'Project',
+                        message: response.payload && response.payload.message && response.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'red',
+                    });
+                }
+            }
+            );
         }
         setProjectName('');
         setCurrentMemberData([]);

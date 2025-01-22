@@ -52,7 +52,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   unstable_data: () => (/* binding */ data)
 /* harmony export */ });
 /**
- * @remix-run/router v1.19.1
+ * @remix-run/router v1.19.2
  *
  * Copyright (c) Remix Software Inc.
  *
@@ -1603,7 +1603,7 @@ function createRouter(init) {
   let pendingPatchRoutes = new Map();
   // Flag to ignore the next history update, so we can revert the URL change on
   // a POP navigation that was blocked by the user without touching router state
-  let ignoreNextHistoryUpdate = false;
+  let unblockBlockerHistoryUpdate = undefined;
   // Initialize the router, all side effects should be kicked off from here.
   // Implemented as a Fluent API for ease of:
   //   let router = createRouter(init).initialize();
@@ -1618,8 +1618,9 @@ function createRouter(init) {
       } = _ref;
       // Ignore this event if it was just us resetting the URL from a
       // blocked POP navigation
-      if (ignoreNextHistoryUpdate) {
-        ignoreNextHistoryUpdate = false;
+      if (unblockBlockerHistoryUpdate) {
+        unblockBlockerHistoryUpdate();
+        unblockBlockerHistoryUpdate = undefined;
         return;
       }
       warning(blockerFunctions.size === 0 || delta != null, "You are trying to use a blocker on a POP navigation to a location " + "that was not created by @remix-run/router. This will fail silently in " + "production. This can happen if you are navigating outside the router " + "via `window.history.pushState`/`window.location.hash` instead of using " + "router navigation APIs.  This can also happen if you are using " + "createHashRouter and the user manually changes the URL.");
@@ -1630,7 +1631,9 @@ function createRouter(init) {
       });
       if (blockerKey && delta != null) {
         // Restore the URL to match the current UI, but don't update router state
-        ignoreNextHistoryUpdate = true;
+        let nextHistoryUpdatePromise = new Promise(resolve => {
+          unblockBlockerHistoryUpdate = resolve;
+        });
         init.history.go(delta * -1);
         // Put the blocker into a blocked state
         updateBlocker(blockerKey, {
@@ -1643,8 +1646,10 @@ function createRouter(init) {
               reset: undefined,
               location
             });
-            // Re-do the same POP navigation we just blocked
-            init.history.go(delta);
+            // Re-do the same POP navigation we just blocked, after the url
+            // restoration is also complete.  See:
+            // https://github.com/remix-run/react-router/issues/11613
+            nextHistoryUpdatePromise.then(() => init.history.go(delta));
           },
           reset() {
             let blockers = new Map(state.blockers);
@@ -1943,7 +1948,9 @@ function createRouter(init) {
     // navigation to the navigation.location but do not trigger an uninterrupted
     // revalidation so that history correctly updates once the navigation completes
     startNavigation(pendingAction || state.historyAction, state.navigation.location, {
-      overrideNavigation: state.navigation
+      overrideNavigation: state.navigation,
+      // Proxy through any rending view transition
+      enableViewTransition: pendingViewTransitionEnabled === true
     });
   }
   // Start a navigation to the given action/location.  Can optionally provide a
@@ -2132,8 +2139,8 @@ function createRouter(init) {
         })
       };
     } else {
-      let results = await callDataStrategy("action", request, [actionMatch], matches);
-      result = results[0];
+      let results = await callDataStrategy("action", state, request, [actionMatch], matches, null);
+      result = results[actionMatch.route.id];
       if (request.signal.aborted) {
         return {
           shortCircuited: true
@@ -2151,7 +2158,7 @@ function createRouter(init) {
         let location = normalizeRedirectLocation(result.response.headers.get("Location"), new URL(request.url), basename);
         replace = location === state.location.pathname + state.location.search;
       }
-      await startRedirectNavigation(request, result, {
+      await startRedirectNavigation(request, result, true, {
         submission,
         replace
       });
@@ -2313,7 +2320,7 @@ function createRouter(init) {
     let {
       loaderResults,
       fetcherResults
-    } = await callLoadersAndMaybeResolveData(state.matches, matches, matchesToLoad, revalidatingFetchers, request);
+    } = await callLoadersAndMaybeResolveData(state, matches, matchesToLoad, revalidatingFetchers, request);
     if (request.signal.aborted) {
       return {
         shortCircuited: true
@@ -2327,16 +2334,22 @@ function createRouter(init) {
     }
     revalidatingFetchers.forEach(rf => fetchControllers.delete(rf.key));
     // If any loaders returned a redirect Response, start a new REPLACE navigation
-    let redirect = findRedirect([...loaderResults, ...fetcherResults]);
+    let redirect = findRedirect(loaderResults);
     if (redirect) {
-      if (redirect.idx >= matchesToLoad.length) {
-        // If this redirect came from a fetcher make sure we mark it in
-        // fetchRedirectIds so it doesn't get revalidated on the next set of
-        // loader executions
-        let fetcherKey = revalidatingFetchers[redirect.idx - matchesToLoad.length].key;
-        fetchRedirectIds.add(fetcherKey);
-      }
-      await startRedirectNavigation(request, redirect.result, {
+      await startRedirectNavigation(request, redirect.result, true, {
+        replace
+      });
+      return {
+        shortCircuited: true
+      };
+    }
+    redirect = findRedirect(fetcherResults);
+    if (redirect) {
+      // If this redirect came from a fetcher make sure we mark it in
+      // fetchRedirectIds so it doesn't get revalidated on the next set of
+      // loader executions
+      fetchRedirectIds.add(redirect.key);
+      await startRedirectNavigation(request, redirect.result, true, {
         replace
       });
       return {
@@ -2512,8 +2525,8 @@ function createRouter(init) {
     // Call the action for the fetcher
     fetchControllers.set(key, abortController);
     let originatingLoadId = incrementingLoadId;
-    let actionResults = await callDataStrategy("action", fetchRequest, [match], requestMatches);
-    let actionResult = actionResults[0];
+    let actionResults = await callDataStrategy("action", state, fetchRequest, [match], requestMatches, key);
+    let actionResult = actionResults[match.route.id];
     if (fetchRequest.signal.aborted) {
       // We can delete this so long as we weren't aborted by our own fetcher
       // re-submit which would have put _new_ controller is in fetchControllers
@@ -2544,7 +2557,7 @@ function createRouter(init) {
         } else {
           fetchRedirectIds.add(key);
           updateFetcherState(key, getLoadingFetcher(submission));
-          return startRedirectNavigation(fetchRequest, actionResult, {
+          return startRedirectNavigation(fetchRequest, actionResult, false, {
             fetcherSubmission: submission
           });
         }
@@ -2595,7 +2608,7 @@ function createRouter(init) {
     let {
       loaderResults,
       fetcherResults
-    } = await callLoadersAndMaybeResolveData(state.matches, matches, matchesToLoad, revalidatingFetchers, revalidationRequest);
+    } = await callLoadersAndMaybeResolveData(state, matches, matchesToLoad, revalidatingFetchers, revalidationRequest);
     if (abortController.signal.aborted) {
       return;
     }
@@ -2603,22 +2616,23 @@ function createRouter(init) {
     fetchReloadIds.delete(key);
     fetchControllers.delete(key);
     revalidatingFetchers.forEach(r => fetchControllers.delete(r.key));
-    let redirect = findRedirect([...loaderResults, ...fetcherResults]);
+    let redirect = findRedirect(loaderResults);
     if (redirect) {
-      if (redirect.idx >= matchesToLoad.length) {
-        // If this redirect came from a fetcher make sure we mark it in
-        // fetchRedirectIds so it doesn't get revalidated on the next set of
-        // loader executions
-        let fetcherKey = revalidatingFetchers[redirect.idx - matchesToLoad.length].key;
-        fetchRedirectIds.add(fetcherKey);
-      }
-      return startRedirectNavigation(revalidationRequest, redirect.result);
+      return startRedirectNavigation(revalidationRequest, redirect.result, false);
+    }
+    redirect = findRedirect(fetcherResults);
+    if (redirect) {
+      // If this redirect came from a fetcher make sure we mark it in
+      // fetchRedirectIds so it doesn't get revalidated on the next set of
+      // loader executions
+      fetchRedirectIds.add(redirect.key);
+      return startRedirectNavigation(revalidationRequest, redirect.result, false);
     }
     // Process and commit output from loaders
     let {
       loaderData,
       errors
-    } = processLoaderData(state, state.matches, matchesToLoad, loaderResults, undefined, revalidatingFetchers, fetcherResults, activeDeferreds);
+    } = processLoaderData(state, matches, matchesToLoad, loaderResults, undefined, revalidatingFetchers, fetcherResults, activeDeferreds);
     // Since we let revalidations complete even if the submitting fetcher was
     // deleted, only put it back to idle if it hasn't been deleted
     if (state.fetchers.has(key)) {
@@ -2685,8 +2699,8 @@ function createRouter(init) {
     // Call the loader for this fetcher route match
     fetchControllers.set(key, abortController);
     let originatingLoadId = incrementingLoadId;
-    let results = await callDataStrategy("loader", fetchRequest, [match], matches);
-    let result = results[0];
+    let results = await callDataStrategy("loader", state, fetchRequest, [match], matches, key);
+    let result = results[match.route.id];
     // Deferred isn't supported for fetcher loads, await everything and treat it
     // as a normal load.  resolveDeferredData will return undefined if this
     // fetcher gets aborted, so we just leave result untouched and short circuit
@@ -2717,7 +2731,7 @@ function createRouter(init) {
         return;
       } else {
         fetchRedirectIds.add(key);
-        await startRedirectNavigation(fetchRequest, result);
+        await startRedirectNavigation(fetchRequest, result, false);
         return;
       }
     }
@@ -2749,7 +2763,7 @@ function createRouter(init) {
    * actually touch history until we've processed redirects, so we just use
    * the history action from the original navigation (PUSH or REPLACE).
    */
-  async function startRedirectNavigation(request, redirect, _temp2) {
+  async function startRedirectNavigation(request, redirect, isNavigation, _temp2) {
     let {
       submission,
       fetcherSubmission,
@@ -2809,8 +2823,9 @@ function createRouter(init) {
         submission: _extends({}, activeSubmission, {
           formAction: location
         }),
-        // Preserve this flag across redirects
-        preventScrollReset: pendingPreventScrollReset
+        // Preserve these flags across redirects
+        preventScrollReset: pendingPreventScrollReset,
+        enableViewTransition: isNavigation ? pendingViewTransitionEnabled : undefined
       });
     } else {
       // If we have a navigation submission, we will preserve it through the
@@ -2820,50 +2835,69 @@ function createRouter(init) {
         overrideNavigation,
         // Send fetcher submissions through for shouldRevalidate
         fetcherSubmission,
-        // Preserve this flag across redirects
-        preventScrollReset: pendingPreventScrollReset
+        // Preserve these flags across redirects
+        preventScrollReset: pendingPreventScrollReset,
+        enableViewTransition: isNavigation ? pendingViewTransitionEnabled : undefined
       });
     }
   }
   // Utility wrapper for calling dataStrategy client-side without having to
   // pass around the manifest, mapRouteProperties, etc.
-  async function callDataStrategy(type, request, matchesToLoad, matches) {
+  async function callDataStrategy(type, state, request, matchesToLoad, matches, fetcherKey) {
+    let results;
+    let dataResults = {};
     try {
-      let results = await callDataStrategyImpl(dataStrategyImpl, type, request, matchesToLoad, matches, manifest, mapRouteProperties);
-      return await Promise.all(results.map((result, i) => {
-        if (isRedirectHandlerResult(result)) {
-          let response = result.result;
-          return {
-            type: ResultType.redirect,
-            response: normalizeRelativeRoutingRedirectResponse(response, request, matchesToLoad[i].route.id, matches, basename, future.v7_relativeSplatPath)
-          };
-        }
-        return convertHandlerResultToDataResult(result);
-      }));
+      results = await callDataStrategyImpl(dataStrategyImpl, type, state, request, matchesToLoad, matches, fetcherKey, manifest, mapRouteProperties);
     } catch (e) {
       // If the outer dataStrategy method throws, just return the error for all
       // matches - and it'll naturally bubble to the root
-      return matchesToLoad.map(() => ({
-        type: ResultType.error,
-        error: e
-      }));
+      matchesToLoad.forEach(m => {
+        dataResults[m.route.id] = {
+          type: ResultType.error,
+          error: e
+        };
+      });
+      return dataResults;
     }
+    for (let [routeId, result] of Object.entries(results)) {
+      if (isRedirectDataStrategyResultResult(result)) {
+        let response = result.result;
+        dataResults[routeId] = {
+          type: ResultType.redirect,
+          response: normalizeRelativeRoutingRedirectResponse(response, request, routeId, matches, basename, future.v7_relativeSplatPath)
+        };
+      } else {
+        dataResults[routeId] = await convertDataStrategyResultToDataResult(result);
+      }
+    }
+    return dataResults;
   }
-  async function callLoadersAndMaybeResolveData(currentMatches, matches, matchesToLoad, fetchersToLoad, request) {
-    let [loaderResults, ...fetcherResults] = await Promise.all([matchesToLoad.length ? callDataStrategy("loader", request, matchesToLoad, matches) : [], ...fetchersToLoad.map(f => {
+  async function callLoadersAndMaybeResolveData(state, matches, matchesToLoad, fetchersToLoad, request) {
+    let currentMatches = state.matches;
+    // Kick off loaders and fetchers in parallel
+    let loaderResultsPromise = callDataStrategy("loader", state, request, matchesToLoad, matches, null);
+    let fetcherResultsPromise = Promise.all(fetchersToLoad.map(async f => {
       if (f.matches && f.match && f.controller) {
-        let fetcherRequest = createClientSideRequest(init.history, f.path, f.controller.signal);
-        return callDataStrategy("loader", fetcherRequest, [f.match], f.matches).then(r => r[0]);
+        let results = await callDataStrategy("loader", state, createClientSideRequest(init.history, f.path, f.controller.signal), [f.match], f.matches, f.key);
+        let result = results[f.match.route.id];
+        // Fetcher results are keyed by fetcher key from here on out, not routeId
+        return {
+          [f.key]: result
+        };
       } else {
         return Promise.resolve({
-          type: ResultType.error,
-          error: getInternalRouterError(404, {
-            pathname: f.path
-          })
+          [f.key]: {
+            type: ResultType.error,
+            error: getInternalRouterError(404, {
+              pathname: f.path
+            })
+          }
         });
       }
-    })]);
-    await Promise.all([resolveDeferredResults(currentMatches, matchesToLoad, loaderResults, loaderResults.map(() => request.signal), false, state.loaderData), resolveDeferredResults(currentMatches, fetchersToLoad.map(f => f.match), fetcherResults, fetchersToLoad.map(f => f.controller ? f.controller.signal : null), true)]);
+    }));
+    let loaderResults = await loaderResultsPromise;
+    let fetcherResults = (await fetcherResultsPromise).reduce((acc, r) => Object.assign(acc, r), {});
+    await Promise.all([resolveNavigationDeferredResults(matches, loaderResults, request.signal, currentMatches, state.loaderData), resolveFetcherDeferredResults(matches, fetcherResults, fetchersToLoad)]);
     return {
       loaderResults,
       fetcherResults
@@ -3506,9 +3540,9 @@ function createStaticHandler(routes, opts) {
       });
     } catch (e) {
       // If the user threw/returned a Response in callLoaderOrAction for a
-      // `queryRoute` call, we throw the `HandlerResult` to bail out early
+      // `queryRoute` call, we throw the `DataStrategyResult` to bail out early
       // and then return or throw the raw Response here accordingly
-      if (isHandlerResult(e) && isResponse(e.result)) {
+      if (isDataStrategyResult(e) && isResponse(e.result)) {
         if (e.type === ResultType.error) {
           throw e.result;
         }
@@ -3539,7 +3573,7 @@ function createStaticHandler(routes, opts) {
       };
     } else {
       let results = await callDataStrategy("action", request, [actionMatch], matches, isRouteRequest, requestContext, unstable_dataStrategy);
-      result = results[0];
+      result = results[actionMatch.route.id];
       if (request.signal.aborted) {
         throwStaticHandlerAbortedError(request, isRouteRequest, future);
       }
@@ -3656,7 +3690,7 @@ function createStaticHandler(routes, opts) {
     }
     // Process and commit output from loaders
     let activeDeferreds = new Map();
-    let context = processRouteLoaderData(matches, matchesToLoad, results, pendingActionResult, activeDeferreds, skipLoaderErrorBubbling);
+    let context = processRouteLoaderData(matches, results, pendingActionResult, activeDeferreds, skipLoaderErrorBubbling);
     // Add a null for any non-loader matches for proper revalidation on the client
     let executedLoaders = new Set(matchesToLoad.map(match => match.route.id));
     matches.forEach(match => {
@@ -3672,20 +3706,26 @@ function createStaticHandler(routes, opts) {
   // Utility wrapper for calling dataStrategy server-side without having to
   // pass around the manifest, mapRouteProperties, etc.
   async function callDataStrategy(type, request, matchesToLoad, matches, isRouteRequest, requestContext, unstable_dataStrategy) {
-    let results = await callDataStrategyImpl(unstable_dataStrategy || defaultDataStrategy, type, request, matchesToLoad, matches, manifest, mapRouteProperties, requestContext);
-    return await Promise.all(results.map((result, i) => {
-      if (isRedirectHandlerResult(result)) {
+    let results = await callDataStrategyImpl(unstable_dataStrategy || defaultDataStrategy, type, null, request, matchesToLoad, matches, null, manifest, mapRouteProperties, requestContext);
+    let dataResults = {};
+    await Promise.all(matches.map(async match => {
+      if (!(match.route.id in results)) {
+        return;
+      }
+      let result = results[match.route.id];
+      if (isRedirectDataStrategyResultResult(result)) {
         let response = result.result;
         // Throw redirects and let the server handle them with an HTTP redirect
-        throw normalizeRelativeRoutingRedirectResponse(response, request, matchesToLoad[i].route.id, matches, basename, future.v7_relativeSplatPath);
+        throw normalizeRelativeRoutingRedirectResponse(response, request, match.route.id, matches, basename, future.v7_relativeSplatPath);
       }
       if (isResponse(result.result) && isRouteRequest) {
         // For SSR single-route requests, we want to hand Responses back
         // directly without unwrapping
         throw result;
       }
-      return convertHandlerResultToDataResult(result);
+      dataResults[match.route.id] = await convertDataStrategyResultToDataResult(result);
     }));
+    return dataResults;
   }
   return {
     dataRoutes,
@@ -4147,52 +4187,67 @@ async function loadLazyRouteModule(route, mapRouteProperties, manifest) {
   }));
 }
 // Default implementation of `dataStrategy` which fetches all loaders in parallel
-function defaultDataStrategy(opts) {
-  return Promise.all(opts.matches.map(m => m.resolve()));
+async function defaultDataStrategy(_ref6) {
+  let {
+    matches
+  } = _ref6;
+  let matchesToLoad = matches.filter(m => m.shouldLoad);
+  let results = await Promise.all(matchesToLoad.map(m => m.resolve()));
+  return results.reduce((acc, result, i) => Object.assign(acc, {
+    [matchesToLoad[i].route.id]: result
+  }), {});
 }
-async function callDataStrategyImpl(dataStrategyImpl, type, request, matchesToLoad, matches, manifest, mapRouteProperties, requestContext) {
-  let routeIdsToLoad = matchesToLoad.reduce((acc, m) => acc.add(m.route.id), new Set());
-  let loadedMatches = new Set();
+async function callDataStrategyImpl(dataStrategyImpl, type, state, request, matchesToLoad, matches, fetcherKey, manifest, mapRouteProperties, requestContext) {
+  let loadRouteDefinitionsPromises = matches.map(m => m.route.lazy ? loadLazyRouteModule(m.route, mapRouteProperties, manifest) : undefined);
+  let dsMatches = matches.map((match, i) => {
+    let loadRoutePromise = loadRouteDefinitionsPromises[i];
+    let shouldLoad = matchesToLoad.some(m => m.route.id === match.route.id);
+    // `resolve` encapsulates route.lazy(), executing the loader/action,
+    // and mapping return values/thrown errors to a `DataStrategyResult`.  Users
+    // can pass a callback to take fine-grained control over the execution
+    // of the loader/action
+    let resolve = async handlerOverride => {
+      if (handlerOverride && request.method === "GET" && (match.route.lazy || match.route.loader)) {
+        shouldLoad = true;
+      }
+      return shouldLoad ? callLoaderOrAction(type, request, match, loadRoutePromise, handlerOverride, requestContext) : Promise.resolve({
+        type: ResultType.data,
+        result: undefined
+      });
+    };
+    return _extends({}, match, {
+      shouldLoad,
+      resolve
+    });
+  });
   // Send all matches here to allow for a middleware-type implementation.
   // handler will be a no-op for unneeded routes and we filter those results
   // back out below.
   let results = await dataStrategyImpl({
-    matches: matches.map(match => {
-      let shouldLoad = routeIdsToLoad.has(match.route.id);
-      // `resolve` encapsulates the route.lazy, executing the
-      // loader/action, and mapping return values/thrown errors to a
-      // HandlerResult.  Users can pass a callback to take fine-grained control
-      // over the execution of the loader/action
-      let resolve = handlerOverride => {
-        loadedMatches.add(match.route.id);
-        return shouldLoad ? callLoaderOrAction(type, request, match, manifest, mapRouteProperties, handlerOverride, requestContext) : Promise.resolve({
-          type: ResultType.data,
-          result: undefined
-        });
-      };
-      return _extends({}, match, {
-        shouldLoad,
-        resolve
-      });
-    }),
+    matches: dsMatches,
     request,
     params: matches[0].params,
+    fetcherKey,
     context: requestContext
   });
-  // Throw if any loadRoute implementations not called since they are what
-  // ensures a route is fully loaded
-  matches.forEach(m => invariant(loadedMatches.has(m.route.id), "`match.resolve()` was not called for route id \"" + m.route.id + "\". " + "You must call `match.resolve()` on every match passed to " + "`dataStrategy` to ensure all routes are properly loaded."));
-  // Filter out any middleware-only matches for which we didn't need to run handlers
-  return results.filter((_, i) => routeIdsToLoad.has(matches[i].route.id));
+  // Wait for all routes to load here but 'swallow the error since we want
+  // it to bubble up from the `await loadRoutePromise` in `callLoaderOrAction` -
+  // called from `match.resolve()`
+  try {
+    await Promise.all(loadRouteDefinitionsPromises);
+  } catch (e) {
+    // No-op
+  }
+  return results;
 }
 // Default logic for calling a loader/action is the user has no specified a dataStrategy
-async function callLoaderOrAction(type, request, match, manifest, mapRouteProperties, handlerOverride, staticContext) {
+async function callLoaderOrAction(type, request, match, loadRoutePromise, handlerOverride, staticContext) {
   let result;
   let onReject;
   let runHandler = handler => {
     // Setup a promise we can race against so that abort signals short circuit
     let reject;
-    // This will never resolve so safe to type it as Promise<HandlerResult> to
+    // This will never resolve so safe to type it as Promise<DataStrategyResult> to
     // satisfy the function return value
     let abortPromise = new Promise((_, r) => reject = r);
     onReject = () => reject();
@@ -4207,30 +4262,26 @@ async function callLoaderOrAction(type, request, match, manifest, mapRouteProper
         context: staticContext
       }, ...(ctx !== undefined ? [ctx] : []));
     };
-    let handlerPromise;
-    if (handlerOverride) {
-      handlerPromise = handlerOverride(ctx => actualHandler(ctx));
-    } else {
-      handlerPromise = (async () => {
-        try {
-          let val = await actualHandler();
-          return {
-            type: "data",
-            result: val
-          };
-        } catch (e) {
-          return {
-            type: "error",
-            result: e
-          };
-        }
-      })();
-    }
+    let handlerPromise = (async () => {
+      try {
+        let val = await (handlerOverride ? handlerOverride(ctx => actualHandler(ctx)) : actualHandler());
+        return {
+          type: "data",
+          result: val
+        };
+      } catch (e) {
+        return {
+          type: "error",
+          result: e
+        };
+      }
+    })();
     return Promise.race([handlerPromise, abortPromise]);
   };
   try {
     let handler = match.route[type];
-    if (match.route.lazy) {
+    // If we have a route.lazy promise, await that first
+    if (loadRoutePromise) {
       if (handler) {
         // Run statically defined handler in parallel with lazy()
         let handlerError;
@@ -4240,14 +4291,14 @@ async function callLoaderOrAction(type, request, match, manifest, mapRouteProper
         // route has a boundary that can handle the error
         runHandler(handler).catch(e => {
           handlerError = e;
-        }), loadLazyRouteModule(match.route, mapRouteProperties, manifest)]);
+        }), loadRoutePromise]);
         if (handlerError !== undefined) {
           throw handlerError;
         }
         result = value;
       } else {
         // Load lazy route module, then run any returned handler
-        await loadLazyRouteModule(match.route, mapRouteProperties, manifest);
+        await loadRoutePromise;
         handler = match.route[type];
         if (handler) {
           // Handler still runs even if we got interrupted to maintain consistency
@@ -4283,7 +4334,7 @@ async function callLoaderOrAction(type, request, match, manifest, mapRouteProper
     invariant(result.result !== undefined, "You defined " + (type === "action" ? "an action" : "a loader") + " for route " + ("\"" + match.route.id + "\" but didn't return anything from your `" + type + "` ") + "function. Please return a value or `null`.");
   } catch (e) {
     // We should already be catching and converting normal handler executions to
-    // HandlerResults and returning them, so anything that throws here is an
+    // DataStrategyResults and returning them, so anything that throws here is an
     // unexpected error we still need to wrap
     return {
       type: ResultType.error,
@@ -4296,11 +4347,11 @@ async function callLoaderOrAction(type, request, match, manifest, mapRouteProper
   }
   return result;
 }
-async function convertHandlerResultToDataResult(handlerResult) {
+async function convertDataStrategyResultToDataResult(dataStrategyResult) {
   let {
     result,
     type
-  } = handlerResult;
+  } = dataStrategyResult;
   if (isResponse(result)) {
     let data;
     try {
@@ -4453,7 +4504,7 @@ function convertSearchParamsToFormData(searchParams) {
   }
   return formData;
 }
-function processRouteLoaderData(matches, matchesToLoad, results, pendingActionResult, activeDeferreds, skipLoaderErrorBubbling) {
+function processRouteLoaderData(matches, results, pendingActionResult, activeDeferreds, skipLoaderErrorBubbling) {
   // Fill in loaderData/errors from our loaders
   let loaderData = {};
   let errors = null;
@@ -4462,8 +4513,12 @@ function processRouteLoaderData(matches, matchesToLoad, results, pendingActionRe
   let loaderHeaders = {};
   let pendingError = pendingActionResult && isErrorResult(pendingActionResult[1]) ? pendingActionResult[1].error : undefined;
   // Process loader results into state.loaderData/state.errors
-  results.forEach((result, index) => {
-    let id = matchesToLoad[index].route.id;
+  matches.forEach(match => {
+    if (!(match.route.id in results)) {
+      return;
+    }
+    let id = match.route.id;
+    let result = results[id];
     invariant(!isRedirectResult(result), "Cannot handle redirect results in processLoaderData");
     if (isErrorResult(result)) {
       let error = result.error;
@@ -4542,21 +4597,21 @@ function processLoaderData(state, matches, matchesToLoad, results, pendingAction
   let {
     loaderData,
     errors
-  } = processRouteLoaderData(matches, matchesToLoad, results, pendingActionResult, activeDeferreds, false // This method is only called client side so we always want to bubble
+  } = processRouteLoaderData(matches, results, pendingActionResult, activeDeferreds, false // This method is only called client side so we always want to bubble
   );
   // Process results from our revalidating fetchers
-  for (let index = 0; index < revalidatingFetchers.length; index++) {
+  revalidatingFetchers.forEach(rf => {
     let {
       key,
       match,
       controller
-    } = revalidatingFetchers[index];
-    invariant(fetcherResults !== undefined && fetcherResults[index] !== undefined, "Did not find corresponding fetcher result");
-    let result = fetcherResults[index];
+    } = rf;
+    let result = fetcherResults[key];
+    invariant(result, "Did not find corresponding fetcher result");
     // Process fetcher non-redirect errors
     if (controller && controller.signal.aborted) {
       // Nothing to do for aborted fetchers
-      continue;
+      return;
     } else if (isErrorResult(result)) {
       let boundaryMatch = findNearestBoundary(state.matches, match == null ? void 0 : match.route.id);
       if (!(errors && errors[boundaryMatch.route.id])) {
@@ -4577,7 +4632,7 @@ function processLoaderData(state, matches, matchesToLoad, results, pendingAction
       let doneFetcher = getDoneFetcher(result.data);
       state.fetchers.set(key, doneFetcher);
     }
-  }
+  });
   return {
     loaderData,
     errors
@@ -4677,12 +4732,13 @@ function getInternalRouterError(status, _temp5) {
 }
 // Find any returned redirect errors, starting from the lowest match
 function findRedirect(results) {
-  for (let i = results.length - 1; i >= 0; i--) {
-    let result = results[i];
+  let entries = Object.entries(results);
+  for (let i = entries.length - 1; i >= 0; i--) {
+    let [key, result] = entries[i];
     if (isRedirectResult(result)) {
       return {
-        result,
-        idx: i
+        key,
+        result
       };
     }
   }
@@ -4714,10 +4770,10 @@ function isHashChangeOnly(a, b) {
 function isPromise(val) {
   return typeof val === "object" && val != null && "then" in val;
 }
-function isHandlerResult(result) {
+function isDataStrategyResult(result) {
   return result != null && typeof result === "object" && "type" in result && "result" in result && (result.type === ResultType.data || result.type === ResultType.error);
 }
-function isRedirectHandlerResult(result) {
+function isRedirectDataStrategyResultResult(result) {
   return isResponse(result.result) && redirectStatusCodes.has(result.result.status);
 }
 function isDeferredResult(result) {
@@ -4753,10 +4809,11 @@ function isValidMethod(method) {
 function isMutationMethod(method) {
   return validMutationMethods.has(method.toLowerCase());
 }
-async function resolveDeferredResults(currentMatches, matchesToLoad, results, signals, isFetcher, currentLoaderData) {
-  for (let index = 0; index < results.length; index++) {
-    let result = results[index];
-    let match = matchesToLoad[index];
+async function resolveNavigationDeferredResults(matches, results, signal, currentMatches, currentLoaderData) {
+  let entries = Object.entries(results);
+  for (let index = 0; index < entries.length; index++) {
+    let [routeId, result] = entries[index];
+    let match = matches.find(m => (m == null ? void 0 : m.route.id) === routeId);
     // If we don't have a match, then we can have a deferred result to do
     // anything with.  This is for revalidating fetchers where the route was
     // removed during HMR
@@ -4765,15 +4822,41 @@ async function resolveDeferredResults(currentMatches, matchesToLoad, results, si
     }
     let currentMatch = currentMatches.find(m => m.route.id === match.route.id);
     let isRevalidatingLoader = currentMatch != null && !isNewRouteInstance(currentMatch, match) && (currentLoaderData && currentLoaderData[match.route.id]) !== undefined;
-    if (isDeferredResult(result) && (isFetcher || isRevalidatingLoader)) {
+    if (isDeferredResult(result) && isRevalidatingLoader) {
       // Note: we do not have to touch activeDeferreds here since we race them
       // against the signal in resolveDeferredData and they'll get aborted
       // there if needed
-      let signal = signals[index];
-      invariant(signal, "Expected an AbortSignal for revalidating fetcher deferred result");
-      await resolveDeferredData(result, signal, isFetcher).then(result => {
+      await resolveDeferredData(result, signal, false).then(result => {
         if (result) {
-          results[index] = result || results[index];
+          results[routeId] = result;
+        }
+      });
+    }
+  }
+}
+async function resolveFetcherDeferredResults(matches, results, revalidatingFetchers) {
+  for (let index = 0; index < revalidatingFetchers.length; index++) {
+    let {
+      key,
+      routeId,
+      controller
+    } = revalidatingFetchers[index];
+    let result = results[key];
+    let match = matches.find(m => (m == null ? void 0 : m.route.id) === routeId);
+    // If we don't have a match, then we can have a deferred result to do
+    // anything with.  This is for revalidating fetchers where the route was
+    // removed during HMR
+    if (!match) {
+      continue;
+    }
+    if (isDeferredResult(result)) {
+      // Note: we do not have to touch activeDeferreds here since we race them
+      // against the signal in resolveDeferredData and they'll get aborted
+      // there if needed
+      invariant(controller, "Expected an AbortController for revalidating fetcher deferred result");
+      await resolveDeferredData(result, controller.signal, true).then(result => {
+        if (result) {
+          results[key] = result;
         }
       });
     }
@@ -4990,6 +5073,41 @@ function persistAppliedTransitions(_window, transitions) {
 
 /***/ }),
 
+/***/ "./src/img/my-zen-black.svg":
+/*!**********************************!*\
+  !*** ./src/img/my-zen-black.svg ***!
+  \**********************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   ReactComponent: () => (/* binding */ SvgMyZenBlack),
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+var _path;
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+
+var SvgMyZenBlack = function SvgMyZenBlack(props) {
+  return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement("svg", _extends({
+    xmlns: "http://www.w3.org/2000/svg",
+    width: 24,
+    height: 24,
+    fill: "none"
+  }, props), _path || (_path = /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement("path", {
+    fill: "#202020",
+    fillRule: "evenodd",
+    d: "M12.058 19.466a1.43 1.43 0 0 1-1.385.537l-5.471-.99a1.803 1.803 0 0 1-1.397-2.323l.272-.854a1.803 1.803 0 0 1 2.485-1.083l2.001.94v-1.179a2.066 2.066 0 0 1-2.049-2.065V11.12c0-1.14.925-2.066 2.066-2.066h6.956c1.141 0 2.066.925 2.066 2.066v1.329a2.066 2.066 0 0 1-2.05 2.065v1.179l2.002-.94a1.803 1.803 0 0 1 2.485 1.083l.272.854a1.803 1.803 0 0 1-1.397 2.323l-5.47.99a1.43 1.43 0 0 1-1.386-.537m-.837-1.797-4.939-2.32a1.144 1.144 0 0 0-1.577.688l-.273.853a1.145 1.145 0 0 0 .887 1.475l5.47.99a.765.765 0 0 0 .866-.52l.032-.099a.88.88 0 0 0-.466-1.067m-1.999-1.667 2.28 1.07c.223.106.412.26.556.444.144-.184.332-.338.557-.443l2.279-1.07v-1.489H9.222zm3.165-2.146h3.15c.776 0 1.406-.63 1.406-1.407V11.12c0-.777-.63-1.407-1.407-1.407H8.58c-.777 0-1.407.63-1.407 1.407v1.329c0 .777.63 1.407 1.407 1.407h3.149v-1.742H9.516a.33.33 0 0 1 0-.659H14.6a.33.33 0 0 1 0 .659h-2.213zm5.447 1.493-4.94 2.32a.88.88 0 0 0-.465 1.067l.032.098a.765.765 0 0 0 .865.52l5.471-.99a1.145 1.145 0 0 0 .886-1.474l-.272-.853a1.144 1.144 0 0 0-1.577-.688m3.202-14.003a.33.33 0 0 1 .659 0v.528a.33.33 0 0 1-.659 0zm1.517.858a.33.33 0 0 1 0 .659h-.528a.33.33 0 0 1 0-.659zm-.858 1.517a.33.33 0 0 1-.659 0v-.528a.33.33 0 0 1 .659 0zm-1.517-.858a.33.33 0 0 1 0-.659h.528a.33.33 0 0 1 0 .659zM2.876 7.83a.33.33 0 0 1 .659 0v.527a.33.33 0 0 1-.66 0zm1.517.858a.33.33 0 0 1 0 .658h-.528a.33.33 0 0 1 0-.658zm-.858 1.516a.33.33 0 0 1-.66 0v-.527a.33.33 0 0 1 .66 0zm-1.517-.858a.33.33 0 0 1 0-.658h.528a.33.33 0 0 1 0 .658zM6.975.706a.33.33 0 0 1 .659 0v.528a.33.33 0 0 1-.66 0zm1.517.858a.33.33 0 0 1 0 .659h-.528a.33.33 0 0 1 0-.66zM7.634 3.08a.33.33 0 0 1-.66 0v-.527a.33.33 0 0 1 .66 0zm-1.517-.857a.33.33 0 0 1 0-.66h.528a.33.33 0 0 1 0 .66zm-3.812.576a.33.33 0 0 1 .659 0v.528a.33.33 0 0 1-.659 0zm1.517.858a.33.33 0 0 1 0 .659h-.528a.33.33 0 0 1 0-.66zm-.858 1.517a.33.33 0 0 1-.659 0v-.528a.33.33 0 0 1 .659 0zm-1.517-.858a.33.33 0 0 1 0-.66h.528a.33.33 0 0 1 0 .66zm16.54-.048a.33.33 0 0 1 .659 0v.527a.33.33 0 0 1-.659 0zm1.517.858a.33.33 0 0 1 0 .658h-.528a.33.33 0 0 1 0-.658zm-.858 1.516a.33.33 0 0 1-.659 0v-.527a.33.33 0 0 1 .659 0zm-1.517-.858a.33.33 0 0 1 0-.658h.528a.33.33 0 0 1 0 .658zm3.233 3.233a.33.33 0 0 1 .658 0v.528a.33.33 0 0 1-.658 0zm1.516.858a.33.33 0 0 1 0 .659h-.527a.33.33 0 0 1 0-.66zm-.858 1.517a.33.33 0 0 1-.658 0v-.528a.33.33 0 0 1 .658 0zm-1.516-.858a.33.33 0 0 1 0-.66h.527a.33.33 0 0 1 0 .66zm-7.446-8.181a3.164 3.164 0 0 1 0 6.327 3.164 3.164 0 0 1 0-6.327m0 .659a2.505 2.505 0 0 0 0 5.01 2.505 2.505 0 0 0 0-5.01M2.174 20.925a.33.33 0 0 1 0-.658h19.768a.33.33 0 0 1 0 .658zm8.596 1.35a.33.33 0 0 1 0-.66h9.6a.33.33 0 0 1 0 .66zm-7.214 1.349a.33.33 0 0 1 0-.66h9.599a.33.33 0 0 1 0 .66z",
+    clipRule: "evenodd"
+  })));
+};
+
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0xMi4wNTggMTkuNDY2M0MxMS43NDE0IDE5Ljg4MDQgMTEuMjExMyAyMC4xMDAzIDEwLjY3MjYgMjAuMDAyOUw1LjIwMTcgMTkuMDEyOUM0LjY5MDkzIDE4LjkyMDUgNC4yNDQ3NiAxOC42MTI1IDMuOTc3MjggMTguMTY3N0MzLjcwOTg0IDE3LjcyMjggMy42NDcwMiAxNy4xODQzIDMuODA0OSAxNi42ODk5TDQuMDc3NDcgMTUuODM2MkM0LjIzNTM1IDE1LjM0MTggNC41OTg2NCAxNC45MzkzIDUuMDc0NDEgMTQuNzMxOEM1LjU1MDIyIDE0LjUyNDMgNi4wOTIyOSAxNC41MzE5IDYuNTYyMTMgMTQuNzUyNkw4LjU2MzQ5IDE1LjY5MjhWMTQuNTE0NEM3LjQzMDEzIDE0LjUwNTcgNi41MTM5OSAxMy41ODQzIDYuNTEzOTkgMTIuNDQ4OVYxMS4xMkM2LjUxMzk5IDkuOTc5MjQgNy40Mzg3OSA5LjA1NDQ0IDguNTc5NTkgOS4wNTQ0NEgxNS41MzY0QzE2LjY3NzIgOS4wNTQ0NCAxNy42MDIgOS45NzkyNCAxNy42MDIgMTEuMTJWMTIuNDQ4OUMxNy42MDIgMTMuNTg0MyAxNi42ODU5IDE0LjUwNTcgMTUuNTUyNSAxNC41MTQ0VjE1LjY5MjhMMTcuNTUzOSAxNC43NTI2QzE4LjAyMzcgMTQuNTMxOSAxOC41NjU4IDE0LjUyNDMgMTkuMDQxNiAxNC43MzE4QzE5LjUxNzMgMTQuOTM5MyAxOS44ODA2IDE1LjM0MTggMjAuMDM4NSAxNS44MzYyTDIwLjMxMTEgMTYuNjg5OUMyMC40NjkgMTcuMTg0MyAyMC40MDYyIDE3LjcyMjggMjAuMTM4NyAxOC4xNjc3QzE5Ljg3MTIgMTguNjEyNSAxOS40MjUgMTguOTIwNSAxOC45MTQzIDE5LjAxMjlMMTMuNDQzNCAyMC4wMDI5QzEyLjkwNDcgMjAuMTAwMyAxMi4zNzQ1IDE5Ljg4MDQgMTIuMDU4IDE5LjQ2NjNaTTExLjIyMTEgMTcuNjY5Mkw2LjI4MTk5IDE1LjM0ODlDNS45ODM4MiAxNS4yMDg4IDUuNjM5NzcgMTUuMjA0IDUuMzM3OCAxNS4zMzU3QzUuMDM1ODcgMTUuNDY3NCA0LjgwNTI4IDE1LjcyMjggNC43MDUwOSAxNi4wMzY3TDQuNDMyNDggMTYuODkwM0M0LjMzMjI5IDE3LjIwNDEgNC4zNzIxNSAxNy41NDU5IDQuNTQxODkgMTcuODI4MkM0LjcxMTY4IDE4LjExMDUgNC45OTQ4MyAxOC4zMDYgNS4zMTg5NyAxOC4zNjQ3TDEwLjc4OTkgMTkuMzU0NUMxMS4xNjgxIDE5LjQyMyAxMS41Mzg0IDE5LjIwMDMgMTEuNjU1MyAxOC44MzQyTDExLjY4NjYgMTguNzM2M0MxMS44MjE0IDE4LjMxNDIgMTEuNjIyMiAxNy44NTc1IDExLjIyMTEgMTcuNjY5MlpNOS4yMjIzMiAxNi4wMDIzTDExLjUwMTMgMTcuMDcyOEMxMS43MjU1IDE3LjE3ODIgMTEuOTEzNiAxNy4zMzE1IDEyLjA1OCAxNy41MTU1QzEyLjIwMjQgMTcuMzMxNSAxMi4zOTA1IDE3LjE3ODIgMTIuNjE0NyAxNy4wNzI4TDE0Ljg5MzcgMTYuMDAyM1YxNC41MTQ0SDkuMjIyMzJWMTYuMDAyM1pNMTIuMzg3NCAxMy44NTU2SDE1LjUzNjRDMTYuMzEzMyAxMy44NTU2IDE2Ljk0MzIgMTMuMjI1OCAxNi45NDMyIDEyLjQ0ODlWMTEuMTJDMTYuOTQzMiAxMC4zNDMxIDE2LjMxMzMgOS43MTMyNiAxNS41MzY0IDkuNzEzMjZIOC41Nzk1OUM3LjgwMjY0IDkuNzEzMjYgNy4xNzI4MSAxMC4zNDMxIDcuMTcyODEgMTEuMTJWMTIuNDQ4OUM3LjE3MjgxIDEzLjIyNTggNy44MDI2NCAxMy44NTU2IDguNTc5NTkgMTMuODU1NkgxMS43Mjg2VjEyLjExMzhIOS41MTU1NEM5LjMzMzc1IDEyLjExMzggOS4xODYxMyAxMS45NjYzIDkuMTg2MTMgMTEuNzg0NEM5LjE4NjEzIDExLjYwMjYgOS4zMzM3NSAxMS40NTUgOS41MTU1NCAxMS40NTVIMTQuNjAwNEMxNC43ODIyIDExLjQ1NSAxNC45Mjk4IDExLjYwMjYgMTQuOTI5OCAxMS43ODQ0QzE0LjkyOTggMTEuOTY2MyAxNC43ODIyIDEyLjExMzggMTQuNjAwNCAxMi4xMTM4SDEyLjM4NzRWMTMuODU1NlpNMTcuODM0IDE1LjM0ODlMMTIuODk0OCAxNy42NjkyQzEyLjQ5MzggMTcuODU3NSAxMi4yOTQ2IDE4LjMxNDIgMTIuNDI5NCAxOC43MzYzTDEyLjQ2MDcgMTguODM0MkMxMi41Nzc2IDE5LjIwMDMgMTIuOTQ3OSAxOS40MjMgMTMuMzI2MSAxOS4zNTQ1TDE4Ljc5NyAxOC4zNjQ3QzE5LjEyMTEgMTguMzA2IDE5LjQwNDMgMTguMTEwNSAxOS41NzQxIDE3LjgyODJDMTkuNzQzOCAxNy41NDU5IDE5Ljc4MzcgMTcuMjA0MSAxOS42ODM1IDE2Ljg5MDNMMTkuNDEwOSAxNi4wMzY3QzE5LjMxMDcgMTUuNzIyOCAxOS4wODAyIDE1LjQ2NzQgMTguNzc4MiAxNS4zMzU3QzE4LjQ3NjIgMTUuMjA0IDE4LjEzMjIgMTUuMjA4OCAxNy44MzQgMTUuMzQ4OVpNMjEuMDM2MSAxLjM0NjExQzIxLjAzNjEgMS4xNjQzMiAyMS4xODM3IDEuMDE2NyAyMS4zNjU1IDEuMDE2N0MyMS41NDc0IDEuMDE2NyAyMS42OTQ5IDEuMTY0MzIgMjEuNjk0OSAxLjM0NjExVjEuODczNzhDMjEuNjk0OSAyLjA1NTYyIDIxLjU0NzQgMi4yMDMxOSAyMS4zNjU1IDIuMjAzMTlDMjEuMTgzNyAyLjIwMzE5IDIxLjAzNjEgMi4wNTU2MiAyMS4wMzYxIDEuODczNzhWMS4zNDYxMVpNMjIuNTUyOCAyLjIwMzk5QzIyLjczNDYgMi4yMDM5OSAyMi44ODIyIDIuMzUxNjIgMjIuODgyMiAyLjUzMzQxQzIyLjg4MjIgMi43MTUxOSAyMi43MzQ2IDIuODYyODIgMjIuNTUyOCAyLjg2MjgySDIyLjAyNTFDMjEuODQzMyAyLjg2MjgyIDIxLjY5NTcgMi43MTUxOSAyMS42OTU3IDIuNTMzNDFDMjEuNjk1NyAyLjM1MTYyIDIxLjg0MzMgMi4yMDM5OSAyMi4wMjUxIDIuMjAzOTlIMjIuNTUyOFpNMjEuNjk0OSAzLjcyMDdDMjEuNjk0OSAzLjkwMjQ5IDIxLjU0NzQgNC4wNTAxMSAyMS4zNjU1IDQuMDUwMTFDMjEuMTgzNyA0LjA1MDExIDIxLjAzNjEgMy45MDI0OSAyMS4wMzYxIDMuNzIwN1YzLjE5MzAzQzIxLjAzNjEgMy4wMTExOSAyMS4xODM3IDIuODYzNjIgMjEuMzY1NSAyLjg2MzYyQzIxLjU0NzQgMi44NjM2MiAyMS42OTQ5IDMuMDExMTkgMjEuNjk0OSAzLjE5MzAzVjMuNzIwN1pNMjAuMTc4MiAyLjg2MjgyQzE5Ljk5NjQgMi44NjI4MiAxOS44NDg4IDIuNzE1MTkgMTkuODQ4OCAyLjUzMzQxQzE5Ljg0ODggMi4zNTE2MiAxOS45OTY0IDIuMjAzOTkgMjAuMTc4MiAyLjIwMzk5SDIwLjcwNTlDMjAuODg3NyAyLjIwMzk5IDIxLjAzNTQgMi4zNTE2MiAyMS4wMzU0IDIuNTMzNDFDMjEuMDM1NCAyLjcxNTE5IDIwLjg4NzcgMi44NjI4MiAyMC43MDU5IDIuODYyODJIMjAuMTc4MlpNMi44NzU4MiA3LjgyOTY0QzIuODc1ODIgNy42NDc4MSAzLjAyMzQ1IDcuNTAwMjMgMy4yMDUyMyA3LjUwMDIzQzMuMzg3MDcgNy41MDAyMyAzLjUzNDY1IDcuNjQ3ODEgMy41MzQ2NSA3LjgyOTY0VjguMzU3MzFDMy41MzQ2NSA4LjUzOTEgMy4zODcwNyA4LjY4NjcyIDMuMjA1MjMgOC42ODY3MkMzLjAyMzQ1IDguNjg2NzIgMi44NzU4MiA4LjUzOTEgMi44NzU4MiA4LjM1NzMxVjcuODI5NjRaTTQuMzkyNTMgOC42ODc1MkM0LjU3NDM2IDguNjg3NTIgNC43MjE5NCA4LjgzNTEgNC43MjE5NCA5LjAxNjk0QzQuNzIxOTQgOS4xOTg3MiA0LjU3NDM2IDkuMzQ2MzUgNC4zOTI1MyA5LjM0NjM1SDMuODY0ODZDMy42ODMwNyA5LjM0NjM1IDMuNTM1NDQgOS4xOTg3MiAzLjUzNTQ0IDkuMDE2OTRDMy41MzU0NCA4LjgzNTEgMy42ODMwNyA4LjY4NzUyIDMuODY0ODYgOC42ODc1Mkg0LjM5MjUzWk0zLjUzNDY1IDEwLjIwNDJDMy41MzQ2NSAxMC4zODYgMy4zODcwNyAxMC41MzM2IDMuMjA1MjMgMTAuNTMzNkMzLjAyMzQ1IDEwLjUzMzYgMi44NzU4MiAxMC4zODYgMi44NzU4MiAxMC4yMDQyVjkuNjc2NTFDMi44NzU4MiA5LjQ5NDcyIDMuMDIzNDUgOS4zNDcxIDMuMjA1MjMgOS4zNDcxQzMuMzg3MDcgOS4zNDcxIDMuNTM0NjUgOS40OTQ3MiAzLjUzNDY1IDkuNjc2NTFWMTAuMjA0MlpNMi4wMTc5NCA5LjM0NjM1QzEuODM2MTUgOS4zNDYzNSAxLjY4ODUzIDkuMTk4NzIgMS42ODg1MyA5LjAxNjk0QzEuNjg4NTMgOC44MzUxIDEuODM2MTUgOC42ODc1MiAyLjAxNzk0IDguNjg3NTJIMi41NDU2NkMyLjcyNzQ1IDguNjg3NTIgMi44NzUwNyA4LjgzNTEgMi44NzUwNyA5LjAxNjk0QzIuODc1MDcgOS4xOTg3MiAyLjcyNzQ1IDkuMzQ2MzUgMi41NDU2NiA5LjM0NjM1SDIuMDE3OTRaTTYuOTc0ODggMC43MDU4NzdDNi45NzQ4OCAwLjUyNDA4OCA3LjEyMjQ2IDAuMzc2NDY1IDcuMzA0MjkgMC4zNzY0NjVDNy40ODYwOCAwLjM3NjQ2NSA3LjYzMzcgMC41MjQwODggNy42MzM3IDAuNzA1ODc3VjEuMjMzNTVDNy42MzM3IDEuNDE1MzggNy40ODYwOCAxLjU2Mjk2IDcuMzA0MjkgMS41NjI5NkM3LjEyMjQ2IDEuNTYyOTYgNi45NzQ4OCAxLjQxNTM4IDYuOTc0ODggMS4yMzM1NVYwLjcwNTg3N1pNOC40OTE1OSAxLjU2Mzc2QzguNjczMzcgMS41NjM3NiA4LjgyMSAxLjcxMTM4IDguODIxIDEuODkzMTdDOC44MjEgMi4wNzQ5NiA4LjY3MzM3IDIuMjIyNTggOC40OTE1OSAyLjIyMjU4SDcuOTYzODdDNy43ODIwOCAyLjIyMjU4IDcuNjM0NDYgMi4wNzQ5NiA3LjYzNDQ2IDEuODkzMTdDNy42MzQ0NiAxLjcxMTM4IDcuNzgyMDggMS41NjM3NiA3Ljk2Mzg3IDEuNTYzNzZIOC40OTE1OVpNNy42MzM3IDMuMDgwNDZDNy42MzM3IDMuMjYyMjUgNy40ODYwOCAzLjQwOTg4IDcuMzA0MjkgMy40MDk4OEM3LjEyMjQ2IDMuNDA5ODggNi45NzQ4OCAzLjI2MjI1IDYuOTc0ODggMy4wODA0NlYyLjU1Mjc5QzYuOTc0ODggMi4zNzA5NiA3LjEyMjQ2IDIuMjIzMzggNy4zMDQyOSAyLjIyMzM4QzcuNDg2MDggMi4yMjMzOCA3LjYzMzcgMi4zNzA5NiA3LjYzMzcgMi41NTI3OVYzLjA4MDQ2Wk02LjExNyAyLjIyMjU4QzUuOTM1MTYgMi4yMjI1OCA1Ljc4NzU5IDIuMDc0OTYgNS43ODc1OSAxLjg5MzE3QzUuNzg3NTkgMS43MTEzOCA1LjkzNTE2IDEuNTYzNzYgNi4xMTcgMS41NjM3Nkg2LjY0NDY3QzYuODI2NSAxLjU2Mzc2IDYuOTc0MDggMS43MTEzOCA2Ljk3NDA4IDEuODkzMTdDNi45NzQwOCAyLjA3NDk2IDYuODI2NSAyLjIyMjU4IDYuNjQ0NjcgMi4yMjI1OEg2LjExN1pNMi4zMDUwOSAyLjc5ODk2QzIuMzA1MDkgMi42MTcxMiAyLjQ1MjY3IDIuNDY5NTUgMi42MzQ1IDIuNDY5NTVDMi44MTYyOSAyLjQ2OTU1IDIuOTYzOTIgMi42MTcxMiAyLjk2MzkyIDIuNzk4OTZWMy4zMjY2M0MyLjk2MzkyIDMuNTA4NDIgMi44MTYyOSAzLjY1NjA0IDIuNjM0NSAzLjY1NjA0QzIuNDUyNjcgMy42NTYwNCAyLjMwNTA5IDMuNTA4NDIgMi4zMDUwOSAzLjMyNjYzVjIuNzk4OTZaTTMuODIxOCAzLjY1Njg0QzQuMDAzNTkgMy42NTY4NCA0LjE1MTIxIDMuODA0NDIgNC4xNTEyMSAzLjk4NjI1QzQuMTUxMjEgNC4xNjgwNCA0LjAwMzU5IDQuMzE1NjcgMy44MjE4IDQuMzE1NjdIMy4yOTQwOEMzLjExMjI5IDQuMzE1NjcgMi45NjQ2NyA0LjE2ODA0IDIuOTY0NjcgMy45ODYyNUMyLjk2NDY3IDMuODA0NDIgMy4xMTIyOSAzLjY1Njg0IDMuMjk0MDggMy42NTY4NEgzLjgyMThaTTIuOTYzOTIgNS4xNzM1NUMyLjk2MzkyIDUuMzU1MzQgMi44MTYyOSA1LjUwMjk2IDIuNjM0NSA1LjUwMjk2QzIuNDUyNjcgNS41MDI5NiAyLjMwNTA5IDUuMzU1MzQgMi4zMDUwOSA1LjE3MzU1VjQuNjQ1ODNDMi4zMDUwOSA0LjQ2NDA0IDIuNDUyNjcgNC4zMTY0MiAyLjYzNDUgNC4zMTY0MkMyLjgxNjI5IDQuMzE2NDIgMi45NjM5MiA0LjQ2NDA0IDIuOTYzOTIgNC42NDU4M1Y1LjE3MzU1Wk0xLjQ0NzIxIDQuMzE1NjdDMS4yNjUzNyA0LjMxNTY3IDEuMTE3OCA0LjE2ODA0IDEuMTE3OCAzLjk4NjI1QzEuMTE3OCAzLjgwNDQyIDEuMjY1MzcgMy42NTY4NCAxLjQ0NzIxIDMuNjU2ODRIMS45NzQ4OEMyLjE1NjcyIDMuNjU2ODQgMi4zMDQyOSAzLjgwNDQyIDIuMzA0MjkgMy45ODYyNUMyLjMwNDI5IDQuMTY4MDQgMi4xNTY3MiA0LjMxNTY3IDEuOTc0ODggNC4zMTU2N0gxLjQ0NzIxWk0xNy45ODcgNC4yNjc3NkMxNy45ODcgNC4wODU5MiAxOC4xMzQ2IDMuOTM4MzUgMTguMzE2NCAzLjkzODM1QzE4LjQ5ODIgMy45MzgzNSAxOC42NDU4IDQuMDg1OTIgMTguNjQ1OCA0LjI2Nzc2VjQuNzk1NDNDMTguNjQ1OCA0Ljk3NzI2IDE4LjQ5ODIgNS4xMjQ4NCAxOC4zMTY0IDUuMTI0ODRDMTguMTM0NiA1LjEyNDg0IDE3Ljk4NyA0Ljk3NzI2IDE3Ljk4NyA0Ljc5NTQzVjQuMjY3NzZaTTE5LjUwMzcgNS4xMjU2NEMxOS42ODU1IDUuMTI1NjQgMTkuODMzMSA1LjI3MzIyIDE5LjgzMzEgNS40NTUwNUMxOS44MzMxIDUuNjM2ODQgMTkuNjg1NSA1Ljc4NDQ2IDE5LjUwMzcgNS43ODQ0NkgxOC45NzZDMTguNzk0MiA1Ljc4NDQ2IDE4LjY0NjYgNS42MzY4NCAxOC42NDY2IDUuNDU1MDVDMTguNjQ2NiA1LjI3MzIyIDE4Ljc5NDIgNS4xMjU2NCAxOC45NzYgNS4xMjU2NEgxOS41MDM3Wk0xOC42NDU4IDYuNjQyMzVDMTguNjQ1OCA2LjgyNDE0IDE4LjQ5ODIgNi45NzE3NiAxOC4zMTY0IDYuOTcxNzZDMTguMTM0NiA2Ljk3MTc2IDE3Ljk4NyA2LjgyNDE0IDE3Ljk4NyA2LjY0MjM1VjYuMTE0NjNDMTcuOTg3IDUuOTMyODQgMTguMTM0NiA1Ljc4NTIyIDE4LjMxNjQgNS43ODUyMkMxOC40OTgyIDUuNzg1MjIgMTguNjQ1OCA1LjkzMjg0IDE4LjY0NTggNi4xMTQ2M1Y2LjY0MjM1Wk0xNy4xMjkxIDUuNzg0NDZDMTYuOTQ3MyA1Ljc4NDQ2IDE2Ljc5OTcgNS42MzY4NCAxNi43OTk3IDUuNDU1MDVDMTYuNzk5NyA1LjI3MzIyIDE2Ljk0NzMgNS4xMjU2NCAxNy4xMjkxIDUuMTI1NjRIMTcuNjU2OEMxNy44Mzg2IDUuMTI1NjQgMTcuOTg2MiA1LjI3MzIyIDE3Ljk4NjIgNS40NTUwNUMxNy45ODYyIDUuNjM2ODQgMTcuODM4NiA1Ljc4NDQ2IDE3LjY1NjggNS43ODQ0NkgxNy4xMjkxWk0yMC4zNjE2IDkuMDE2OTRDMjAuMzYxNiA4LjgzNTEgMjAuNTA5MiA4LjY4NzUyIDIwLjY5MSA4LjY4NzUyQzIwLjg3MjggOC42ODc1MiAyMS4wMjA0IDguODM1MSAyMS4wMjA0IDkuMDE2OTRWOS41NDQ2MUMyMS4wMjA0IDkuNzI2MzkgMjAuODcyOCA5Ljg3NDAyIDIwLjY5MSA5Ljg3NDAyQzIwLjUwOTIgOS44NzQwMiAyMC4zNjE2IDkuNzI2MzkgMjAuMzYxNiA5LjU0NDYxVjkuMDE2OTRaTTIxLjg3ODMgOS44NzQ4MkMyMi4wNjAxIDkuODc0ODIgMjIuMjA3NyAxMC4wMjI0IDIyLjIwNzcgMTAuMjA0MkMyMi4yMDc3IDEwLjM4NiAyMi4wNjAxIDEwLjUzMzYgMjEuODc4MyAxMC41MzM2SDIxLjM1MDZDMjEuMTY4OCAxMC41MzM2IDIxLjAyMTIgMTAuMzg2IDIxLjAyMTIgMTAuMjA0MkMyMS4wMjEyIDEwLjAyMjQgMjEuMTY4OCA5Ljg3NDgyIDIxLjM1MDYgOS44NzQ4MkgyMS44NzgzWk0yMS4wMjA0IDExLjM5MTVDMjEuMDIwNCAxMS41NzMzIDIwLjg3MjggMTEuNzIwOSAyMC42OTEgMTEuNzIwOUMyMC41MDkyIDExLjcyMDkgMjAuMzYxNiAxMS41NzMzIDIwLjM2MTYgMTEuMzkxNVYxMC44NjM4QzIwLjM2MTYgMTAuNjgyIDIwLjUwOTIgMTAuNTM0NCAyMC42OTEgMTAuNTM0NEMyMC44NzI4IDEwLjUzNDQgMjEuMDIwNCAxMC42ODIgMjEuMDIwNCAxMC44NjM4VjExLjM5MTVaTTE5LjUwMzcgMTAuNTMzNkMxOS4zMjE5IDEwLjUzMzYgMTkuMTc0MyAxMC4zODYgMTkuMTc0MyAxMC4yMDQyQzE5LjE3NDMgMTAuMDIyNCAxOS4zMjE5IDkuODc0ODIgMTkuNTAzNyA5Ljg3NDgySDIwLjAzMTRDMjAuMjEzMiA5Ljg3NDgyIDIwLjM2MDggMTAuMDIyNCAyMC4zNjA4IDEwLjIwNDJDMjAuMzYwOCAxMC4zODYgMjAuMjEzMiAxMC41MzM2IDIwLjAzMTQgMTAuNTMzNkgxOS41MDM3Wk0xMi4wNTggMi4zNTI5NEMxMy44MDMzIDIuMzUyOTQgMTUuMjIwMyAzLjc3MDQ5IDE1LjIyMDMgNS41MTY1NkMxNS4yMjAzIDcuMjYyNjggMTMuODAzMyA4LjY4MDE4IDEyLjA1OCA4LjY4MDE4QzEwLjMxMjcgOC42ODAxOCA4Ljg5NTYzIDcuMjYyNjggOC44OTU2MyA1LjUxNjU2QzguODk1NjMgMy43NzA0OSAxMC4zMTI3IDIuMzUyOTQgMTIuMDU4IDIuMzUyOTRaTTEyLjA1OCAzLjAxMTc2QzEwLjY3NjIgMy4wMTE3NiA5LjU1NDQ2IDQuMTM0MTYgOS41NTQ0NiA1LjUxNjU2QzkuNTU0NDYgNi44OTg5NiAxMC42NzYyIDguMDIxMzYgMTIuMDU4IDguMDIxMzZDMTMuNDM5OCA4LjAyMTM2IDE0LjU2MTUgNi44OTg5NiAxNC41NjE1IDUuNTE2NTZDMTQuNTYxNSA0LjEzNDE2IDEzLjQzOTggMy4wMTE3NiAxMi4wNTggMy4wMTE3NlpNMi4xNzM2MSAyMC45MjU0QzEuOTkxODIgMjAuOTI1NCAxLjg0NDIgMjAuNzc3OCAxLjg0NDIgMjAuNTk2QzEuODQ0MiAyMC40MTQyIDEuOTkxODIgMjAuMjY2NiAyLjE3MzYxIDIwLjI2NjZIMjEuOTQyNEMyMi4xMjQyIDIwLjI2NjYgMjIuMjcxOCAyMC40MTQyIDIyLjI3MTggMjAuNTk2QzIyLjI3MTggMjAuNzc3OCAyMi4xMjQyIDIwLjkyNTQgMjEuOTQyNCAyMC45MjU0SDIuMTczNjFaTTEwLjc3MDEgMjIuMjc0NUMxMC41ODgzIDIyLjI3NDUgMTAuNDQwNyAyMi4xMjY5IDEwLjQ0MDcgMjEuOTQ1MUMxMC40NDA3IDIxLjc2MzIgMTAuNTg4MyAyMS42MTU3IDEwLjc3MDEgMjEuNjE1N0gyMC4zNjkxQzIwLjU1MSAyMS42MTU3IDIwLjY5ODYgMjEuNzYzMiAyMC42OTg2IDIxLjk0NTFDMjAuNjk4NiAyMi4xMjY5IDIwLjU1MSAyMi4yNzQ1IDIwLjM2OTEgMjIuMjc0NUgxMC43NzAxWk0zLjU1NTkyIDIzLjYyMzVDMy4zNzQxMyAyMy42MjM1IDMuMjI2NSAyMy40NzU5IDMuMjI2NSAyMy4yOTQxQzMuMjI2NSAyMy4xMTIzIDMuMzc0MTMgMjIuOTY0NyAzLjU1NTkyIDIyLjk2NDdIMTMuMTU0OUMxMy4zMzY3IDIyLjk2NDcgMTMuNDg0MyAyMy4xMTIzIDEzLjQ4NDMgMjMuMjk0MUMxMy40ODQzIDIzLjQ3NTkgMTMuMzM2NyAyMy42MjM1IDEzLjE1NDkgMjMuNjIzNUgzLjU1NTkyWiIgZmlsbD0iIzIwMjAyMCIvPgo8L3N2Zz4K");
+
+/***/ }),
+
 /***/ "./src/App.js":
 /*!********************!*\
   !*** ./src/App.js ***!
@@ -5032,8 +5150,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
-/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router/dist/index.js");
+/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
+/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router/dist/index.js");
 /* harmony import */ var _components_Dashboard__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./components/Dashboard */ "./src/components/Dashboard.jsx");
 /* harmony import */ var _components_Profile_Profile__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./components/Profile/Profile */ "./src/components/Profile/Profile.jsx");
 /* harmony import */ var _components_Profile_ResetPassword__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./components/Profile/ResetPassword */ "./src/components/Profile/ResetPassword.jsx");
@@ -5041,7 +5159,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _components_Settings_Workspace__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ./components/Settings/Workspace */ "./src/components/Settings/Workspace.jsx");
 /* harmony import */ var _components_Settings_Projects__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./components/Settings/Projects */ "./src/components/Settings/Projects.jsx");
 /* harmony import */ var _components_Elements_Project_ProjectDetails__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ./components/Elements/Project/ProjectDetails */ "./src/components/Elements/Project/ProjectDetails.jsx");
-/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _store__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! ./store */ "./src/store/index.js");
 /* harmony import */ var _components_Profile_ProfileEdit__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! ./components/Profile/ProfileEdit */ "./src/components/Profile/ProfileEdit.jsx");
 /* harmony import */ var _components_Login__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! ./components/Login */ "./src/components/Login/index.jsx");
@@ -5060,6 +5178,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _route_PremiumRoute__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! ./route/PremiumRoute */ "./src/route/PremiumRoute.js");
 /* harmony import */ var _components_Header__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! ./components/Header */ "./src/components/Header.jsx");
 /* harmony import */ var _components_Settings_SettingMain__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! ./components/Settings/SettingMain */ "./src/components/Settings/SettingMain.jsx");
+/* harmony import */ var _components_MyZen__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! ./components/MyZen */ "./src/components/MyZen/index.jsx");
+
 
 
 
@@ -5094,7 +5214,7 @@ __webpack_require__.r(__webpack_exports__);
 // import License from "./view/license/License"
 
 const AppRoutes = () => {
-  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_26__.useDispatch)();
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_27__.useDispatch)();
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     if (appLocalizer?.is_admin) {
       if (appLocalizer.userResponse.data.token) {
@@ -5133,49 +5253,52 @@ const AppRoutes = () => {
   const {
     signedIn,
     loggedInUser
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_26__.useSelector)(state => state.auth.session);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_27__.useSelector)(state => state.auth.session);
   const [premiumRoutes, setPremiumRoutes] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
   document.addEventListener('DOMContentLoaded', function () {
     if (window.lazytaskPremium) {
       setPremiumRoutes(...premiumRoutes, window.lazytaskPremium.premiumAppRoutes);
     }
   });
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_27__.HashRouter, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Routes, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.HashRouter, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Routes, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(ProtectedWithHeader, {
       signedIn: signedIn
     })
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/dashboard",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Dashboard__WEBPACK_IMPORTED_MODULE_1__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/my-task",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_MyTask__WEBPACK_IMPORTED_MODULE_13__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
+    path: "/my-zen",
+    element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_MyZen__WEBPACK_IMPORTED_MODULE_26__["default"], null)
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/profile",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Profile_Profile__WEBPACK_IMPORTED_MODULE_2__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/profile/:id",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Profile_ProfileEdit__WEBPACK_IMPORTED_MODULE_9__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/resetpassword",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Profile_ResetPassword__WEBPACK_IMPORTED_MODULE_3__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Settings_SettingMain__WEBPACK_IMPORTED_MODULE_25__["default"], null)
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/settings",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Settings_Settings__WEBPACK_IMPORTED_MODULE_4__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/users",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Settings_Users__WEBPACK_IMPORTED_MODULE_22__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/workspace",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Settings_Workspace__WEBPACK_IMPORTED_MODULE_5__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/project",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Settings_Projects__WEBPACK_IMPORTED_MODULE_6__["default"], null)
-  }), premiumRoutes.length > 0 && premiumRoutes.map((route, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), premiumRoutes.length > 0 && premiumRoutes.map((route, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     key: route.key + index,
     path: route.path,
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_route_PremiumRoute__WEBPACK_IMPORTED_MODULE_23__["default"], {
@@ -5183,33 +5306,33 @@ const AppRoutes = () => {
       component: route.component,
       ...route.meta
     })
-  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/project/task/list/:id",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Elements_Project_ProjectDetails__WEBPACK_IMPORTED_MODULE_7__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/project/task/board/:id",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Elements_Project_ProjectDetails__WEBPACK_IMPORTED_MODULE_7__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/project/task/calendar/:id",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Elements_Project_ProjectDetails__WEBPACK_IMPORTED_MODULE_7__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/notification-template",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Notification_Template__WEBPACK_IMPORTED_MODULE_14__["default"], null)
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_route_PublicRoute__WEBPACK_IMPORTED_MODULE_12__["default"], {
       authenticated: signedIn
     })
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Login__WEBPACK_IMPORTED_MODULE_10__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/lazy-login",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Login__WEBPACK_IMPORTED_MODULE_10__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/forget-password",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Profile_ForgetPassword__WEBPACK_IMPORTED_MODULE_20__["default"], null)
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_28__.Route, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_29__.Route, {
     path: "/change-password",
     element: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_components_Login_ChangePassword__WEBPACK_IMPORTED_MODULE_21__["default"], null)
   })))));
@@ -5240,12 +5363,12 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Container/Container.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Container/Container.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
 /* harmony import */ var _Header__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./Header */ "./src/components/Header.jsx");
-/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _store_auth_sessionSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../store/auth/sessionSlice */ "./src/store/auth/sessionSlice.js");
 /* harmony import */ var _Settings_store_myTaskSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./Settings/store/myTaskSlice */ "./src/components/Settings/store/myTaskSlice.js");
 /* harmony import */ var _Settings_store_quickTaskSlice__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ./Settings/store/quickTaskSlice */ "./src/components/Settings/store/quickTaskSlice.js");
@@ -5254,6 +5377,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _Dashboard_TaskList__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ./Dashboard/TaskList */ "./src/components/Dashboard/TaskList.jsx");
 /* harmony import */ var _Dashboard_DashboardBarChart__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! ./Dashboard/DashboardBarChart */ "./src/components/Dashboard/DashboardBarChart.jsx");
 /* harmony import */ var _Dashboard_ProjectSummery__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! ./Dashboard/ProjectSummery */ "./src/components/Dashboard/ProjectSummery.jsx");
+/* harmony import */ var _Dashboard_TaskListTabs__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! ./Dashboard/TaskListTabs */ "./src/components/Dashboard/TaskListTabs.jsx");
+
 
 
 
@@ -5268,13 +5393,13 @@ __webpack_require__.r(__webpack_exports__);
 
 
 const Dashboard = () => {
-  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_10__.useDispatch)();
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_11__.useDispatch)();
   const {
     token
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_10__.useSelector)(state => state.auth.session);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_11__.useSelector)(state => state.auth.session);
   const {
     loggedUserId
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_10__.useSelector)(state => state.auth.user);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_11__.useSelector)(state => state.auth.user);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     setTimeout(() => {
       if (loggedUserId) {
@@ -5289,45 +5414,32 @@ const Dashboard = () => {
   }, [dispatch, loggedUserId]);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "dashboard"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Container, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Container, {
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "settings-page-card bg-white rounded-xl p-5 pt-3 my-5 mb-0"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mt-2 mb-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Title, {
     order: 4
-  }, "Dashboard")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.ScrollArea, {
+  }, "Dashboard")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.ScrollArea, {
     scrollbars: "y",
-    className: "w-full h-[calc(100vh-180px)] px-2",
+    className: "w-full h-[calc(100vh-200px)] px-2",
     scrollbarSize: 4
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid, {
     className: "mb-5",
     columns: 12
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid.Col, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid.Col, {
     span: 3
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Dashboard_QuickTaskList__WEBPACK_IMPORTED_MODULE_6__["default"], null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid.Col, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Dashboard_QuickTaskList__WEBPACK_IMPORTED_MODULE_6__["default"], null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid.Col, {
     span: 3
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Dashboard_ProjectSummery__WEBPACK_IMPORTED_MODULE_9__["default"], null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid.Col, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Dashboard_ProjectSummery__WEBPACK_IMPORTED_MODULE_9__["default"], null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid.Col, {
     span: 6
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Dashboard_DashboardBarChart__WEBPACK_IMPORTED_MODULE_8__["default"], null))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Dashboard_DashboardBarChart__WEBPACK_IMPORTED_MODULE_8__["default"], null))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid, {
     columns: 12
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid.Col, {
-    span: 4
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Dashboard_TaskList__WEBPACK_IMPORTED_MODULE_7__["default"], {
-    slug: "today",
-    header: "Today"
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid.Col, {
-    span: 4
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Dashboard_TaskList__WEBPACK_IMPORTED_MODULE_7__["default"], {
-    slug: "nextSevenDays",
-    header: "Next 7 Days"
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid.Col, {
-    span: 4
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Dashboard_TaskList__WEBPACK_IMPORTED_MODULE_7__["default"], {
-    slug: "upcoming",
-    header: "Upcoming"
-  }))))))));
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid.Col, {
+    span: 6
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Dashboard_TaskListTabs__WEBPACK_IMPORTED_MODULE_10__["default"], null))))))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (Dashboard);
 
@@ -5365,20 +5477,19 @@ const DashboardBarChart = ({
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_1__.useSelector)(state => state.settings.myTask);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Card, {
     withBorder: true,
-    shadow: "sm",
-    radius: "md"
+    radius: "sm"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Card.Section, {
     withBorder: true,
     inheritPadding: true,
     py: "xs",
-    className: "bg-[#EBF1F4]"
+    className: "bg-[#FDFDFD]"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Group, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Title, {
     order: 6
   }, "Project Summery Chart"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Card.Section, {
     px: "xs",
     pt: "xs"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_charts__WEBPACK_IMPORTED_MODULE_5__.BarChart, {
-    h: 250,
+    h: 252,
     data: userProjects,
     dataKey: "name",
     type: "stacked",
@@ -5387,14 +5498,15 @@ const DashboardBarChart = ({
       verticalAlign: 'bottom',
       height: 50
     },
+    fillOpacity: 1,
     series: [
     // { name: 'TOTAL', color: 'violet.6' },
     {
       name: 'ACTIVE',
-      color: 'yellow.6'
+      color: '#ED7D31'
     }, {
       name: 'COMPLETED',
-      color: 'green.6'
+      color: '#39758D'
     }]
   })));
 };
@@ -5448,22 +5560,26 @@ const ProjectSummery = () => {
   }, element.name))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Td, null, element.ACTIVE), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Td, null, element.COMPLETED), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Td, null, parseInt(element.ACTIVE ? element.ACTIVE : 0) + parseInt(element.COMPLETED ? element.COMPLETED : 0))));
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Card, {
     withBorder: true,
-    shadow: "sm",
-    radius: "md"
+    radius: "sm"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Card.Section, {
     withBorder: true,
     inheritPadding: true,
     py: "xs",
-    className: "bg-[#EBF1F4]"
+    className: "bg-[#FDFDFD] mb-2"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Group, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Title, {
     order: 6
   }, "Project Summery"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Card.Section, {
     px: "xs",
     pb: "xs"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.ScrollArea, {
-    className: "relative h-[250px] pb-[2px]",
+    className: "relative h-[245px] pb-[2px]",
     scrollbarSize: 4
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Thead, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Tr, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Th, null, "Name"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Th, null, "Active"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Th, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table, {
+    striped: true,
+    withRowBorders: false
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Thead, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Tr, {
+    className: `!bg-[#39758D] text-white`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Th, null, "Name"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Th, null, "Active"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Th, {
     title: "Completed"
   }, "Comp."), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Th, null, "Total"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Tbody, null, rows)))));
 };
@@ -5484,7 +5600,6 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/MantineProvider/MantineThemeProvider/MantineThemeProvider.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Card/Card.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
@@ -5501,6 +5616,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
 /* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
 /* harmony import */ var _QuickTask_AddTaskFromQuickTaskDrawer__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../QuickTask/AddTaskFromQuickTaskDrawer */ "./src/components/QuickTask/AddTaskFromQuickTaskDrawer.jsx");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -5541,11 +5658,22 @@ const QuickTaskList = () => {
         name: newQuickTask,
         user_id: loggedUserId
       };
-      dispatch((0,_Settings_store_quickTaskSlice__WEBPACK_IMPORTED_MODULE_1__.createQuickTask)(submitData));
+      dispatch((0,_Settings_store_quickTaskSlice__WEBPACK_IMPORTED_MODULE_1__.createQuickTask)(submitData)).then(res => {
+        if (res.payload && res.payload.status && res.payload.status === 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_5__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Quick Task',
+            message: res.payload && res.payload.message && res.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'green'
+          });
+        }
+      });
       setNewQuickTask('');
     }
   };
-  const theme = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_5__.useMantineTheme)();
   const [selectedTask, setSelectedTask] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
   const [taskEditDrawerOpen, {
     open: openTaskEditDrawer,
@@ -5557,22 +5685,22 @@ const QuickTaskList = () => {
   };
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Card, {
     withBorder: true,
-    shadow: "sm",
-    radius: "md"
+    radius: "sm"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Card.Section, {
     withBorder: true,
     inheritPadding: true,
     py: "xs",
-    className: "bg-[#EBF1F4]"
+    className: "bg-[#FDFDFD]"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Group, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Title, {
     order: 6
   }, "Quick Task"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Card.Section, {
-    mt: "xs",
-    px: "xs"
+    withBorder: true,
+    inheritPadding: true,
+    className: "bg-[#FDFDFD] py-1.5 mb-1"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.TextInput, {
-    radius: "xl",
+    radius: "sm",
     size: "sm",
-    placeholder: "Enter task title",
+    placeholder: "Add task",
     onKeyDown: handleKeyDown,
     onChange: handleInputChange,
     value: newQuickTask,
@@ -5594,12 +5722,14 @@ const QuickTaskList = () => {
     px: "xs",
     pb: "xs"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.ScrollArea, {
-    className: "relative h-[202px] pb-[3px]",
+    className: "relative h-[200px] pb-[35px]",
     scrollbarSize: 4
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: ""
-  }, tasks && tasks.length > 0 && tasks.map((task, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "border-b"
+  }, tasks && tasks.length > 0 && tasks.map((task, index) =>
+  //odd and even calculated index value
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: `${index % 2 === 0 ? 'bg-[#f8f9fa]' : ''}`
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     onDoubleClickCapture: () => {
       handleEditTaskDrawerOpen(task);
@@ -5607,8 +5737,8 @@ const QuickTaskList = () => {
     className: "content px-2 py-2 cursor-pointer"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Text, {
     fz: "sm"
-  }, task.name))))), tasks && tasks.length > 0 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "absolute bottom-2 right-0 bg-white"
+  }, task.name))))), tasks && tasks.length > 4 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "absolute bottom-0 right-1 bg-white"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_15__.Link, {
     to: `/my-task`
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Button, {
@@ -5658,6 +5788,7 @@ const TaskList = ({
   header
 }) => {
   const {
+    userTaskOrdered,
     userTaskColumns
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useSelector)(state => state.settings.myTask);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_TaskListContent__WEBPACK_IMPORTED_MODULE_3__["default"], {
@@ -5682,16 +5813,13 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Card/Card.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var _Settings_store_quickTaskSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../Settings/store/quickTaskSlice */ "./src/components/Settings/store/quickTaskSlice.js");
 /* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! dayjs */ "./node_modules/dayjs/dayjs.min.js");
 /* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__webpack_require__.n(dayjs__WEBPACK_IMPORTED_MODULE_2__);
-/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
+/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
 
 
 
@@ -5704,41 +5832,99 @@ const TaskListContent = ({
   tasks,
   header
 }) => {
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Card, {
-    withBorder: true,
-    shadow: "sm",
-    radius: "md"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Card.Section, {
-    withBorder: true,
-    inheritPadding: true,
-    py: "xs",
-    className: "bg-[#EBF1F4]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Group, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Title, {
-    order: 6
-  }, header))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Card.Section, {
-    px: "xs"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.ScrollArea, {
-    className: "relative h-[250px] pb-[2px]",
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.ScrollArea, {
+    className: "relative h-[250px] pb-[30px]",
     scrollbarSize: 4
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: ""
   }, tasks && tasks.length > 0 && tasks.map((task, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "border-b px-2 py-2"
+    className: `${index % 2 === 0 ? 'bg-[#f8f9fa]' : ''}`
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "content"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
+    className: "content px-2 py-2"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Text, {
     fz: "sm"
-  }, task.name))))), tasks && tasks.length > 0 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "absolute bottom-2 right-0 bg-white"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_8__.Link, {
+  }, task.name))))), tasks && tasks.length > 5 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "absolute bottom-0 right-1 bg-white"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_5__.Link, {
     to: `/my-task`
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Button, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Button, {
     color: "#ED7D31",
     radius: "xl",
     size: "compact-xs"
-  }, "More..."))))));
+  }, "More..."))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskListContent);
+
+/***/ }),
+
+/***/ "./src/components/Dashboard/TaskListTabs.jsx":
+/*!***************************************************!*\
+  !*** ./src/components/Dashboard/TaskListTabs.jsx ***!
+  \***************************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Card/Card.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tabs/Tabs.mjs");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var _MyTask_Partial_TaskHeader__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../MyTask/Partial/TaskHeader */ "./src/components/MyTask/Partial/TaskHeader.jsx");
+/* harmony import */ var _MyTask_MyTaskListContent__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../MyTask/MyTaskListContent */ "./src/components/MyTask/MyTaskListContent.jsx");
+/* harmony import */ var _TaskList__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./TaskList */ "./src/components/Dashboard/TaskList.jsx");
+
+
+
+
+
+
+
+
+const TaskListTabs = () => {
+  const {
+    userTaskOrdered,
+    userTaskListSections,
+    userTaskColumns
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useSelector)(state => state.settings.myTask);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Card, {
+    withBorder: true,
+    radius: "sm"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Card.Section, {
+    withBorder: true,
+    inheritPadding: true,
+    py: "xs",
+    className: "bg-[#FDFDFD] mb-2"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Group, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Title, {
+    order: 6
+  }, "My Tasks"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Card.Section, {
+    px: "xs",
+    pb: "xs"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tabs, {
+    color: "#39758D",
+    variant: "pills",
+    radius: "sm",
+    defaultValue: "today"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tabs.List, {
+    className: "mb-3"
+  }, userTaskOrdered && userTaskOrdered.length > 0 && userTaskOrdered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tabs.Tab, {
+    value: taskListSection,
+    className: "font-bold"
+  }, userTaskListSections && userTaskListSections[taskListSection] && userTaskListSections[taskListSection]))), userTaskOrdered && userTaskOrdered.length > 0 ? userTaskOrdered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tabs.Panel, {
+    value: taskListSection
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_TaskList__WEBPACK_IMPORTED_MODULE_3__["default"], {
+    slug: taskListSection,
+    header: userTaskListSections && userTaskListSections[taskListSection] && userTaskListSections[taskListSection]
+  }))) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "text-center"
+  }, "No Task Found"))));
+};
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskListTabs);
 
 /***/ }),
 
@@ -6047,22 +6233,24 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Select/Select.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Select/Select.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
 /* harmony import */ var _Button_ProjectCreateButton__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../Button/ProjectCreateButton */ "./src/components/Elements/Button/ProjectCreateButton.jsx");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconSearch.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconSearch.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
 /* harmony import */ var _Button_ProjectCreateButtonForWorkspace__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../Button/ProjectCreateButtonForWorkspace */ "./src/components/Elements/Button/ProjectCreateButtonForWorkspace.jsx");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../../Settings/store/projectSlice */ "./src/components/Settings/store/projectSlice.js");
 /* harmony import */ var _Settings_store_companySlice__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../../Settings/store/companySlice */ "./src/components/Settings/store/companySlice.js");
 /* harmony import */ var _ui_UserAvatarSingle__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../../../ui/UserAvatarSingle */ "./src/components/ui/UserAvatarSingle.jsx");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -6140,7 +6328,30 @@ const CreateProjectModal = ({
       created_by: loggedUserId
     };
     if (newProject.name !== '') {
-      dispatch((0,_Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_3__.createProject)(newProject));
+      dispatch((0,_Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_3__.createProject)(newProject)).then(response => {
+        if (response.payload && response.payload.status && response.payload.status === 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Project',
+            message: response.payload && response.payload.message && response.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'green'
+          });
+        }
+        if (response.payload && response.payload.status && response.payload.status !== 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Project',
+            message: response.payload && response.payload.message && response.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'red'
+          });
+        }
+      });
     }
     setProjectName('');
     setCurrentMemberData([]);
@@ -6175,23 +6386,23 @@ const CreateProjectModal = ({
     onClick: handleProjectAdd
   }) : buttonStyle === 'b' ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Button_ProjectCreateButtonForWorkspace__WEBPACK_IMPORTED_MODULE_2__["default"], {
     onClick: handleProjectAdd
-  }) : null, projectCreateModalOpen && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.Root, {
+  }) : null, projectCreateModalOpen && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Root, {
     opened: projectCreateModalOpen,
     onClose: closeProjectCreateModal,
     centered: true,
     size: 475
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.Content, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Content, {
     radius: 15
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.Header, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Header, {
     px: 20,
     py: 10
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Title, {
     order: 5
-  }, "Create Project"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, "Create Project"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "create-form-box"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, companyName ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
+  }, companyName ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
     style: {
       border: '1px solid #A4C0CB',
       padding: '7px 15px',
@@ -6202,7 +6413,7 @@ const CreateProjectModal = ({
     size: "lg",
     fw: 700,
     c: "#202020"
-  }, companyName) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Select, {
+  }, companyName) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Select, {
     size: "md",
     placeholder: "Select Workspace",
     data: companies && companies.length > 0 && companies.map(company => ({
@@ -6219,7 +6430,7 @@ const CreateProjectModal = ({
     }
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.TextInput, {
     placeholder: "Enter your project name",
     radius: "md",
     size: "md",
@@ -6239,19 +6450,19 @@ const CreateProjectModal = ({
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_UserAvatarSingle__WEBPACK_IMPORTED_MODULE_5__["default"], {
     user: member,
     size: 22
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
     size: "sm",
     fw: 100,
     c: "#202020"
   }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("button", {
     onClick: () => handleDeleteCurrentMember(member.id)
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__["default"], {
     size: 16,
     color: "#202020"
   })))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "relative mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.TextInput, {
-    leftSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.TextInput, {
+    leftSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__["default"], {
       size: 16
     }),
     placeholder: "Quick search member",
@@ -6271,13 +6482,13 @@ const CreateProjectModal = ({
     }
   })), showMembersList && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "members-lists mt-3 border boder-solid border-[#6191A4] rounded-md p-3 pb-0"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
   }, filteredMembers && filteredMembers.length > 0 && filteredMembers.length, " people available"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "members-lists mt-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.ScrollArea, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ScrollArea, {
     h: 250,
     scrollbarSize: 4,
     scrollHideDelay: 500
@@ -6289,15 +6500,15 @@ const CreateProjectModal = ({
     size: 32
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mls-ne ml-2 w-full"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
-  }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
+  }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
     size: "sm",
     fw: 100,
     c: "#202020"
-  }, member.email)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Button, {
+  }, member.email)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Button, {
     radius: "sm",
     height: 24,
     style: {
@@ -6331,15 +6542,16 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
-/* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
+/* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
 /* harmony import */ var _Button_ProjectDeleteButton__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../Button/ProjectDeleteButton */ "./src/components/Elements/Button/ProjectDeleteButton.jsx");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconAlertTriangleFilled.mjs");
-/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../../Settings/store/projectSlice */ "./src/components/Settings/store/projectSlice.js");
+/* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
+/* harmony import */ var _Settings_store_companySlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../../Settings/store/companySlice */ "./src/components/Settings/store/companySlice.js");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
 
 
 
@@ -6347,74 +6559,103 @@ __webpack_require__.r(__webpack_exports__);
 
 
 
-const DeleteProjectModal = ({
-  id
-}) => {
-  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_3__.useDispatch)();
+
+
+
+
+const DeleteProjectModal = props => {
+  const {
+    id,
+    members,
+    total_tasks
+  } = props;
+  console.log(total_tasks);
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useDispatch)();
   const {
     loggedUserId
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_3__.useSelector)(state => state.auth.user);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useSelector)(state => state.auth.user);
   const [projectDeleteModalOpen, {
     open: deleteProjectModal,
     close: closeProjectDeleteModal
-  }] = (0,_mantine_hooks__WEBPACK_IMPORTED_MODULE_4__.useDisclosure)(false);
-  const deleteHandler = () => {
-    if (id === undefined || id === null || id === '') {
-      return;
-    }
-    dispatch((0,_Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_2__.deleteProject)({
-      id: id,
-      data: {
-        'deleted_by': loggedUserId
+  }] = (0,_mantine_hooks__WEBPACK_IMPORTED_MODULE_5__.useDisclosure)(false);
+
+  /*const deleteHandler = () => {
+      if(id === undefined || id === null || id === ''){
+          return;
       }
-    }));
-  };
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Button_ProjectDeleteButton__WEBPACK_IMPORTED_MODULE_1__["default"], {
-    onClick: deleteProjectModal
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Modal, {
-    radius: "15px",
-    opened: projectDeleteModalOpen,
+      dispatch(deleteProject({id:id, data: {'deleted_by': loggedUserId}}));
+  }*/
+  const deleteHandler = () => _mantine_modals__WEBPACK_IMPORTED_MODULE_6__.modals.openConfirmModal({
+    title: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Title, {
+      order: 5
+    }, "Are you sure this project delete?"),
+    size: 'sm',
+    radius: 'md',
+    withCloseButton: false,
     centered: true,
-    size: 475,
-    padding: "0px",
-    withCloseButton: false
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "dm-head flex justify-center items-center gap-2 p-6 border-b border-gray-300"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_6__["default"], {
-    style: {
-      color: 'orange'
-    }
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
-    ta: "center",
-    fz: "xl",
-    fw: 500,
-    c: "#202020"
-  }, "Delete Project")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "delete-c-box p-10"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
-    ta: "center",
-    fz: "lg",
-    fw: 500,
-    c: "#202020",
-    mb: "xl"
-  }, "You are going to delete \u201CProject 1\u201D. Are you sure?"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Group, {
-    mt: "xl",
-    grow: true,
-    wrap: "nowrap",
-    ta: "center"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Button, {
-    onClick: closeProjectDeleteModal,
-    style: {
-      '--button-bg': '#EBF1F4',
-      color: '#4D4D4D'
-    }
-  }, "No, Keep It."), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Button, {
-    onClick: () => {
-      deleteHandler();
-      closeProjectDeleteModal();
+    children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Text, {
+      size: "sm"
+    }, "This action is so important that you are required to confirm it with a modal. Please click one of these buttons to proceed."),
+    labels: {
+      confirm: 'Confirm',
+      cancel: 'Cancel'
     },
-    color: "orange"
-  }, "Yes, Delete !")))));
+    onCancel: () => console.log('Cancel'),
+    onConfirm: () => {
+      if (id && id !== 'undefined') {
+        if (members && members.length > 0 || total_tasks && total_tasks > 0) {
+          _mantine_modals__WEBPACK_IMPORTED_MODULE_6__.modals.open({
+            withCloseButton: false,
+            centered: true,
+            children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, members && members.length > 0 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Text, {
+              size: "sm"
+            }, "This project has ", members.length, " members. Please delete all members before deleting this project."), total_tasks > 0 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Text, {
+              size: "sm"
+            }, "This project has ", total_tasks, " tasks. Please delete all tasks before deleting this project."), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+              className: "!grid w-full !justify-items-center"
+            }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Button, {
+              justify: "center",
+              onClick: () => _mantine_modals__WEBPACK_IMPORTED_MODULE_6__.modals.closeAll(),
+              mt: "md"
+            }, "Ok")))
+          });
+        } else {
+          dispatch((0,_Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_2__.deleteProject)({
+            id: id,
+            data: {
+              'deleted_by': loggedUserId
+            }
+          })).then(response => {
+            if (response && response.payload && response.payload.status && response.payload.status === 200) {
+              (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_10__.showNotification)({
+                id: 'load-data',
+                loading: true,
+                title: 'Project',
+                message: response.payload && response.payload.message && response.payload.message,
+                autoClose: 2000,
+                disallowClose: true,
+                color: 'green'
+              });
+              dispatch((0,_Settings_store_companySlice__WEBPACK_IMPORTED_MODULE_3__.removeSuccessMessage)());
+            } else {
+              (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_10__.showNotification)({
+                id: 'load-data',
+                loading: true,
+                title: 'Project',
+                message: response.payload && response.payload.message && response.payload.message,
+                autoClose: 2000,
+                disallowClose: true,
+                color: 'red'
+              });
+            }
+          });
+        }
+      }
+    }
+  });
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Button_ProjectDeleteButton__WEBPACK_IMPORTED_MODULE_1__["default"], {
+    onClick: deleteHandler
+  }));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (DeleteProjectModal);
 
@@ -6433,22 +6674,24 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
 /* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconSearch.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconSearch.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
 /* harmony import */ var _Button_ProjectEditButton__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../Button/ProjectEditButton */ "./src/components/Elements/Button/ProjectEditButton.jsx");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _ui_InlineEditForm__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../../ui/InlineEditForm */ "./src/components/ui/InlineEditForm.jsx");
 /* harmony import */ var _Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../../Settings/store/projectSlice */ "./src/components/Settings/store/projectSlice.js");
 /* harmony import */ var _ui_UserAvatarSingle__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../../ui/UserAvatarSingle */ "./src/components/ui/UserAvatarSingle.jsx");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
-/* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
+/* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -6492,7 +6735,30 @@ const EditProjectModal = ({
         [fieldName]: input,
         'updated_by': loggedUserId
       }
-    }));
+    })).then(response => {
+      if (response.payload && response.payload.status && response.payload.status === 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'Project',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'green'
+        });
+      }
+      if (response.payload && response.payload.status && response.payload.status !== 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'Project',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'red'
+        });
+      }
+    });
     setEditedName(input);
   };
   const [currentMemberData, setCurrentMemberData] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(projectData.members);
@@ -6503,16 +6769,16 @@ const EditProjectModal = ({
     const isMemberAssignedToTask = tasks && tasks.allTasks && Object.values(tasks.allTasks).length > 0 && Object.values(tasks.allTasks).some(task => task.assignedTo_id === id.toString());
     const isMemberAssignedToSubTask = tasks && tasks.allTasks && Object.values(tasks.allTasks).length > 0 && Object.values(tasks.allTasks).some(task => task.children && task.children.length > 0 && task.children.some(subtask => subtask.assignedTo_id === id.toString()));
     if (isMemberAssignedToTask || isMemberAssignedToSubTask) {
-      _mantine_modals__WEBPACK_IMPORTED_MODULE_8__.modals.open({
+      _mantine_modals__WEBPACK_IMPORTED_MODULE_9__.modals.open({
         withCloseButton: false,
         centered: true,
-        children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+        children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
           size: "sm"
         }, "This member is assigned to a task. Please reassign the task before removing the member."), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
           className: "!grid w-full !justify-items-center"
-        }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Button, {
+        }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Button, {
           justify: "center",
-          onClick: () => _mantine_modals__WEBPACK_IMPORTED_MODULE_8__.modals.closeAll(),
+          onClick: () => _mantine_modals__WEBPACK_IMPORTED_MODULE_9__.modals.closeAll(),
           mt: "md"
         }, "Ok")))
       });
@@ -6529,7 +6795,30 @@ const EditProjectModal = ({
           'deleted_member_id': id,
           'updated_by': loggedUserId
         }
-      }));
+      })).then(response => {
+        if (response.payload && response.payload.status && response.payload.status === 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Project',
+            message: 'Member removed successfully',
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'green'
+          });
+        }
+        if (response.payload && response.payload.status && response.payload.status !== 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Project',
+            message: response.payload && response.payload.message && response.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'red'
+          });
+        }
+      });
     }
   };
   const [searchValue, setSearchValue] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)('');
@@ -6565,7 +6854,30 @@ const EditProjectModal = ({
           'members': updatedMembers,
           'updated_by': loggedUserId
         }
-      }));
+      })).then(response => {
+        if (response.payload && response.payload.status && response.payload.status === 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Project',
+            message: 'Member added successfully',
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'green'
+          });
+        }
+        if (response.payload && response.payload.status && response.payload.status !== 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Project',
+            message: response.payload && response.payload.message && response.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'red'
+          });
+        }
+      });
     }
   };
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
@@ -6580,23 +6892,23 @@ const EditProjectModal = ({
   }, [projectEditModalOpen]);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Button_ProjectEditButton__WEBPACK_IMPORTED_MODULE_1__["default"], {
     onClick: openProjectEditModal
-  }), projectEditModalOpen && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.Root, {
+  }), projectEditModalOpen && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.Root, {
     opened: projectEditModalOpen,
     onClose: closeProjectEditModal,
     centered: true,
     size: 475
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.Content, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.Content, {
     radius: 15
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.Header, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.Header, {
     px: 20,
     py: 10
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Title, {
     order: 5
-  }, "Edit Project"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, "Edit Project"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "edit-form-box"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, projectData.parent && projectData.parent.name && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, projectData.parent && projectData.parent.name && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     style: {
       border: '1px solid #A4C0CB',
       padding: '7px 15px',
@@ -6624,19 +6936,19 @@ const EditProjectModal = ({
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_UserAvatarSingle__WEBPACK_IMPORTED_MODULE_4__["default"], {
     user: member,
     size: 22
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 100,
     c: "#202020"
   }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("button", {
     onClick: () => handleDeleteCurrentMember(member.id)
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__["default"], {
     size: 16,
     color: "#202020"
   })))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "relative mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.TextInput, {
-    leftSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.TextInput, {
+    leftSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__["default"], {
       size: 16
     }),
     placeholder: "Quick search member",
@@ -6656,13 +6968,13 @@ const EditProjectModal = ({
     }
   })), showMembersList && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "members-lists mt-3 border boder-solid border-[#6191A4] rounded-md p-3 pb-0"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
   }, filteredMembers && filteredMembers.length > 0 && filteredMembers.length, " people available"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "members-lists mt-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ScrollArea, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.ScrollArea, {
     h: 250,
     scrollbarSize: 4,
     scrollHideDelay: 500
@@ -6674,15 +6986,15 @@ const EditProjectModal = ({
     size: 32
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mls-ne ml-2 w-full"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
-  }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 100,
     c: "#202020"
-  }, member.email)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Button, {
+  }, member.email)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Button, {
     radius: "sm",
     height: 24,
     style: {
@@ -6716,16 +7028,17 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
 /* harmony import */ var _Button_WorkspaceCreateButton__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../Button/WorkspaceCreateButton */ "./src/components/Elements/Button/WorkspaceCreateButton.jsx");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconSearch.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconSearch.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _reducers_workspaceSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../../../reducers/workspaceSlice */ "./src/reducers/workspaceSlice.js");
 /* harmony import */ var _store_auth_userSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../../../store/auth/userSlice */ "./src/store/auth/userSlice.js");
@@ -6809,7 +7122,30 @@ const CreateWorkspaceModal = () => {
       created_by: loggedUserId
     };
     if (newWorkspace.name !== '') {
-      dispatch((0,_Settings_store_companySlice__WEBPACK_IMPORTED_MODULE_4__.createCompany)(newWorkspace));
+      dispatch((0,_Settings_store_companySlice__WEBPACK_IMPORTED_MODULE_4__.createCompany)(newWorkspace)).then(response => {
+        if (response.payload && response.payload.status && response.payload.status === 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Workspace',
+            message: response.payload && response.payload.message && response.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'green'
+          });
+        }
+        if (response.payload && response.payload.status && response.payload.status !== 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Workspace',
+            message: response.payload && response.payload.message && response.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'red'
+          });
+        }
+      });
     }
     setWorkspaceName('');
     setCurrentMemberData([]);
@@ -6822,23 +7158,23 @@ const CreateWorkspaceModal = () => {
   };
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Button_WorkspaceCreateButton__WEBPACK_IMPORTED_MODULE_1__["default"], {
     onClick: handleWorkspaceAdd
-  }), workspaceCreateModalOpen && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.Root, {
+  }), workspaceCreateModalOpen && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Root, {
     opened: workspaceCreateModalOpen,
     onClose: closeWorkspaceCreateModal,
     centered: true,
     size: 475
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.Content, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Content, {
     radius: 15
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.Header, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Header, {
     px: 20,
     py: 10
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Title, {
     order: 5
-  }, "Create Workspace"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, "Create Workspace"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "create-form-box"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.TextInput, {
     placeholder: "Enter your Workspace name",
     radius: "md",
     size: "md",
@@ -6858,19 +7194,19 @@ const CreateWorkspaceModal = () => {
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_UserAvatarSingle__WEBPACK_IMPORTED_MODULE_5__["default"], {
     user: member,
     size: 22
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Text, {
     size: "sm",
     fw: 100,
     c: "#202020"
   }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("button", {
     onClick: () => handleDeleteCurrentMember(member.id)
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__["default"], {
     size: 16,
     color: "#202020"
   })))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "relative mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.TextInput, {
-    leftSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.TextInput, {
+    leftSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__["default"], {
       size: 16
     }),
     placeholder: "Search members...",
@@ -6890,13 +7226,13 @@ const CreateWorkspaceModal = () => {
     }
   })), showMembersList && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "members-lists mt-3 border boder-solid border-[#6191A4] rounded-md p-3 pb-0"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
   }, filteredMembers && filteredMembers.length, " people available"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "members-lists mt-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.ScrollArea, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.ScrollArea, {
     h: 250,
     scrollbarSize: 4,
     scrollHideDelay: 500
@@ -6908,15 +7244,15 @@ const CreateWorkspaceModal = () => {
     size: 32
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mls-ne ml-2 w-full"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
-  }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+  }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Text, {
     size: "sm",
     fw: 100,
     c: "#202020"
-  }, member.email)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Button, {
+  }, member.email)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Button, {
     radius: "sm",
     height: 24,
     style: {
@@ -7063,22 +7399,24 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
 /* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
 /* harmony import */ var _Button_WorkspaceEditButton__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../Button/WorkspaceEditButton */ "./src/components/Elements/Button/WorkspaceEditButton.jsx");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconSearch.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconSearch.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _store_auth_userSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../../../store/auth/userSlice */ "./src/store/auth/userSlice.js");
 /* harmony import */ var _ui_InlineEditForm__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../../ui/InlineEditForm */ "./src/components/ui/InlineEditForm.jsx");
 /* harmony import */ var _Settings_store_companySlice__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../../Settings/store/companySlice */ "./src/components/Settings/store/companySlice.js");
 /* harmony import */ var _ui_UserAvatarSingle__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../../../ui/UserAvatarSingle */ "./src/components/ui/UserAvatarSingle.jsx");
-/* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
+/* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -7133,28 +7471,49 @@ const EditWorkspaceModal = ({
         [fieldName]: input,
         'updated_by': loggedUserId
       }
-    }));
+    })).then(response => {
+      if (response.payload && response.payload.status && response.payload.status === 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'Workspace',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'green'
+        });
+      }
+      if (response.payload && response.payload.status && response.payload.status !== 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'Workspace',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'red'
+        });
+      }
+    });
     setEditedName(input);
     setIsLoading(false);
   };
   const [currentMemberData, setCurrentMemberData] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(workspaceData.members);
   const handleDeleteCurrentMember = id => {
     setIsLoading(true);
-    console.log(`Member with ID ${id} deleted`);
-    console.log(company.projects);
     const isExistingMemberCheck = company.projects.filter(project => project.members.some(member => member.id === id.toString()));
     if (isExistingMemberCheck.length > 0) {
       setIsLoading(false);
-      _mantine_modals__WEBPACK_IMPORTED_MODULE_8__.modals.open({
+      _mantine_modals__WEBPACK_IMPORTED_MODULE_9__.modals.open({
         withCloseButton: false,
         centered: true,
-        children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, isExistingMemberCheck && isExistingMemberCheck.length > 0 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+        children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, isExistingMemberCheck && isExistingMemberCheck.length > 0 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
           size: "sm"
         }, "This member has assigned ", isExistingMemberCheck.length, " projects. Please delete all assigned member before deleting this workspace."), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
           className: "!grid w-full !justify-items-center"
-        }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Button, {
+        }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Button, {
           justify: "center",
-          onClick: () => _mantine_modals__WEBPACK_IMPORTED_MODULE_8__.modals.closeAll(),
+          onClick: () => _mantine_modals__WEBPACK_IMPORTED_MODULE_9__.modals.closeAll(),
           mt: "md"
         }, "Ok")))
       });
@@ -7171,7 +7530,30 @@ const EditWorkspaceModal = ({
           'members': updatedCurrentMembers,
           'updated_by': loggedUserId
         }
-      }));
+      })).then(response => {
+        if (response.payload && response.payload.status && response.payload.status === 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Workspace',
+            message: 'Member access has been revoked successfully',
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'green'
+          });
+        }
+        if (response.payload && response.payload.status && response.payload.status !== 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Workspace',
+            message: response.payload && response.payload.message && response.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'red'
+          });
+        }
+      });
       setIsLoading(false);
     }
   };
@@ -7209,7 +7591,30 @@ const EditWorkspaceModal = ({
           'members': updatedMembers,
           'updated_by': loggedUserId
         }
-      }));
+      })).then(response => {
+        if (response.payload && response.payload.status && response.payload.status === 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Workspace',
+            message: 'Member assigned successfully',
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'green'
+          });
+        }
+        if (response.payload && response.payload.status && response.payload.status !== 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_8__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Workspace',
+            message: response.payload && response.payload.message && response.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'red'
+          });
+        }
+      });
       setIsLoading(false);
     }
   };
@@ -7228,19 +7633,19 @@ const EditWorkspaceModal = ({
   }, [isLoading]);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Button_WorkspaceEditButton__WEBPACK_IMPORTED_MODULE_1__["default"], {
     onClick: openWorkspaceEditModal
-  }), workspaceEditModalOpen && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.Root, {
+  }), workspaceEditModalOpen && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.Root, {
     opened: workspaceEditModalOpen,
     onClose: closeWorkspaceEditModal,
     centered: true,
     size: 475
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.Content, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.Content, {
     radius: 15
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.Header, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.Header, {
     px: 20,
     py: 10
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Title, {
     order: 5
-  }, "Edit Workspace"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, "Edit Workspace"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "edit-form-box"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
@@ -7260,19 +7665,19 @@ const EditWorkspaceModal = ({
     user: member,
     size: 22,
     stroke: 1.25
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 100,
     c: "#202020"
   }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("button", {
     onClick: () => handleDeleteCurrentMember(member.id)
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__["default"], {
     size: 16,
     color: "#202020"
   })))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "relative mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.TextInput, {
-    leftSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.TextInput, {
+    leftSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__["default"], {
       size: 16
     }),
     placeholder: "Quick search member",
@@ -7292,13 +7697,13 @@ const EditWorkspaceModal = ({
     }
   })), showMembersList && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "members-lists mt-3 border boder-solid border-[#6191A4] rounded-md p-3 pb-0"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
   }, filteredMembers && filteredMembers.length, " people available"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "members-lists mt-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ScrollArea, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.ScrollArea, {
     h: 250,
     scrollbarSize: 4,
     scrollHideDelay: 500
@@ -7311,15 +7716,15 @@ const EditWorkspaceModal = ({
     stroke: 1.25
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mls-ne ml-2 w-full"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
-  }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 100,
     c: "#202020"
-  }, member.email)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Button, {
+  }, member.email)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Button, {
     radius: "sm",
     height: 24,
     style: {
@@ -7533,7 +7938,7 @@ __webpack_require__.r(__webpack_exports__);
 
 const ProjectDetailsBoard = () => {
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.ScrollArea, {
-    className: "h-[calc(100vh-240px)] pb-[2px]",
+    className: "h-[calc(100vh-270px)] pb-[2px]",
     scrollbarSize: 8
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "relative w-full pt-2"
@@ -7565,7 +7970,7 @@ __webpack_require__.r(__webpack_exports__);
 
 const ProjectDetailsCalendar = () => {
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.ScrollArea, {
-    className: "h-[calc(100vh-240px)] pb-[2px]",
+    className: "h-[calc(100vh-270px)] pb-[2px]",
     scrollbarSize: 5,
     offsetScrollbars: true
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Flex, {
@@ -7638,7 +8043,7 @@ const ProjectDetailsList = props => {
     fz: "md",
     fw: 700
   }, "Tags")))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.ScrollArea, {
-    className: "h-[calc(100vh-270px)] pb-[1px]",
+    className: "h-[calc(100vh-300px)] pb-[1px]",
     scrollbarSize: 4
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "relative w-full pt-4"
@@ -7669,7 +8074,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/List/List.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
 /* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router/dist/index.js");
@@ -7677,7 +8082,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconChevronRight.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCaretDownFilled.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCheck.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconFilter.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconFilter.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPlus.mjs");
 /* harmony import */ var _ui_UsersAvatarGroup__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../ui/UsersAvatarGroup */ "./src/components/ui/UsersAvatarGroup.jsx");
 /* harmony import */ var _Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../Settings/store/projectSlice */ "./src/components/Settings/store/projectSlice.js");
@@ -7845,7 +8250,16 @@ const ProjectDetailsNav = () => {
     to: "",
     className: "nav-link",
     activeClassName: "active-link"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Tooltip, {
+    className: "!py-0 !text-[10px] !z-30",
+    label: "Coming soon",
+    opened: true,
+    position: "top",
+    offset: -8,
+    color: "#ED7D31",
+    size: "xs"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Button, {
+    className: "!text-sm",
     size: "sm",
     color: "#EBF1F4",
     styles: {
@@ -7854,11 +8268,20 @@ const ProjectDetailsNav = () => {
       }
     },
     disabled: true
-  }, "Gantt chart")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_16__.NavLink, {
+  }, "Gantt chart"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_16__.NavLink, {
     to: "",
     className: "nav-link",
     activeClassName: "active-link"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Tooltip, {
+    className: "!py-0 !text-[10px] !z-30",
+    label: "Coming soon",
+    opened: true,
+    position: "top",
+    offset: -8,
+    color: "#ED7D31",
+    size: "xs"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Button, {
+    className: "!text-sm",
     size: "sm",
     color: "#EBF1F4",
     styles: {
@@ -7867,7 +8290,7 @@ const ProjectDetailsNav = () => {
       }
     },
     disabled: true
-  }, "Swimlane"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, "Swimlane")))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "relative filterandusers flex items-center gap-4 mb-3"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Button, {
     variant: "filled",
@@ -7876,7 +8299,7 @@ const ProjectDetailsNav = () => {
       width: '40px',
       padding: '5px'
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_18__["default"], null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_19__["default"], null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex gap-1"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_UsersAvatarGroup__WEBPACK_IMPORTED_MODULE_1__["default"], {
     users: boardMembers,
@@ -7887,7 +8310,7 @@ const ProjectDetailsNav = () => {
     position: "bottom",
     withArrow: true,
     shadow: "md"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Tooltip, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Tooltip, {
     label: "Add Member"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.Avatar
   // onClick={onAddMember}
@@ -9555,6 +9978,96 @@ const MainTask = ({
 
 /***/ }),
 
+/***/ "./src/components/Elements/Project/TasksElements/Task/MyZenButton.jsx":
+/*!****************************************************************************!*\
+  !*** ./src/components/Elements/Project/TasksElements/Task/MyZenButton.jsx ***!
+  \****************************************************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
+/* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
+/* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../../../ui/permissions */ "./src/components/ui/permissions.jsx");
+/* harmony import */ var _img_my_zen_black_svg__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../../../../img/my-zen-black.svg */ "./src/img/my-zen-black.svg");
+/* harmony import */ var _MyZen_store_myZenSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../../../MyZen/store/myZenSlice */ "./src/components/MyZen/store/myZenSlice.js");
+
+
+
+
+
+
+
+
+
+
+const MyZenButton = ({
+  task,
+  taskId,
+  isSubtask
+}) => {
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useDispatch)();
+  const {
+    loggedUserId
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useSelector)(state => state.auth.user);
+  const {
+    loggedInUser
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useSelector)(state => state.auth.session);
+
+  //myZenHandler
+  const myZenHandler = () => _mantine_modals__WEBPACK_IMPORTED_MODULE_5__.modals.openConfirmModal({
+    title: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Title, {
+      order: 5
+    }, "Are you sure this task my zen?"),
+    size: 'sm',
+    radius: 'md',
+    centered: true,
+    withCloseButton: false,
+    children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
+      size: "sm"
+    }, "This action is so important that you are required to confirm it with a modal. Please click one of these buttons to proceed."),
+    labels: {
+      confirm: 'Confirm',
+      cancel: 'Cancel'
+    },
+    onCancel: () => console.log('Cancel'),
+    onConfirm: () => {
+      if (taskId && taskId !== 'undefined') {
+        const submitData = {
+          project_id: task && task.project_id,
+          task_id: task ? task.id : taskId,
+          user_id: loggedUserId,
+          name: task && task.name,
+          slug: task && task.slug
+        };
+        dispatch((0,_MyZen_store_myZenSlice__WEBPACK_IMPORTED_MODULE_3__.createMyZen)(submitData));
+      }
+    }
+  });
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_1__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-delete']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Avatar
+  //cusor pointer class
+  , {
+    className: `cursor-pointer`,
+    onClick: () => {
+      myZenHandler();
+    },
+    src: _img_my_zen_black_svg__WEBPACK_IMPORTED_MODULE_2__["default"],
+    stroke: 1.25,
+    size: 24
+  }));
+};
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (MyZenButton);
+
+/***/ }),
+
 /***/ "./src/components/Elements/Project/TasksElements/Task/Priority.jsx":
 /*!*************************************************************************!*\
   !*** ./src/components/Elements/Project/TasksElements/Task/Priority.jsx ***!
@@ -9998,15 +10511,17 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react_sortablejs__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(react_sortablejs__WEBPACK_IMPORTED_MODULE_1__);
 /* harmony import */ var _SubtaskContent__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./SubtaskContent */ "./src/components/Elements/Project/TasksElements/Task/SubtaskContent.jsx");
 /* harmony import */ var _MainTask__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./MainTask */ "./src/components/Elements/Project/TasksElements/Task/MainTask.jsx");
-/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
-/* harmony import */ var react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! react-beautiful-dnd */ "./node_modules/react-beautiful-dnd/dist/react-beautiful-dnd.esm.js");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Accordion/Accordion.mjs");
+/* harmony import */ var react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! react-beautiful-dnd */ "./node_modules/react-beautiful-dnd/dist/react-beautiful-dnd.esm.js");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Accordion/Accordion.mjs");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../../../../ui/permissions */ "./src/components/ui/permissions.jsx");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPlus.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPlus.mjs");
 /* harmony import */ var _TaskDelete__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./TaskDelete */ "./src/components/Elements/Project/TasksElements/Task/TaskDelete.jsx");
 /* harmony import */ var _store_base_commonSlice__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ../../../../../store/base/commonSlice */ "./src/store/base/commonSlice.js");
+/* harmony import */ var _MyZenButton__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! ./MyZenButton */ "./src/components/Elements/Project/TasksElements/Task/MyZenButton.jsx");
+
 
 
 
@@ -10025,17 +10540,17 @@ const TaskContent = ({
   view,
   taskData
 }) => {
-  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useDispatch)();
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useDispatch)();
   const {
     childColumns
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useSelector)(state => state.settings.task);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.settings.task);
   const [subtasks, setSubtasks] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length ? [...Array(childColumns[taskData.slug].length).keys()] : []);
   const {
     loggedUserId
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useSelector)(state => state.auth.user);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.auth.user);
   const {
     loggedInUser
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useSelector)(state => state.auth.session);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.auth.session);
   const addSubtask = () => {
     setSubtasks([...subtasks, subtasks.length]);
     const newTaskData = {
@@ -10065,11 +10580,11 @@ const TaskContent = ({
     task: taskData
   })) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "full-project-tasks"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Accordion, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Accordion, {
     value: selectedAccordion,
     onChange: setSelectedAccordion,
     chevronPosition: "left",
-    chevron: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_10__["default"], {
+    chevron: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_11__["default"], {
       size: 30,
       stroke: 2
     }),
@@ -10080,7 +10595,7 @@ const TaskContent = ({
       chevron: '!mx-0 !ml-1'
       // chevron: classes.chevron
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Accordion.Item, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Accordion.Item, {
     value: taskData && taskData.slug
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex w-full items-center py-1.5"
@@ -10090,7 +10605,7 @@ const TaskContent = ({
     addSubtask: addSubtask,
     task: taskData
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "flex items-center gap-2"
+    className: "flex items-center justify-end gap-2 min-w-28"
   }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_5__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'sub-task-add']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     onClick: e => e.stopPropagation()
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
@@ -10100,14 +10615,14 @@ const TaskContent = ({
       toggleSection(taskData.slug);
       addSubtask();
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_11__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__["default"], {
     color: "#4d4d4d",
     size: "14",
     className: "cursor-pointer"
   }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_TaskDelete__WEBPACK_IMPORTED_MODULE_6__["default"], {
     task: taskData,
     taskId: taskData && taskData.id
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Accordion.Control, null))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Accordion.Panel, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_12__.Droppable, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Accordion.Control, null))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Accordion.Panel, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_13__.Droppable, {
     key: taskData.id,
     droppableId: taskData.slug,
     type: "SUBTASK"
@@ -10118,7 +10633,7 @@ const TaskContent = ({
     className: `w-full h-full min-h-[20px] ${childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 ? 'pb-2 pt-3 bg-[#E7E7E7]' : ''}`,
     ref: dropProvided.innerRef,
     ...dropProvided.droppableProps
-  }, childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 && childColumns[taskData.slug].map((subTask, subtaskIndex) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_12__.Draggable, {
+  }, childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 && childColumns[taskData.slug].map((subTask, subtaskIndex) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_13__.Draggable, {
     key: subTask.id,
     draggableId: subTask.id.toString(),
     index: subtaskIndex
@@ -12734,7 +13249,8 @@ const ProjectCard = props => {
       parent
     }
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Modal_Project_DeleteProject__WEBPACK_IMPORTED_MODULE_2__["default"], {
-    id: id
+    key: id,
+    ...props
   })));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (ProjectCard);
@@ -13101,7 +13617,7 @@ __webpack_require__.r(__webpack_exports__);
 
 const Header = () => {
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "header h-[63px]"
+    className: "header"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_HeaderElement_HeaderTabs__WEBPACK_IMPORTED_MODULE_1__.HeaderTabs, null));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (Header);
@@ -13124,8 +13640,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var clsx__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! clsx */ "./node_modules/clsx/dist/clsx.mjs");
 /* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router/dist/index.js");
 /* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconHome.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCalendarEvent.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconHome.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconClipboardCopy.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPaperclip.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/MantineProvider/MantineThemeProvider/MantineThemeProvider.mjs");
@@ -13151,6 +13666,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _utils_useAuth__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../../utils/useAuth */ "./src/utils/useAuth.js");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ../ui/permissions */ "./src/components/ui/permissions.jsx");
+/* harmony import */ var _img_my_zen_black_svg__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ../../img/my-zen-black.svg */ "./src/img/my-zen-black.svg");
+
 
 
 
@@ -13168,21 +13685,19 @@ __webpack_require__.r(__webpack_exports__);
 const dashboardMainMenuData = [{
   label: 'Dashboard',
   url: '#/dashboard',
-  icon: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__["default"], {
-    stroke: 1.25,
-    size: 24,
-    color: `#202020`
-  })
-}, {
-  label: 'My Zen',
-  url: '',
   icon: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__["default"], {
     stroke: 1.25,
     size: 24,
     color: `#202020`
   })
-}, {
-  label: 'My Task',
+},
+/*{
+  label: 'My Zen',
+  url: '#/my-zen',
+  icon: (<Avatar  src={my_zen} stroke={1.25} size={24} color={`#202020`} /> )
+},*/
+{
+  label: 'My Tasks',
   url: '#/my-task',
   icon: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_9__["default"], {
     stroke: 1.25,
@@ -13248,6 +13763,7 @@ function HeaderTabs() {
     className: "py-1",
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Group, {
+    className: ` h-[78px]`,
     justify: "space-between"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex space-x-4"
@@ -13258,6 +13774,7 @@ function HeaderTabs() {
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     id: "lazytask_premium_mobile_app_qr_code"
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Button, {
+    size: "lg",
     className: `font-semibold`,
     onClick: open,
     variant: "filled",
@@ -13525,17 +14042,19 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Container/Container.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/Box/Box.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Image/Image.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/PasswordInput/PasswordInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Container/Container.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/Box/Box.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Image/Image.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/PasswordInput/PasswordInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var _mantine_form__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/form */ "./node_modules/@mantine/form/esm/use-form.mjs");
-/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
+/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
 /* harmony import */ var _utils_useAuth__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../utils/useAuth */ "./src/utils/useAuth.js");
 /* harmony import */ var _img_logo_png__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../img/logo.png */ "./src/img/logo.png");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -13566,24 +14085,29 @@ const Login = () => {
       email,
       password
     });
-    console.log(result);
-    /*if (result.status === 'error') {
-        setMessage(result.message)
-    }*/
+    // console.log(result)
+    if (result.status !== 200) {
+      (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_4__.showNotification)({
+        title: 'Error',
+        message: result && result.message && result.message,
+        color: 'red',
+        autoClose: 2000,
+        disallowClose: true
+      });
+    }
   };
   const handleSubmit = values => {
     onSignIn(values);
-    // dispatch(createUser(values))
     form.reset();
     // Perform form submission or other actions here
   };
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "dashboard h-screen"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Container, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Container, {
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "h-screen lm-profile-form flex items-center justify-center"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Box, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Box, {
     m: 4,
     p: 32,
     radius: "lg",
@@ -13593,7 +14117,7 @@ const Login = () => {
       maxWidth: '550px'
     },
     className: " w-[416px]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Image, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Image, {
     style: {
       width: '70%',
       marginLeft: 'auto',
@@ -13604,12 +14128,12 @@ const Login = () => {
     alt: "Random unsplash image"
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "items-center text-center mb-4 mt-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Title, {
     className: "text-center",
     order: 2
   }, "Login")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
     onSubmit: form.onSubmit(handleSubmit)
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.TextInput, {
     type: "email",
     placeholder: "Email",
     mb: 16,
@@ -13624,7 +14148,7 @@ const Login = () => {
         borderColor: 'blue.5'
       }
     }
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.PasswordInput, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.PasswordInput, {
     size: "md",
     mb: 16,
     ...form.getInputProps('password'),
@@ -13640,10 +14164,10 @@ const Login = () => {
     }
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4 text-center"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_10__.Link, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_11__.Link, {
     to: "/forget-password",
     className: "text-orange-500 font-semibold text-base leading-normal text-center mt-24 mb-24 focus:shadow-none"
-  }, "Forget Password")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Button, {
+  }, "Forget Password")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
     type: "submit",
     variant: "gradient",
     gradient: {
@@ -14151,7 +14675,7 @@ const MyTaskList = () => {
   }, userTaskListSections && userTaskListSections[taskListSection] && userTaskListSections[taskListSection]))), userTaskOrdered && userTaskOrdered.length > 0 ? userTaskOrdered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Tabs.Panel, {
     value: taskListSection
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Partial_TaskHeader__WEBPACK_IMPORTED_MODULE_3__["default"], null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.ScrollArea, {
-    className: "h-[calc(100vh-260px)] p-[3px]",
+    className: "h-[calc(100vh-300px)] p-[3px]",
     scrollbarSize: 4
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_MyTaskListContent__WEBPACK_IMPORTED_MODULE_1__["default"], {
     contents: userTaskColumns && userTaskColumns[taskListSection] ? userTaskColumns[taskListSection] : []
@@ -14403,19 +14927,21 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/MantineProvider/MantineThemeProvider/MantineThemeProvider.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/MantineProvider/MantineThemeProvider/MantineThemeProvider.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_quickTaskSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../Settings/store/quickTaskSlice */ "./src/components/Settings/store/quickTaskSlice.js");
 /* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! dayjs */ "./node_modules/dayjs/dayjs.min.js");
 /* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__webpack_require__.n(dayjs__WEBPACK_IMPORTED_MODULE_2__);
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs");
-/* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs");
+/* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
 /* harmony import */ var _QuickTask_AddTaskFromQuickTaskDrawer__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../QuickTask/AddTaskFromQuickTaskDrawer */ "./src/components/QuickTask/AddTaskFromQuickTaskDrawer.jsx");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -14455,59 +14981,71 @@ const QuickTaskList = () => {
         name: newQuickTask,
         user_id: loggedUserId
       };
-      dispatch((0,_Settings_store_quickTaskSlice__WEBPACK_IMPORTED_MODULE_1__.createQuickTask)(submitData));
+      dispatch((0,_Settings_store_quickTaskSlice__WEBPACK_IMPORTED_MODULE_1__.createQuickTask)(submitData)).then(res => {
+        if (res.payload && res.payload.status && res.payload.status === 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_5__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Quick Task',
+            message: res.payload && res.payload.message && res.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'green'
+          });
+        }
+      });
       setNewQuickTask('');
     }
   };
-  const theme = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_5__.useMantineTheme)();
+  const theme = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_6__.useMantineTheme)();
   const [selectedTask, setSelectedTask] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
   const [taskEditDrawerOpen, {
     open: openTaskEditDrawer,
     close: closeTaskEditDrawer
-  }] = (0,_mantine_hooks__WEBPACK_IMPORTED_MODULE_6__.useDisclosure)(false);
+  }] = (0,_mantine_hooks__WEBPACK_IMPORTED_MODULE_7__.useDisclosure)(false);
   const handleEditTaskDrawerOpen = task => {
     setSelectedTask(task);
     openTaskEditDrawer();
   };
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "bg-white p-2 border-l-2"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Title, {
     className: "mb-2 pb-2 border-b",
     order: 6
   }, " Quick Task"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "px-0 my-2"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.TextInput, {
-    radius: "xl",
+    className: "px-0 pb-2 mt-2 mb-0 border-b"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.TextInput, {
+    radius: "sm",
     size: "sm",
-    placeholder: "Enter task title",
+    placeholder: "Add task",
     onKeyDown: handleKeyDown,
     onChange: handleInputChange,
     value: newQuickTask,
     rightSectionWidth: 42,
-    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.ActionIcon, {
+    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.ActionIcon, {
       onClick: handleInputClick,
       size: 24,
       radius: "xl",
       color: "#ED7D31",
       variant: "filled"
-    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_10__["default"], {
+    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_11__["default"], {
       style: {
         width: '18px',
         height: '18px'
       },
       stroke: 1.5
     }))
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.ScrollArea, {
-    className: "h-[calc(100vh-270px)] pb-[2px]",
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.ScrollArea, {
+    className: "h-[calc(100vh-300px)] pb-[2px]",
     scrollbarSize: 4
   }, tasks && tasks.length > 0 && tasks.map((task, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "border rounded-md my-3"
+    className: "border rounded my-3"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     onDoubleClickCapture: () => {
       handleEditTaskDrawerOpen(task);
     },
     className: "content px-2 py-2 cursor-pointer"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Text, {
     fz: "sm"
   }, task.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
     className: "text-xs text-blue-600"
@@ -15653,7 +16191,7 @@ const MyTask = () => {
     className: "mt-2 mb-3"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Title, {
     order: 4
-  }, "My Task")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid, {
+  }, "My Tasks")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid, {
     columns: 12
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid.Col, {
     span: 9
@@ -15664,6 +16202,1023 @@ const MyTask = () => {
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_QuickTaskList__WEBPACK_IMPORTED_MODULE_5__["default"], null)))))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (MyTask);
+
+/***/ }),
+
+/***/ "./src/components/MyZen/MyZenAddButton.jsx":
+/*!*************************************************!*\
+  !*** ./src/components/MyZen/MyZenAddButton.jsx ***!
+  \*************************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Card/Card.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Popover/Popover.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _img_my_zen_black_svg__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../img/my-zen-black.svg */ "./src/img/my-zen-black.svg");
+/* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
+/* harmony import */ var _ui_TimePicker__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../ui/TimePicker */ "./src/components/ui/TimePicker.jsx");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCalendarMonth.mjs");
+/* harmony import */ var _mantine_dates__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/dates */ "./node_modules/@mantine/dates/esm/components/Calendar/Calendar.mjs");
+/* harmony import */ var _store_myZenSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./store/myZenSlice */ "./src/components/MyZen/store/myZenSlice.js");
+/* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! dayjs */ "./node_modules/dayjs/dayjs.min.js");
+/* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_4___default = /*#__PURE__*/__webpack_require__.n(dayjs__WEBPACK_IMPORTED_MODULE_4__);
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
+
+
+
+
+
+
+
+
+
+
+
+const formatDate = date => {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const day = date.getDate();
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  //timezone
+  var timezone_offset_minutes = date.getTimezoneOffset();
+  timezone_offset_minutes = timezone_offset_minutes == 0 ? 0 : timezone_offset_minutes;
+  return `${day}-${month}-${year}`;
+};
+const MyZenAddButton = () => {
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_5__.useDispatch)();
+  const {
+    loggedUserId
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_5__.useSelector)(state => state.auth.user);
+  const [myZenModalOpen, {
+    open: openMyZenModal,
+    close: closeMyZenModal
+  }] = (0,_mantine_hooks__WEBPACK_IMPORTED_MODULE_6__.useDisclosure)(false);
+  const [opened, setOpened] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
+  const [selectedDate, setSelectedDate] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
+
+  //submited date
+
+  var [submittedData, setSubmittedData] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)({});
+  const handleSelect = date => {
+    setSelectedDate(date);
+    var formatedDate = dayjs__WEBPACK_IMPORTED_MODULE_4___default()(date).format('YYYY-MM-DD');
+    setSubmittedData({
+      ...submittedData,
+      end_date: formatedDate,
+      start_date: formatedDate
+    });
+  };
+  const handleCurrentDate = date => {
+    setSelectedDate(null);
+    var formatedDate = dayjs__WEBPACK_IMPORTED_MODULE_4___default()(date).format('YYYY-MM-DD');
+    setSubmittedData({
+      ...submittedData,
+      end_date: formatedDate,
+      start_date: formatedDate
+    });
+  };
+  const [startTime, setStartTime] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
+  const [endTime, setEndTime] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
+  const handleTimePicker = e => {
+    //submittedData start_time, end_time
+    setSubmittedData({
+      ...submittedData,
+      [e.target.name]: e.target.value
+    });
+  };
+  const inputHandler = e => {
+    setSubmittedData({
+      ...submittedData,
+      [e.target.name]: e.target.value
+    });
+  };
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (myZenModalOpen === false) {
+      if (submittedData && Object.keys(submittedData).length > 0 && submittedData.name !== '') {
+        dispatch((0,_store_myZenSlice__WEBPACK_IMPORTED_MODULE_3__.createMyZen)({
+          ...submittedData,
+          'user_id': loggedUserId
+        })).then(response => {
+          if (response.payload && response.payload.status && response.payload.status === 200) {
+            (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_7__.showNotification)({
+              id: 'load-data',
+              loading: true,
+              title: 'My Zen',
+              message: response.payload && response.payload.message && response.payload.message,
+              autoClose: 2000,
+              disallowClose: true,
+              color: 'green'
+            });
+          }
+          if (response.payload && response.payload.status && response.payload.status !== 200) {
+            (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_7__.showNotification)({
+              id: 'load-data',
+              loading: true,
+              title: 'Project',
+              message: response.payload && response.payload.message && response.payload.message,
+              autoClose: 2000,
+              disallowClose: true,
+              color: 'red'
+            });
+          }
+        });
+      }
+    }
+  }, [myZenModalOpen]);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Avatar, {
+    onClick: openMyZenModal,
+    src: _img_my_zen_black_svg__WEBPACK_IMPORTED_MODULE_1__["default"],
+    stroke: 1.25,
+    size: 24
+  }), myZenModalOpen && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Root, {
+    opened: myZenModalOpen,
+    onClose: closeMyZenModal,
+    centered: true,
+    size: `xl`,
+    classNames: {
+      header: '!px-[24px] !py-[16px]',
+      body: '!px-[24px] !pb-[24px]',
+      content: 'my-zen-content'
+    }
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Content, {
+    radius: 15
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Header, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Card, {
+    className: `!bg-[#EBF1F4]`,
+    withBorder: true,
+    padding: `lg`,
+    radius: "md"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Card.Section, {
+    withBorder: true,
+    inheritPadding: true,
+    py: "md"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Group, {
+    justify: "space-between"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.TextInput, {
+    name: `name`,
+    className: `w-full`,
+    placeholder: "Title here",
+    onChange: e => {
+      inputHandler(e);
+    }
+  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Card.Section, {
+    withBorder: true,
+    inheritPadding: true,
+    py: "md"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Group, {
+    justify: "space-between"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid, {
+    className: `w-full`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid.Col, {
+    span: 6
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Flex, {
+    mih: 50,
+    height: `h-full`,
+    gap: "md",
+    justify: "flex-start",
+    align: "flex-end",
+    direction: "row",
+    wrap: "wrap",
+    className: `w-full h-full`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Button, {
+    onClick: () => {
+      handleCurrentDate(new Date());
+    },
+    size: `sm`,
+    style: {
+      backgroundColor: `${selectedDate ? '#ffffff' : '#39758D'}`,
+      color: `${selectedDate ? '#39758D' : '#ffffff'}`
+    }
+  }, "Today"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Popover, {
+    position: "bottom",
+    withArrow: true,
+    shadow: "md",
+    opened: opened,
+    onChange: setOpened
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Popover.Target, null, selectedDate ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Button, {
+    onClick: () => setOpened(o => !o),
+    className: `!bg-white !text-[#39758D]`,
+    size: `sm`
+  }, formatDate(selectedDate)) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Button, {
+    onClick: () => setOpened(o => !o),
+    className: `!bg-white`,
+    size: `sm`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_17__["default"], {
+    size: 24,
+    color: `#39758D`
+  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Popover.Dropdown, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_dates__WEBPACK_IMPORTED_MODULE_18__.Calendar, {
+    getDayProps: date => ({
+      onClick: () => {
+        var sDate = date.getFullYear() + '-' + (date.getMonth() + 1) + '-' + date.getDate();
+        var currentHourMin = new Date().getHours() + ':' + new Date().getMinutes();
+        handleSelect(date);
+      }
+    })
+  }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid.Col, {
+    span: 3
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Text, null, "Start time"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_TimePicker__WEBPACK_IMPORTED_MODULE_2__["default"], {
+    name: "start_time",
+    value: startTime,
+    onChange: e => {
+      setStartTime(e.target.value);
+      handleTimePicker(e);
+    }
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid.Col, {
+    span: 3
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Text, null, "End time"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_TimePicker__WEBPACK_IMPORTED_MODULE_2__["default"], {
+    name: "end_time",
+    value: endTime,
+    onChange: e => {
+      setEndTime(e.target.value);
+      handleTimePicker(e);
+    }
+  })))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Card, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Card.Section, {
+    withBorder: true
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Group, {
+    justify: "space-between"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Flex, {
+    mih: 50,
+    height: `h-full`,
+    gap: "md",
+    justify: "flex-end",
+    align: "flex-end",
+    direction: "row",
+    wrap: "wrap",
+    className: `w-full h-full pb-[2px]`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Button, {
+    variant: "outline",
+    color: "orange"
+  }, "End"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Button, {
+    variant: "filled",
+    color: "orange"
+  }, "Start")))))))));
+};
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (MyZenAddButton);
+
+/***/ }),
+
+/***/ "./src/components/MyZen/MyZenEditButton.jsx":
+/*!**************************************************!*\
+  !*** ./src/components/MyZen/MyZenEditButton.jsx ***!
+  \**************************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Card/Card.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Popover/Popover.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _img_my_zen_black_svg__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../img/my-zen-black.svg */ "./src/img/my-zen-black.svg");
+/* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
+/* harmony import */ var _ui_TimePicker__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../ui/TimePicker */ "./src/components/ui/TimePicker.jsx");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCalendarMonth.mjs");
+/* harmony import */ var _mantine_dates__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/dates */ "./node_modules/@mantine/dates/esm/components/Calendar/Calendar.mjs");
+/* harmony import */ var _store_myZenSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./store/myZenSlice */ "./src/components/MyZen/store/myZenSlice.js");
+/* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! dayjs */ "./node_modules/dayjs/dayjs.min.js");
+/* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_4___default = /*#__PURE__*/__webpack_require__.n(dayjs__WEBPACK_IMPORTED_MODULE_4__);
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
+
+
+
+
+
+
+
+
+
+
+
+const formatDate = date => {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const day = date.getDate();
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  //timezone
+  var timezone_offset_minutes = date.getTimezoneOffset();
+  timezone_offset_minutes = timezone_offset_minutes == 0 ? 0 : timezone_offset_minutes;
+  console.log('timezone', timezone_offset_minutes);
+  return `${day}-${month}-${year}`;
+};
+const MyZenEditButton = ({
+  task,
+  taskId,
+  isSubtask
+}) => {
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_5__.useDispatch)();
+  const {
+    loggedUserId
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_5__.useSelector)(state => state.auth.user);
+  const {
+    loggedInUser
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_5__.useSelector)(state => state.auth.session);
+  const [myZenModalOpen, {
+    open: openMyZenModal,
+    close: closeMyZenModal
+  }] = (0,_mantine_hooks__WEBPACK_IMPORTED_MODULE_6__.useDisclosure)(false);
+  const [opened, setOpened] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
+  const [selectedDate, setSelectedDate] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(task && task.end_date ? new Date(task.end_date) : null);
+  const [currentDate, setCurrentDate] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(new Date());
+
+  //submited date
+
+  var [submittedData, setSubmittedData] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)({});
+  const handleSelect = date => {
+    setSelectedDate(date);
+    var formatedDate = dayjs__WEBPACK_IMPORTED_MODULE_4___default()(date).format('YYYY-MM-DD');
+    setSubmittedData({
+      ...submittedData,
+      end_date: formatedDate,
+      start_date: formatedDate
+    });
+  };
+  const handleCurrentDate = date => {
+    setSelectedDate(null);
+    setCurrentDate(date);
+    var formatedDate = dayjs__WEBPACK_IMPORTED_MODULE_4___default()(date).format('YYYY-MM-DD');
+    setSubmittedData({
+      ...submittedData,
+      end_date: formatedDate,
+      start_date: formatedDate
+    });
+  };
+  const [startTime, setStartTime] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(task && task.start_time ? task.start_time : null);
+  const [endTime, setEndTime] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(task && task.end_time ? task.end_time : null);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    setSelectedDate(task && task.end_date ? new Date(task.end_date) : null);
+    setStartTime(task && task.start_time ? task.start_time : null);
+    setEndTime(task && task.end_time ? task.end_time : null);
+    setSubmittedData({
+      ...submittedData,
+      end_date: task && task.start_date ? task.start_date : null,
+      start_date: task && task.end_date ? task.end_date : null,
+      start_time: task && task.start_time ? task.start_time : null,
+      end_time: task && task.end_time ? task.end_time : null
+    });
+  }, [dispatch, task]);
+  const handleTimePicker = e => {
+    //submittedData start_time, end_time
+    setSubmittedData({
+      ...submittedData,
+      [e.target.name]: e.target.value
+    });
+  };
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (myZenModalOpen === false) {
+      //check all data same does not need to update
+      if (submittedData && Object.keys(submittedData).length > 0 && task.start_date && submittedData.start_date === task.start_date && task.end_date && submittedData.end_date === task.end_date && submittedData.start_time === task.start_time && submittedData.end_time === task.end_time) {
+        return;
+      }
+
+      //check start time and end time should be same and less than end time validation
+      if (submittedData && Object.keys(submittedData).length > 0 && submittedData.start_time && submittedData.end_time) {
+        var start = new Date("01/01/2007 " + submittedData.start_time);
+        var end = new Date("01/01/2007 " + submittedData.end_time);
+        if (start >= end) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_7__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Error',
+            autoClose: 2000,
+            disallowClose: true,
+            message: 'End time should be greater than start time',
+            color: 'red'
+          });
+          return;
+        }
+      }
+      if (submittedData && Object.keys(submittedData).length > 0) {
+        // null or empty start time and end time check
+
+        if (submittedData.start_time === null || submittedData.start_time === '' || submittedData.end_time === null || submittedData.end_time === '') {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_7__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Error',
+            autoClose: 2000,
+            disallowClose: true,
+            message: 'Start time and end time should not be empty',
+            color: 'red'
+          });
+          return;
+        }
+        // empty start date and end date check
+        if (submittedData.start_date === null || submittedData.start_date === '' || submittedData.end_date === null || submittedData.end_date === '') {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_7__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Error',
+            autoClose: 2000,
+            disallowClose: true,
+            message: 'Date should not be empty',
+            color: 'red'
+          });
+          return;
+        }
+        dispatch((0,_store_myZenSlice__WEBPACK_IMPORTED_MODULE_3__.editMyZen)({
+          id: taskId,
+          data: {
+            ...submittedData,
+            'updated_by': loggedUserId
+          }
+        })).then(response => {
+          if (response.payload && response.payload.status && response.payload.status === 200) {
+            (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_7__.showNotification)({
+              id: 'load-data',
+              loading: true,
+              title: 'My Zen',
+              message: response.payload && response.payload.message && response.payload.message,
+              autoClose: 2000,
+              disallowClose: true,
+              color: 'green'
+            });
+          }
+          if (response.payload && response.payload.status && response.payload.status !== 200) {
+            (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_7__.showNotification)({
+              id: 'load-data',
+              loading: true,
+              title: 'My Zen',
+              message: response.payload && response.payload.message && response.payload.message,
+              autoClose: 2000,
+              disallowClose: true,
+              color: 'red'
+            });
+          }
+        });
+      }
+    }
+  }, [myZenModalOpen]);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Avatar, {
+    onClick: openMyZenModal,
+    src: _img_my_zen_black_svg__WEBPACK_IMPORTED_MODULE_1__["default"],
+    stroke: 1.25,
+    size: 24
+  }), myZenModalOpen && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Root, {
+    opened: myZenModalOpen,
+    onClose: closeMyZenModal,
+    centered: true,
+    size: `xl`,
+    classNames: {
+      header: '!px-[24px] !py-[16px]',
+      body: '!px-[24px] !pb-[24px]',
+      content: 'my-zen-content'
+    }
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Content, {
+    radius: 15
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Header, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Card, {
+    className: `!bg-[#EBF1F4]`,
+    withBorder: true,
+    padding: `lg`,
+    radius: "md"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Card.Section, {
+    withBorder: true,
+    inheritPadding: true,
+    py: "md"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Group, {
+    justify: "space-between"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Title, {
+    order: 5
+  }, task && task.name))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Card.Section, {
+    withBorder: true,
+    inheritPadding: true,
+    py: "md"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Group, {
+    justify: "space-between"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid, {
+    className: `w-full`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid.Col, {
+    span: 6
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Flex, {
+    mih: 50,
+    height: `h-full`,
+    gap: "md",
+    justify: "flex-start",
+    align: "flex-end",
+    direction: "row",
+    wrap: "wrap",
+    className: `w-full h-full`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Button, {
+    onClick: () => {
+      handleCurrentDate(new Date());
+    },
+    size: `sm`,
+    style: {
+      backgroundColor: `${selectedDate ? '#ffffff' : '#39758D'}`,
+      color: `${selectedDate ? '#39758D' : '#ffffff'}`
+    }
+  }, "Today"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Popover, {
+    position: "bottom",
+    withArrow: true,
+    shadow: "md",
+    opened: opened,
+    onChange: setOpened
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Popover.Target, null, selectedDate ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Button, {
+    onClick: () => setOpened(o => !o),
+    className: `!bg-white !text-[#39758D]`,
+    size: `sm`
+  }, formatDate(selectedDate)) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Button, {
+    onClick: () => setOpened(o => !o),
+    className: `!bg-white`,
+    size: `sm`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_17__["default"], {
+    size: 24,
+    color: `#39758D`
+  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Popover.Dropdown, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_dates__WEBPACK_IMPORTED_MODULE_18__.Calendar, {
+    getDayProps: date => ({
+      onClick: () => {
+        var sDate = date.getFullYear() + '-' + (date.getMonth() + 1) + '-' + date.getDate();
+        var currentHourMin = new Date().getHours() + ':' + new Date().getMinutes();
+        handleSelect(date);
+      }
+    })
+  }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid.Col, {
+    span: 3
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Text, null, "Start time"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_TimePicker__WEBPACK_IMPORTED_MODULE_2__["default"], {
+    name: "start_time",
+    value: startTime,
+    onChange: e => {
+      setStartTime(e.target.value);
+      handleTimePicker(e);
+    }
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid.Col, {
+    span: 3
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Text, null, "End time"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_TimePicker__WEBPACK_IMPORTED_MODULE_2__["default"], {
+    name: "end_time",
+    value: endTime,
+    onChange: e => {
+      setEndTime(e.target.value);
+      handleTimePicker(e);
+    }
+  })))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Card, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Card.Section, {
+    withBorder: true
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Group, {
+    justify: "space-between"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Flex, {
+    mih: 50,
+    height: `h-full`,
+    gap: "md",
+    justify: "flex-end",
+    align: "flex-end",
+    direction: "row",
+    wrap: "wrap",
+    className: `w-full h-full pb-[2px]`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Button, {
+    variant: "outline",
+    color: "orange"
+  }, "End"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Button, {
+    variant: "filled",
+    color: "orange"
+  }, "Start")))))))));
+};
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (MyZenEditButton);
+
+/***/ }),
+
+/***/ "./src/components/MyZen/MyZenHeader.jsx":
+/*!**********************************************!*\
+  !*** ./src/components/MyZen/MyZenHeader.jsx ***!
+  \**********************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+
+
+
+const MyZenHeader = () => {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "border rounded-lg mt-1 px-2 py-1 bg-blue-100"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "flex"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "text-base font-medium w-[50%]"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_1__.Text, {
+    fz: "sm"
+  }, "Task Name")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "text-base font-medium w-[20%]"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_1__.Text, {
+    fz: "sm"
+  }, "Date")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "text-base font-medium w-[10%]"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_1__.Text, {
+    fz: "sm"
+  }, "Start Time")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "text-base font-medium w-[10%]"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_1__.Text, {
+    fz: "sm"
+  }, "End Time")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "text-base font-medium w-[10%]"
+  })));
+};
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (MyZenHeader);
+
+/***/ }),
+
+/***/ "./src/components/MyZen/MyZenList.jsx":
+/*!********************************************!*\
+  !*** ./src/components/MyZen/MyZenList.jsx ***!
+  \********************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var _Settings_store_myTaskSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../Settings/store/myTaskSlice */ "./src/components/Settings/store/myTaskSlice.js");
+/* harmony import */ var _MyZenListContent__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./MyZenListContent */ "./src/components/MyZen/MyZenListContent.jsx");
+/* harmony import */ var _MyZenHeader__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./MyZenHeader */ "./src/components/MyZen/MyZenHeader.jsx");
+
+
+
+
+
+
+
+
+const MyZenList = () => {
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useDispatch)();
+  const {
+    myZens
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useSelector)(state => state.zen.myzen);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_MyZenHeader__WEBPACK_IMPORTED_MODULE_3__["default"], null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.ScrollArea, {
+    className: "h-[calc(100vh-240px)] p-[3px]",
+    scrollbarSize: 4
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_MyZenListContent__WEBPACK_IMPORTED_MODULE_2__["default"], {
+    contents: myZens
+  })));
+};
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (MyZenList);
+
+/***/ }),
+
+/***/ "./src/components/MyZen/MyZenListContent.jsx":
+/*!***************************************************!*\
+  !*** ./src/components/MyZen/MyZenListContent.jsx ***!
+  \***************************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _MyZenRow__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./MyZenRow */ "./src/components/MyZen/MyZenRow.jsx");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+
+
+
+
+
+const MyZenListContent = ({
+  contents
+}) => {
+  // const sectionTasks = contents;
+  const [tasks, setTasks] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
+  const {
+    userTaskChildColumns
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_2__.useSelector)(state => state.settings.myTask);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (Array.isArray(contents)) {
+      setTasks([...contents]);
+    } else {
+      setTasks([]);
+    }
+  }, [contents]);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    style: {
+      transition: 'background-color 0.3s ease'
+    },
+    className: "w-full h-full min-h-[25px] px-2"
+  }, tasks && tasks.length > 0 && tasks.map((task, taskIndex) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    key: taskIndex,
+    className: "relative w-full items-center py-1.5"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_MyZenRow__WEBPACK_IMPORTED_MODULE_1__["default"], {
+    task: task
+  })))));
+};
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (MyZenListContent);
+
+/***/ }),
+
+/***/ "./src/components/MyZen/MyZenRow.jsx":
+/*!*******************************************!*\
+  !*** ./src/components/MyZen/MyZenRow.jsx ***!
+  \*******************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _MyZenEditButton__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./MyZenEditButton */ "./src/components/MyZen/MyZenEditButton.jsx");
+/* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! dayjs */ "./node_modules/dayjs/dayjs.min.js");
+/* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__webpack_require__.n(dayjs__WEBPACK_IMPORTED_MODULE_2__);
+
+
+
+
+
+
+const formatDate = date => {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const day = date.getDate();
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+const MyZenRow = ({
+  task
+}) => {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "flex single-task-content main-task items-center w-full"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "task-name w-[50%] pr-2 items-center"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "flex gap-2 items-center w-full"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "w-full"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Text, null, " ", task.name)))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "date w-[20%] pr-2"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Text, null, " ", task.end_date && formatDate(new Date(task.end_date)))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "startTime w-[10%] items-center"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Text, null, " ", task.start_time && dayjs__WEBPACK_IMPORTED_MODULE_2___default()(task.start_date_time).format("h:mm A"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "endTime w-[10%]"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Text, null, " ", task.end_date_time && dayjs__WEBPACK_IMPORTED_MODULE_2___default()(task.end_date_time).format("h:mm A"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "action w-[10%]"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_MyZenEditButton__WEBPACK_IMPORTED_MODULE_1__["default"], {
+    task: task && task,
+    taskId: task && task.id
+  }))));
+};
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (MyZenRow);
+
+/***/ }),
+
+/***/ "./src/components/MyZen/index.jsx":
+/*!****************************************!*\
+  !*** ./src/components/MyZen/index.jsx ***!
+  \****************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Container/Container.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var _Settings_store_tagSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../Settings/store/tagSlice */ "./src/components/Settings/store/tagSlice.js");
+/* harmony import */ var _Settings_store_myTaskSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../Settings/store/myTaskSlice */ "./src/components/Settings/store/myTaskSlice.js");
+/* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
+/* harmony import */ var _Settings_store_quickTaskSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../Settings/store/quickTaskSlice */ "./src/components/Settings/store/quickTaskSlice.js");
+/* harmony import */ var _MyZenList__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ./MyZenList */ "./src/components/MyZen/MyZenList.jsx");
+/* harmony import */ var _store_myZenSlice__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ./store/myZenSlice */ "./src/components/MyZen/store/myZenSlice.js");
+/* harmony import */ var _MyZenAddButton__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./MyZenAddButton */ "./src/components/MyZen/MyZenAddButton.jsx");
+
+
+
+
+
+
+
+
+
+
+
+
+const MyZen = () => {
+  const [visible, {
+    toggle
+  }] = (0,_mantine_hooks__WEBPACK_IMPORTED_MODULE_7__.useDisclosure)(true);
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useDispatch)();
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    dispatch((0,_store_myZenSlice__WEBPACK_IMPORTED_MODULE_5__.fetchAllMyZens)());
+  }, [dispatch]);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "dashboard"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Container, {
+    size: "full"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "settings-page-card bg-white rounded-xl p-6 pt-3 my-5 mb-0"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "flex justify-between mt-2 mb-3"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Title, {
+    order: 4
+  }, "My Zen"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_MyZenAddButton__WEBPACK_IMPORTED_MODULE_6__["default"], null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Grid, {
+    columns: 12
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Grid.Col, {
+    span: 12
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "w-full bg-white"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_MyZenList__WEBPACK_IMPORTED_MODULE_4__["default"], null))))))));
+};
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (MyZen);
+
+/***/ }),
+
+/***/ "./src/components/MyZen/store/index.js":
+/*!*********************************************!*\
+  !*** ./src/components/MyZen/store/index.js ***!
+  \*********************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var redux__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! redux */ "./node_modules/redux/dist/redux.mjs");
+/* harmony import */ var _myZenSlice__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./myZenSlice */ "./src/components/MyZen/store/myZenSlice.js");
+
+
+const reducer = (0,redux__WEBPACK_IMPORTED_MODULE_1__.combineReducers)({
+  myzen: _myZenSlice__WEBPACK_IMPORTED_MODULE_0__["default"]
+});
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (reducer);
+
+/***/ }),
+
+/***/ "./src/components/MyZen/store/myZenSlice.js":
+/*!**************************************************!*\
+  !*** ./src/components/MyZen/store/myZenSlice.js ***!
+  \**************************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   createMyZen: () => (/* binding */ createMyZen),
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__),
+/* harmony export */   editMyZen: () => (/* binding */ editMyZen),
+/* harmony export */   fetchAllMyZens: () => (/* binding */ fetchAllMyZens),
+/* harmony export */   fetchMyZen: () => (/* binding */ fetchMyZen),
+/* harmony export */   removeSuccessMessage: () => (/* binding */ removeSuccessMessage)
+/* harmony export */ });
+/* harmony import */ var _reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! @reduxjs/toolkit */ "./node_modules/@reduxjs/toolkit/dist/redux-toolkit.modern.mjs");
+/* harmony import */ var _services_MyZenService__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../../../services/MyZenService */ "./src/services/MyZenService.js");
+
+
+const fetchAllMyZens = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createAsyncThunk)('myZen/fetchAllMyZens', async () => {
+  return (0,_services_MyZenService__WEBPACK_IMPORTED_MODULE_0__.getAllMyZens)();
+});
+//createNotificationTemplate
+const createMyZen = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createAsyncThunk)('myZen/createMyZen', async data => {
+  return (0,_services_MyZenService__WEBPACK_IMPORTED_MODULE_0__.addMyZen)(data);
+});
+//fetchNotificationTemplate by id
+const fetchMyZen = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createAsyncThunk)('myZen/fetchMyZen', async id => {
+  return (0,_services_MyZenService__WEBPACK_IMPORTED_MODULE_0__.getMyZen)(id);
+});
+
+// updateNotificationTemplate by id
+const editMyZen = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createAsyncThunk)('myZen/editMyZen', async ({
+  id,
+  data
+}) => {
+  return (0,_services_MyZenService__WEBPACK_IMPORTED_MODULE_0__.updateMyZen)(id, data);
+});
+const initialState = {
+  myZens: [],
+  myZen: {},
+  isLoading: false,
+  isError: false,
+  error: '',
+  success: null
+};
+const myZenSlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createSlice)({
+  name: 'myZen',
+  initialState,
+  reducers: {
+    removeSuccessMessage: state => {
+      state.success = null;
+    }
+  },
+  extraReducers: builder => {
+    builder.addCase(fetchAllMyZens.pending, state => {
+      state.isLoading = true;
+      state.isError = false;
+    }).addCase(fetchAllMyZens.fulfilled, (state, action) => {
+      state.isLoading = false;
+      state.isError = false;
+      state.myZens = action.payload.data;
+      console.log(action.payload.data);
+    }).addCase(fetchAllMyZens.rejected, (state, action) => {
+      state.isLoading = false;
+      state.isError = false;
+      state.error = action.error?.message;
+    }).addCase(createMyZen.pending, state => {
+      state.isLoading = true;
+      state.isError = false;
+    }).addCase(createMyZen.fulfilled, (state, action) => {
+      state.isLoading = false;
+      state.isError = false;
+      state.success = action.payload.message;
+      state.myZens = state.myZens.map(zen => {
+        if (zen.id === action.payload.data.id) {
+          return {
+            ...action.payload.data
+          };
+        }
+        return {
+          ...zen
+        };
+      });
+      if (action.payload.data && action.payload.data.id && action.payload.data.task_id === null) {
+        state.myZens.push(action.payload.data);
+      }
+    }).addCase(createMyZen.rejected, (state, action) => {
+      state.isLoading = false;
+      state.isError = false;
+      state.error = action.error?.message;
+    }).addCase(fetchMyZen.pending, state => {
+      state.isLoading = true;
+      state.isError = false;
+    }).addCase(fetchMyZen.fulfilled, (state, action) => {
+      state.isLoading = false;
+      state.isError = false;
+      state.myZen = action.payload.data;
+    }).addCase(fetchMyZen.rejected, (state, action) => {
+      state.isLoading = false;
+      state.isError = false;
+      state.error = action.error?.message;
+    }).addCase(editMyZen.pending, state => {
+      state.isLoading = true;
+      state.isError = false;
+    }).addCase(editMyZen.fulfilled, (state, action) => {
+      state.isLoading = false;
+      state.isError = false;
+      state.success = action.payload.message;
+      state.myZens = state.myZens.map(zen => {
+        if (zen.id === action.payload.data.id) {
+          return {
+            ...action.payload.data
+          };
+        }
+        return {
+          ...zen
+        };
+      });
+      console.log(action.payload.requestData);
+    }).addCase(editMyZen.rejected, (state, action) => {
+      state.isLoading = false;
+      state.isError = false;
+      state.error = action.error?.message;
+    });
+  }
+});
+const {
+  removeSuccessMessage
+} = myZenSlice.actions;
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (myZenSlice.reducer);
 
 /***/ }),
 
@@ -15680,13 +17235,15 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tabs/Tabs.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Textarea/Textarea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tabs/Tabs.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Textarea/Textarea.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _store_notificationTemplateSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../store/notificationTemplateSlice */ "./src/components/Notification/store/notificationTemplateSlice.js");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -15709,6 +17266,7 @@ const CreateTemplateModal = ({
   const [content, setContent] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
   const [notificationAction, setNotificationAction] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
   const [emailSubject, setEmailSubject] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
+  const [mobileNotificationTitle, setMobileNotificationTitle] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
   const handleTemplateCreation = () => {
     const newTemplateData = {
       title: title,
@@ -15716,18 +17274,32 @@ const CreateTemplateModal = ({
       description: description,
       content: content,
       notification_action_name: notificationAction,
-      email_subject: emailSubject
+      email_subject: emailSubject,
+      mobile_notification_title: mobileNotificationTitle
     };
     if (newTemplateData.title !== '' && newTemplateData.title !== 'Type title here') {
-      dispatch((0,_store_notificationTemplateSlice__WEBPACK_IMPORTED_MODULE_1__.createNotificationTemplate)(newTemplateData));
+      dispatch((0,_store_notificationTemplateSlice__WEBPACK_IMPORTED_MODULE_1__.createNotificationTemplate)(newTemplateData)).then(response => {
+        if (response.payload && response.payload.status && response.payload.status === 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_3__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Notification Template',
+            message: response.payload && response.payload.message && response.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'green'
+          });
+        }
+      });
       setTitle('Type title here');
       setDescription('');
       setContent([]);
       setNotificationAction(null);
       setEmailSubject('');
+      setMobileNotificationTitle('');
     }
   };
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.Root, {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.Root, {
     opened: modalOpened,
     onClose: () => {
       closeModal();
@@ -15735,18 +17307,18 @@ const CreateTemplateModal = ({
     },
     centered: true,
     size: "100%"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.Content, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.Content, {
     radius: 15
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.Header, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.Header, {
     px: 20,
     py: 10
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Title, {
     order: 5
-  }, "Create Template"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, "Create Template"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "create-form-box"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.TextInput, {
     label: "Do action title",
     placeholder: "Enter your title",
     radius: "md",
@@ -15761,7 +17333,7 @@ const CreateTemplateModal = ({
     onChange: e => setTitle(e.target.value)
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.TextInput, {
     label: "Do action (hook)",
     placeholder: "Enter action name",
     radius: "md",
@@ -15776,18 +17348,18 @@ const CreateTemplateModal = ({
     onChange: e => setNotificationAction(e.target.value)
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, notificationChannels && notificationChannels.length > 0 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs, {
+  }, notificationChannels && notificationChannels.length > 0 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tabs, {
     color: "orange",
     defaultValue: notificationChannels[0].slug
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.List, null, notificationChannels.map(channel => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.Tab, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tabs.List, null, notificationChannels.map(channel => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tabs.Tab, {
     value: channel.slug,
     key: channel.id
-  }, channel.name))), notificationChannels.map(channel => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.Panel, {
+  }, channel.name))), notificationChannels.map(channel => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tabs.Panel, {
     value: channel.slug,
     key: channel.id
   }, channel.slug === 'email' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mt-2"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.TextInput, {
     label: "Email subject",
     placeholder: "Enter email subject",
     radius: "md",
@@ -15801,9 +17373,25 @@ const CreateTemplateModal = ({
     },
     onChange: e => setEmailSubject(e.target.value),
     value: emailSubject
+  })), channel.slug === 'mobile' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "mt-2"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.TextInput, {
+    label: "Notification title",
+    placeholder: "Enter notification title",
+    radius: "md",
+    size: "md",
+    styles: {
+      borderColor: "gray.3",
+      backgroundColor: "white",
+      focus: {
+        borderColor: "blue.5"
+      }
+    },
+    onChange: e => setMobileNotificationTitle(e.target.value),
+    value: mobileNotificationTitle
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mt-2"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Textarea, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Textarea, {
     rows: 10,
     label: "Message body",
     resize: "vertical",
@@ -15836,13 +17424,15 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tabs/Tabs.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Textarea/Textarea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Modal/Modal.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tabs/Tabs.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Textarea/Textarea.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _store_notificationTemplateSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../store/notificationTemplateSlice */ "./src/components/Notification/store/notificationTemplateSlice.js");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -15866,12 +17456,14 @@ const EditTemplateModal = ({
   const [content, setContent] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(notificationTemplate && notificationTemplate.content ? notificationTemplate.content : {});
   const [notificationAction, setNotificationAction] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(notificationTemplate && notificationTemplate.notification_action_name ? notificationTemplate.notification_action_name : '');
   const [emailSubject, setEmailSubject] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(notificationTemplate && notificationTemplate.email_subject ? notificationTemplate.email_subject : '');
+  const [mobileNotificationTitle, setMobileNotificationTitle] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(notificationTemplate && notificationTemplate.mobile_notification_title ? notificationTemplate.mobile_notification_title : '');
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     setTitle(notificationTemplate && notificationTemplate.title ? notificationTemplate.title : 'Type title here');
     setDescription(notificationTemplate && notificationTemplate.description ? notificationTemplate.description : '');
     setContent(notificationTemplate && notificationTemplate.content ? notificationTemplate.content : {});
     setNotificationAction(notificationTemplate && notificationTemplate.notification_action_name ? notificationTemplate.notification_action_name : '');
     setEmailSubject(notificationTemplate && notificationTemplate.email_subject ? notificationTemplate.email_subject : '');
+    setMobileNotificationTitle(notificationTemplate && notificationTemplate.mobile_notification_title ? notificationTemplate.mobile_notification_title : '');
   }, [notificationTemplate]);
   const handleTemplateUpdate = () => {
     const newTemplateData = {
@@ -15880,20 +17472,34 @@ const EditTemplateModal = ({
       description: description,
       content: content,
       notification_action_name: notificationAction,
-      email_subject: emailSubject
+      email_subject: emailSubject,
+      mobile_notification_title: mobileNotificationTitle
     };
     if (newTemplateData.title !== '' && newTemplateData.title !== 'Type title here') {
       dispatch((0,_store_notificationTemplateSlice__WEBPACK_IMPORTED_MODULE_1__.updateNotificationTemplate)({
         id: notificationTemplate.id,
         data: newTemplateData
-      }));
+      })).then(response => {
+        if (response.payload && response.payload.status && response.payload.status === 200) {
+          (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_3__.showNotification)({
+            id: 'load-data',
+            loading: true,
+            title: 'Notification Template',
+            message: response.payload && response.payload.message && response.payload.message,
+            autoClose: 2000,
+            disallowClose: true,
+            color: 'green'
+          });
+        }
+      });
       setTitle('Type title here');
       setDescription('');
       setContent([]);
       setEmailSubject('');
+      setMobileNotificationTitle('');
     }
   };
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.Root, {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.Root, {
     opened: modalOpened,
     onClose: () => {
       closeModal();
@@ -15901,18 +17507,18 @@ const EditTemplateModal = ({
     },
     centered: true,
     size: "100%"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.Content, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.Overlay, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.Content, {
     radius: 15
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.Header, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.Header, {
     px: 20,
     py: 10
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Title, {
     order: 5
-  }, "Update Template"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, "Update Template"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.CloseButton, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Modal.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "create-form-box"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.TextInput, {
     label: "Do action title",
     placeholder: "Enter your title",
     radius: "md",
@@ -15928,7 +17534,7 @@ const EditTemplateModal = ({
     value: title
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.TextInput, {
     label: "Do action (hook)",
     placeholder: "Enter action name",
     radius: "md",
@@ -15944,18 +17550,18 @@ const EditTemplateModal = ({
     value: notificationAction
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, notificationChannels && notificationChannels.length > 0 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs, {
+  }, notificationChannels && notificationChannels.length > 0 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tabs, {
     color: "orange",
     defaultValue: notificationChannels[0].slug
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.List, null, notificationChannels.map(channel => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.Tab, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tabs.List, null, notificationChannels.map(channel => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tabs.Tab, {
     value: channel.slug,
     key: channel.id
-  }, channel.name))), notificationChannels.map(channel => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.Panel, {
+  }, channel.name))), notificationChannels.map(channel => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tabs.Panel, {
     value: channel.slug,
     key: channel.id
   }, channel.slug === 'email' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mt-2"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.TextInput, {
     label: "Email subject",
     placeholder: "Enter email subject",
     radius: "md",
@@ -15969,9 +17575,25 @@ const EditTemplateModal = ({
     },
     onChange: e => setEmailSubject(e.target.value),
     value: emailSubject
+  })), channel.slug === 'mobile' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "mt-2"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.TextInput, {
+    label: "Notification title",
+    placeholder: "Enter notification title",
+    radius: "md",
+    size: "md",
+    styles: {
+      borderColor: "gray.3",
+      backgroundColor: "white",
+      focus: {
+        borderColor: "blue.5"
+      }
+    },
+    onChange: e => setMobileNotificationTitle(e.target.value),
+    value: mobileNotificationTitle
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mt-2"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Textarea, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Textarea, {
     rows: 10,
     label: "Message body",
     resize: "vertical",
@@ -15992,6 +17614,164 @@ const EditTemplateModal = ({
 
 /***/ }),
 
+/***/ "./src/components/Notification/Template/FirebaseConfiguration.jsx":
+/*!************************************************************************!*\
+  !*** ./src/components/Notification/Template/FirebaseConfiguration.jsx ***!
+  \************************************************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Paper/Paper.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Fieldset/Fieldset.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Textarea/Textarea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_form__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/form */ "./node_modules/@mantine/form/esm/use-form.mjs");
+/* harmony import */ var _Settings_store_settingSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../Settings/store/settingSlice */ "./src/components/Settings/store/settingSlice.js");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
+
+
+
+
+
+
+const FirebaseConfiguration = () => {
+  // const users = useSelector((state) => state.users);
+  const {
+    loggedInUser
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_2__.useSelector)(state => state.auth.session);
+  const {
+    settings
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_2__.useSelector)(state => state.settings.setting);
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_2__.useDispatch)();
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    dispatch((0,_Settings_store_settingSlice__WEBPACK_IMPORTED_MODULE_1__.fetchSettings)());
+  }, [dispatch]);
+  const [firebaseClientEmail, setFirebaseClientEmail] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)('');
+  const [firebasePrivateKey, setFirebasePrivateKey] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)('');
+  const form = (0,_mantine_form__WEBPACK_IMPORTED_MODULE_3__.useForm)({
+    mode: 'uncontrolled',
+    initialValues: {
+      firebase_client_email: firebaseClientEmail || '',
+      firebase_private_key: firebasePrivateKey || ''
+    },
+    validate: {
+      firebase_client_email: value => value.length < 1 ? 'Email is required' : null,
+      firebase_private_key: value => value.length < 1 ? 'Private key is required' : null
+    }
+  });
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (settings && settings.firebase_configuration) {
+      try {
+        // Parse the JSON string
+        const parsedData = JSON.parse(settings.firebase_configuration);
+
+        // Check if the parsedData is defined and contains the sms_api_secret_key key
+        if (parsedData && parsedData.firebase_client_email) {
+          setFirebaseClientEmail(parsedData.firebase_client_email);
+          form.setFieldValue('firebase_client_email', parsedData.firebase_client_email);
+        }
+        if (parsedData && parsedData.firebase_private_key) {
+          setFirebasePrivateKey(parsedData.firebase_private_key);
+          form.setFieldValue('firebase_private_key', parsedData.firebase_private_key);
+        }
+      } catch (error) {
+        console.error("JSON parsing error:", error.message);
+      }
+    }
+  }, [settings]);
+  const handlerFirebaseConfigurationSubmit = values => {
+    const formData = new FormData();
+    formData.append('settings', JSON.stringify({
+      ...settings,
+      firebase_configuration: values,
+      type: 'firebase'
+    }));
+    dispatch((0,_Settings_store_settingSlice__WEBPACK_IMPORTED_MODULE_1__.editSetting)({
+      data: formData
+    })).then(response => {
+      if (response.payload && response.payload.status && response.payload.status === 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_4__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'Firebase Settings',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'green'
+        });
+      }
+      if (response.payload && response.payload.status && response.payload.status !== 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_4__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'Firebase Settings',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'red'
+        });
+      }
+    });
+    // dispatch(editSetting({ data: {...settings, firebase_configuration: values , type:'sms'} }));
+  };
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Paper, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
+    onSubmit: form.onSubmit(values => handlerFirebaseConfigurationSubmit(values))
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Fieldset, {
+    legend: " Firebase Information "
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "mb-4"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
+    span: {
+      md: 12,
+      lg: 12
+    }
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.TextInput, {
+    size: "md",
+    withAsterisk: true,
+    label: "Client Email",
+    placeholder: "Enter client email",
+    key: form.key('firebase_client_email'),
+    ...form.getInputProps('firebase_client_email'),
+    defaultValue: firebaseClientEmail
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
+    span: {
+      md: 12,
+      lg: 12
+    }
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Textarea, {
+    resize: "vertical",
+    size: "lg",
+    rows: 10,
+    withAsterisk: true,
+    label: "Private Key",
+    placeholder: "Enter private key",
+    key: form.key('firebase_private_key'),
+    ...form.getInputProps('firebase_private_key'),
+    defaultValue: firebasePrivateKey
+  }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Group, {
+    justify: "flex-start",
+    mt: "md"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Button, {
+    variant: "filled",
+    color: "#ED7D31",
+    type: "submit"
+  }, "Submit")))));
+};
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (FirebaseConfiguration);
+
+/***/ }),
+
 /***/ "./src/components/Notification/Template/SMSConfiguration.jsx":
 /*!*******************************************************************!*\
   !*** ./src/components/Notification/Template/SMSConfiguration.jsx ***!
@@ -16006,14 +17786,16 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Paper/Paper.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Fieldset/Fieldset.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Paper/Paper.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Fieldset/Fieldset.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var _mantine_form__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/form */ "./node_modules/@mantine/form/esm/use-form.mjs");
 /* harmony import */ var _Settings_store_settingSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../Settings/store/settingSlice */ "./src/components/Settings/store/settingSlice.js");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -16088,21 +17870,44 @@ const SMSConfiguration = () => {
     }));
     dispatch((0,_Settings_store_settingSlice__WEBPACK_IMPORTED_MODULE_1__.editSetting)({
       data: formData
-    }));
+    })).then(response => {
+      if (response.payload && response.payload.status && response.payload.status === 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_4__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'SMS Settings',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'green'
+        });
+      }
+      if (response.payload && response.payload.status && response.payload.status !== 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_4__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'SMS Settings',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'red'
+        });
+      }
+    });
     // dispatch(editSetting({ data: {...settings, sms_configuration: values , type:'sms'} }));
   };
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Paper, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Paper, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
     onSubmit: form.onSubmit(values => handlerSMSConfigurationSubmit(values))
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Fieldset, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Fieldset, {
     legend: " Reve SMS Gateway Information "
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     span: {
       md: 12,
       lg: 12
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.TextInput, {
     size: "md",
     withAsterisk: true,
     label: "API URL",
@@ -16110,12 +17915,12 @@ const SMSConfiguration = () => {
     key: form.key('sms_api_url'),
     ...form.getInputProps('sms_api_url'),
     defaultValue: reveApiUrl
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     span: {
       md: 4,
       lg: 4
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.TextInput, {
     autoComplete: false,
     size: "md",
     withAsterisk: true,
@@ -16124,12 +17929,12 @@ const SMSConfiguration = () => {
     key: form.key('sms_api_key'),
     ...form.getInputProps('sms_api_key'),
     defaultValue: reveApiKey
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     span: {
       md: 4,
       lg: 4
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.TextInput, {
     autoComplete: false,
     size: "md",
     withAsterisk: true,
@@ -16138,12 +17943,12 @@ const SMSConfiguration = () => {
     key: form.key('sms_api_secret_key'),
     ...form.getInputProps('sms_api_secret_key'),
     defaultValue: reveApiSecretKey
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     span: {
       md: 4,
       lg: 4
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.TextInput, {
     size: "md",
     withAsterisk: true,
     label: "Sender Name",
@@ -16151,10 +17956,10 @@ const SMSConfiguration = () => {
     key: form.key('sms_sender_name'),
     ...form.getInputProps('sms_sender_name'),
     defaultValue: smsSenderName
-  }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Group, {
+  }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Group, {
     justify: "flex-start",
     mt: "md"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Button, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Button, {
     variant: "filled",
     color: "#ED7D31",
     type: "submit"
@@ -16178,16 +17983,18 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Paper/Paper.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Fieldset/Fieldset.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/PasswordInput/PasswordInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/NumberInput/NumberInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Paper/Paper.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Fieldset/Fieldset.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/PasswordInput/PasswordInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/NumberInput/NumberInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var _mantine_form__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/form */ "./node_modules/@mantine/form/esm/use-form.mjs");
 /* harmony import */ var _Settings_store_settingSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../Settings/store/settingSlice */ "./src/components/Settings/store/settingSlice.js");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -16202,7 +18009,7 @@ const SMTPConfiguration = () => {
   const {
     settings
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_2__.useSelector)(state => state.settings.setting);
-  console.log(settings);
+  // console.log(settings);
   const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_2__.useDispatch)();
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     dispatch((0,_Settings_store_settingSlice__WEBPACK_IMPORTED_MODULE_1__.fetchSettings)());
@@ -16276,20 +18083,43 @@ const SMTPConfiguration = () => {
     }));
     dispatch((0,_Settings_store_settingSlice__WEBPACK_IMPORTED_MODULE_1__.editSetting)({
       data: formData
-    }));
+    })).then(response => {
+      if (response.payload && response.payload.status && response.payload.status === 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_4__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'SMTP Settings',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'green'
+        });
+      }
+      if (response.payload && response.payload.status && response.payload.status !== 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_4__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'SMTP Settings',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'red'
+        });
+      }
+    });
   };
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Paper, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Paper, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
     onSubmit: form.onSubmit(values => handleSubmit(values))
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Fieldset, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Fieldset, {
     legend: "Zoho SMTP Information"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     span: {
       md: 4,
       lg: 4
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.TextInput, {
     size: "md",
     withAsterisk: true,
     label: "Host",
@@ -16297,12 +18127,12 @@ const SMTPConfiguration = () => {
     key: form.key('smtp_host'),
     ...form.getInputProps('smtp_host'),
     defaultValue: zohoHost
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     span: {
       md: 4,
       lg: 4
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.TextInput, {
     autoComplete: false,
     size: "md",
     withAsterisk: true,
@@ -16311,12 +18141,12 @@ const SMTPConfiguration = () => {
     key: form.key('smtp_username'),
     ...form.getInputProps('smtp_username'),
     defaultValue: zohoUsername
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     span: {
       md: 4,
       lg: 4
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.PasswordInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.PasswordInput, {
     autoComplete: false,
     size: "md",
     withAsterisk: true,
@@ -16325,12 +18155,12 @@ const SMTPConfiguration = () => {
     key: form.key('smtp_password'),
     ...form.getInputProps('smtp_password'),
     defaultValue: zohoPassword
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     span: {
       md: 4,
       lg: 4
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.TextInput, {
     size: "md",
     withAsterisk: true,
     label: "Sender Name",
@@ -16338,12 +18168,12 @@ const SMTPConfiguration = () => {
     key: form.key('smtp_sender_name'),
     ...form.getInputProps('smtp_sender_name'),
     defaultValue: zohoSenderName
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     span: {
       md: 4,
       lg: 4
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.TextInput, {
     autoComplete: false,
     size: "md",
     withAsterisk: true,
@@ -16352,12 +18182,12 @@ const SMTPConfiguration = () => {
     key: form.key('smtp_sender_email'),
     ...form.getInputProps('smtp_sender_email'),
     defaultValue: zohoSenderEmail
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     span: {
       md: 4,
       lg: 4
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.NumberInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.NumberInput, {
     size: "md",
     label: "Port",
     placeholder: "Enter port",
@@ -16366,10 +18196,10 @@ const SMTPConfiguration = () => {
     defaultValue: zohoPort,
     key: form.key('smtp_port'),
     ...form.getInputProps('smtp_port')
-  }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Group, {
+  }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Group, {
     justify: "flex-start",
     mt: "md"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Button, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
     variant: "filled",
     color: "#ED7D31",
     type: "submit"
@@ -16395,18 +18225,20 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Table/Table.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Card/Card.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Card/Card.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconEdit.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPlus.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPlus.mjs");
 /* harmony import */ var _mantine_hooks__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/hooks */ "./node_modules/@mantine/hooks/esm/use-disclosure/use-disclosure.mjs");
 /* harmony import */ var _EditTemplateModal__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./EditTemplateModal */ "./src/components/Notification/Template/EditTemplateModal.jsx");
 /* harmony import */ var _store_notificationTemplateSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../store/notificationTemplateSlice */ "./src/components/Notification/store/notificationTemplateSlice.js");
 /* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
 /* harmony import */ var _CreateTemplateModal__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./CreateTemplateModal */ "./src/components/Notification/Template/CreateTemplateModal.jsx");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -16486,26 +18318,38 @@ const TemplateListContent = () => {
     },
     onConfirm: () => {
       if (templateId && templateId !== 'undefined') {
-        dispatch((0,_store_notificationTemplateSlice__WEBPACK_IMPORTED_MODULE_2__.removeNotificationTemplate)(templateId));
+        dispatch((0,_store_notificationTemplateSlice__WEBPACK_IMPORTED_MODULE_2__.removeNotificationTemplate)(templateId)).then(response => {
+          if (response.payload && response.payload.status && response.payload.status === 200) {
+            (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_12__.showNotification)({
+              id: 'load-data',
+              loading: true,
+              title: 'Notification Template',
+              message: response.payload && response.payload.message && response.payload.message,
+              autoClose: 2000,
+              disallowClose: true,
+              color: 'green'
+            });
+          }
+        });
       }
     }
   });
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Card, {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Card, {
     withBorder: true,
     shadow: "sm",
     radius: "md"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Card.Section, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Card.Section, {
     px: "xs"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.ScrollArea, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.ScrollArea, {
     className: "relative h-full pb-[2px]",
     scrollbarSize: 4
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Thead, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Tr, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Th, null, "Title"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Th, null, "Chanel"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Th, null, "Do action hook"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Th, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Avatar, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Thead, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Tr, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Th, null, "Title"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Th, null, "Chanel"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Th, null, "Do action hook"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Th, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Avatar, {
     onClick: createTemplateModalHandler,
     size: 32,
     bg: "#ED7D31",
     color: "#fff",
     title: "Add New Notification Template"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__["default"], {
     className: " hover:scale-110",
     size: 20
   }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Table.Tbody, null, rows))))), notificationEditTemplateModalOpen && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_EditTemplateModal__WEBPACK_IMPORTED_MODULE_1__["default"], {
@@ -16533,11 +18377,11 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Container/Container.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tabs/Tabs.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
-/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Container/Container.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tabs/Tabs.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Header__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../Header */ "./src/components/Header.jsx");
 /* harmony import */ var _store_notificationTemplateSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../store/notificationTemplateSlice */ "./src/components/Notification/store/notificationTemplateSlice.js");
 /* harmony import */ var _TemplateListContent__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./TemplateListContent */ "./src/components/Notification/Template/TemplateListContent.jsx");
@@ -16545,6 +18389,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _Settings_SettingsNav__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../../Settings/SettingsNav */ "./src/components/Settings/SettingsNav.jsx");
 /* harmony import */ var _SMTPConfiguration__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./SMTPConfiguration */ "./src/components/Notification/Template/SMTPConfiguration.jsx");
 /* harmony import */ var _SMSConfiguration__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ./SMSConfiguration */ "./src/components/Notification/Template/SMSConfiguration.jsx");
+/* harmony import */ var _FirebaseConfiguration__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! ./FirebaseConfiguration */ "./src/components/Notification/Template/FirebaseConfiguration.jsx");
+
 
 
 
@@ -16560,13 +18406,13 @@ __webpack_require__.r(__webpack_exports__);
 
 
 const NotificationTemplate = () => {
-  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useDispatch)();
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useDispatch)();
   const {
     token
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useSelector)(state => state.auth.session);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.auth.session);
   const {
     loggedUserId
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useSelector)(state => state.auth.user);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.auth.user);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     dispatch((0,_store_notificationTemplateSlice__WEBPACK_IMPORTED_MODULE_2__.fetchAllNotificationTemplates)());
     dispatch((0,_store_notificationTemplateSlice__WEBPACK_IMPORTED_MODULE_2__.fetchAllNotificationChannels)());
@@ -16574,50 +18420,60 @@ const NotificationTemplate = () => {
   }, [dispatch]);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "dashboard"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Container, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Container, {
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "settings-page-card bg-white rounded-xl p-5 pt-3 my-5 mb-0"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Settings_SettingsNav__WEBPACK_IMPORTED_MODULE_5__["default"], null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.ScrollArea, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Settings_SettingsNav__WEBPACK_IMPORTED_MODULE_5__["default"], null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.ScrollArea, {
     scrollbars: "y",
-    className: "w-full h-[calc(100vh-210px)] pr-1",
+    className: "w-full h-[calc(100vh-250px)] pr-1",
     scrollbarSize: 4,
     offsetScrollbars: true
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Tabs, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Tabs, {
     color: "orange",
     orientation: "vertical",
     defaultValue: "template-list"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Tabs.List, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Tabs.Tab, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Tabs.List, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Tabs.Tab, {
     value: "template-list"
-  }, "Template List"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Tabs.Tab, {
+  }, "Template List"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Tabs.Tab, {
     value: "smtp-configuration"
-  }, "SMTP Configuration"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Tabs.Tab, {
+  }, "SMTP Configuration"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Tabs.Tab, {
     value: "sms-configuration"
-  }, "SMS Configuration")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Tabs.Panel, {
+  }, "SMS Configuration"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Tabs.Tab, {
+    value: "firebase-configuration"
+  }, "Firebase Configuration")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Tabs.Panel, {
     value: "template-list",
     px: 'md'
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid, {
     className: "mb-5",
     columns: 12
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid.Col, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid.Col, {
     span: 12
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_TemplateListContent__WEBPACK_IMPORTED_MODULE_3__["default"], null)))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Tabs.Panel, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_TemplateListContent__WEBPACK_IMPORTED_MODULE_3__["default"], null)))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Tabs.Panel, {
     value: "smtp-configuration",
     px: 'md'
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid, {
     className: "mb-5",
     columns: 12
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid.Col, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid.Col, {
     span: 12
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_SMTPConfiguration__WEBPACK_IMPORTED_MODULE_6__["default"], null)))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Tabs.Panel, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_SMTPConfiguration__WEBPACK_IMPORTED_MODULE_6__["default"], null)))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Tabs.Panel, {
     value: "sms-configuration",
     px: 'md'
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid, {
     className: "mb-5",
     columns: 12
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid.Col, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid.Col, {
     span: 12
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_SMSConfiguration__WEBPACK_IMPORTED_MODULE_7__["default"], null))))))))));
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_SMSConfiguration__WEBPACK_IMPORTED_MODULE_7__["default"], null)))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Tabs.Panel, {
+    value: "firebase-configuration",
+    px: 'md'
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid, {
+    className: "mb-5",
+    columns: 12
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid.Col, {
+    span: 12
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_FirebaseConfiguration__WEBPACK_IMPORTED_MODULE_8__["default"], null))))))))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (NotificationTemplate);
 
@@ -16990,23 +18846,24 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Container/Container.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/Box/Box.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Select/Select.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Container/Container.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/Box/Box.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Select/Select.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var _mantine_form__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/form */ "./node_modules/@mantine/form/esm/use-form.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
 /* harmony import */ var _Header__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../Header */ "./src/components/Header.jsx");
 /* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router/dist/index.js");
-/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
+/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
 /* harmony import */ var react_phone_number_input__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! react-phone-number-input */ "./node_modules/react-phone-number-input/min/index.js");
 /* harmony import */ var react_phone_number_input_style_css__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-phone-number-input/style.css */ "./node_modules/react-phone-number-input/style.css");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _store_auth_roleSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../store/auth/roleSlice */ "./src/store/auth/roleSlice.js");
 /* harmony import */ var _store_auth_userSlice__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../store/auth/userSlice */ "./src/store/auth/userSlice.js");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
 
 
 
@@ -17016,6 +18873,7 @@ __webpack_require__.r(__webpack_exports__);
 
 
  // Import the CSS for react-phone-number-input
+
 
 
 
@@ -17060,18 +18918,41 @@ const Profile = () => {
   };
   const handleSubmit = values => {
     values['loggedInUserId'] = loggedInUser ? loggedInUser.loggedUserId : null;
-    dispatch((0,_store_auth_userSlice__WEBPACK_IMPORTED_MODULE_4__.createUser)(values));
+    dispatch((0,_store_auth_userSlice__WEBPACK_IMPORTED_MODULE_4__.createUser)(values)).then(response => {
+      if (response.payload && response.payload.status && response.payload.status === 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_9__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'User',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'green'
+        });
+      }
+      if (response.payload && response.payload.status && response.payload.status !== 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_9__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'User',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'red'
+        });
+      }
+    });
     form.reset();
     // Perform form submission or other actions here
-    navigate('/settings');
+    navigate('/users');
   };
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "dashboard"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Container, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Container, {
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "lm-profile-form flex items-center justify-center h-[calc(100vh-165px)]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Box, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Box, {
     m: 4,
     p: 32,
     radius: "md",
@@ -17082,20 +18963,20 @@ const Profile = () => {
     }
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex justify-between mb-8"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Title, {
     className: "text-center",
     order: 4
-  }, "Create Profile"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_12__.Link, {
+  }, "Create Profile"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_13__.Link, {
     to: "/settings",
     className: "text-gray-600 hover:text-gray-800 focus:shadow-none"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__["default"], {
     size: 24,
     color: "#202020"
   }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
     onSubmit: form.onSubmit(handleSubmit)
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex gap-2 mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.TextInput, {
     placeholder: "First Name",
     ...form.getInputProps('firstName'),
     radius: "sm",
@@ -17108,7 +18989,7 @@ const Profile = () => {
         borderColor: 'blue.5'
       }
     }
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.TextInput, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.TextInput, {
     placeholder: "Last Name",
     ...form.getInputProps('lastName'),
     radius: "sm",
@@ -17123,7 +19004,7 @@ const Profile = () => {
     }
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Select, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Select, {
     size: "md",
     placeholder: "Select Role",
     data: roles && roles.length > 0 && roles.map(role => ({
@@ -17148,12 +19029,12 @@ const Profile = () => {
     },
     placeholder: "+12 344 678 98",
     ...form.getInputProps('phoneNumber')
-  }), form.errors.phoneNumber && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Text, {
+  }), form.errors.phoneNumber && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Text, {
     color: "red",
     mt: 2
   }, form.errors.phoneNumber)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-8"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.TextInput, {
     type: "email",
     placeholder: "Email",
     mb: 16,
@@ -17168,7 +19049,7 @@ const Profile = () => {
         borderColor: 'blue.5'
       }
     }
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Button, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Button, {
     type: "submit",
     variant: "gradient",
     gradient: {
@@ -17199,26 +19080,28 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Container/Container.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Select/Select.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/FileInput/FileInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
-/* harmony import */ var _mantine_form__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/form */ "./node_modules/@mantine/form/esm/use-form.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Container/Container.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/LoadingOverlay/LoadingOverlay.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Select/Select.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/FileInput/FileInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_form__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/form */ "./node_modules/@mantine/form/esm/use-form.mjs");
 /* harmony import */ var _Header__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../Header */ "./src/components/Header.jsx");
 /* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router/dist/index.js");
-/* harmony import */ var react_phone_number_input__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! react-phone-number-input */ "./node_modules/react-phone-number-input/min/index.js");
+/* harmony import */ var react_phone_number_input__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! react-phone-number-input */ "./node_modules/react-phone-number-input/min/index.js");
 /* harmony import */ var react_phone_number_input_style_css__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-phone-number-input/style.css */ "./node_modules/react-phone-number-input/style.css");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _store_auth_roleSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../store/auth/roleSlice */ "./src/store/auth/roleSlice.js");
 /* harmony import */ var _store_auth_userSlice__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../store/auth/userSlice */ "./src/store/auth/userSlice.js");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPhoto.mjs");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../ui/permissions */ "./src/components/ui/permissions.jsx");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
 
 
 
@@ -17227,6 +19110,7 @@ __webpack_require__.r(__webpack_exports__);
 
 
  // Import the CSS for react-phone-number-input
+
 
 
 
@@ -17255,7 +19139,13 @@ const ProfileEdit = () => {
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_7__.useSelector)(state => state.auth.session);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     dispatch((0,_store_auth_roleSlice__WEBPACK_IMPORTED_MODULE_3__.fetchAllRoles)());
-    dispatch((0,_store_auth_userSlice__WEBPACK_IMPORTED_MODULE_4__.fetchUser)(id)).then(() => setLoading(false));
+    dispatch((0,_store_auth_userSlice__WEBPACK_IMPORTED_MODULE_4__.fetchUser)(id)).then(response => {
+      if (response.payload && response.payload.status && response.payload.status === 200) {
+        setTimeout(() => {
+          setLoading(false);
+        }, 500);
+      }
+    });
   }, [dispatch]);
   const {
     roles
@@ -17275,10 +19165,37 @@ const ProfileEdit = () => {
     dispatch((0,_store_auth_userSlice__WEBPACK_IMPORTED_MODULE_4__.editUser)({
       id: id,
       data: formData
-    }));
-    navigate('/dashboard');
+    })).then(response => {
+      if (response.payload && response.payload.status && response.payload.status === 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_9__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'User',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'green'
+        });
+        if ((0,_ui_permissions__WEBPACK_IMPORTED_MODULE_5__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin'])) {
+          navigate('/users');
+        } else {
+          navigate('/dashboard');
+        }
+      }
+      if (response.payload && response.payload.status && response.payload.status !== 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_9__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'User',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'red'
+        });
+      }
+    });
   };
-  const form = (0,_mantine_form__WEBPACK_IMPORTED_MODULE_9__.useForm)({
+  const form = (0,_mantine_form__WEBPACK_IMPORTED_MODULE_10__.useForm)({
     name: user && user.id ? user.id : id,
     initialValues: {
       firstName: user && user.firstName ? user.firstName : '',
@@ -17294,7 +19211,7 @@ const ProfileEdit = () => {
     validate: {
       firstName: value => value.length < 2 ? 'First name is required' : null,
       email: value => value.length < 1 ? 'Email is required' : /^\S+@\S+$/.test(value) ? null : 'Invalid email',
-      phoneNumber: value => value && !(0,react_phone_number_input__WEBPACK_IMPORTED_MODULE_10__.isValidPhoneNumber)(value) ? 'Invalid phone number' : null
+      phoneNumber: value => value && !(0,react_phone_number_input__WEBPACK_IMPORTED_MODULE_11__.isValidPhoneNumber)(value) ? 'Invalid phone number' : null
     }
   });
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
@@ -17319,26 +19236,33 @@ const ProfileEdit = () => {
       form.setFieldValue('roles', []);
     }
   };
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.ScrollArea, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.ScrollArea, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "dashboard"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Container, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Container, {
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "h-[calc(100vh-65px)] lm-profile-form flex items-center justify-center"
-  }, !loading && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
+    className: "h-[calc(100vh-90px)] lm-profile-form flex items-center justify-center"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.LoadingOverlay, {
+    visible: loading,
+    zIndex: 1000,
+    overlayProps: {
+      radius: 'sm',
+      blur: 4
+    }
+  }), !loading && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
     onSubmit: form.onSubmit(values => handleSubmit(values))
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "rounded-md p-8 w-[416px] relative bg-white shadow-md"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex justify-between mb-8"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Title, {
     className: "text-center",
     order: 4
   }, "Edit Profile")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex gap-2"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.TextInput, {
     withAsterisk: true,
     size: "md"
     // label="First Name"
@@ -17347,7 +19271,7 @@ const ProfileEdit = () => {
     ...form.getInputProps('firstName')
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.TextInput, {
     size: "md"
     // label="Last Name"
     ,
@@ -17355,23 +19279,22 @@ const ProfileEdit = () => {
     ...form.getInputProps('lastName')
   }))), (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_5__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Select, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Select, {
     size: "md",
     placeholder: "Select Role",
     data: roles && roles.length > 0 && roles.map(role => ({
       value: role.id,
       label: role.name
     })),
-    defaultValue: user && user.llc_roles && user.llc_roles.length > 0 ? user.llc_roles[0].id.toString() : '',
+    defaultValue: user && user.llc_roles && user.llc_roles.length > 0 ? user.llc_roles[0].id.toString() : null,
     searchable: true,
-    allowDeselect: true,
+    allowDeselect: false,
     onChange: (e, option) => {
       onUserRoleChangeHandler(option);
-      if (form.getInputProps('roles').onChange) form.getInputProps('roles').onChange(option => option);
     }
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_phone_number_input__WEBPACK_IMPORTED_MODULE_10__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_phone_number_input__WEBPACK_IMPORTED_MODULE_11__["default"], {
     international: true,
     defaultCountry: "BD",
     className: "w-full",
@@ -17380,12 +19303,12 @@ const ProfileEdit = () => {
     },
     placeholder: "+12 344 678 98",
     ...form.getInputProps('phoneNumber')
-  }), form.errors.phoneNumber && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Text, {
+  }), form.errors.phoneNumber && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Text, {
     color: "red",
     mt: 2
   }, form.errors.phoneNumber)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.TextInput, {
     size: "md",
     withAsterisk: true
     // label="Last Name"
@@ -17394,15 +19317,15 @@ const ProfileEdit = () => {
     ...form.getInputProps('email')
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-8"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Flex, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Flex, {
     gap: "md",
     align: "center"
-  }, user && user.avatar && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Avatar, {
+  }, user && user.avatar && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.Avatar, {
     src: user?.avatar,
     alt: user?.name,
     radius: "xl",
     size: 40
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.FileInput, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.FileInput, {
     className: `!w-full`,
     size: "md",
     accept: "image/png,image/jpeg,image/jpg",
@@ -17411,7 +19334,7 @@ const ProfileEdit = () => {
     leftSection: icon,
     leftSectionPointerEvents: "none",
     onChange: handleFileUpload
-  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.Button, {
+  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Button, {
     type: "submit"
     // gradient={{from: 'orange', to: 'orange'}}
     ,
@@ -18388,16 +20311,18 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Paper/Paper.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Image/Image.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/FileInput/FileInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Paper/Paper.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Image/Image.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/FileInput/FileInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var _mantine_form__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/form */ "./node_modules/@mantine/form/esm/use-form.mjs");
 /* harmony import */ var _store_settingSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../store/settingSlice */ "./src/components/Settings/store/settingSlice.js");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
 
 
 
@@ -18459,18 +20384,41 @@ const GeneralSettings = () => {
     }));
     dispatch((0,_store_settingSlice__WEBPACK_IMPORTED_MODULE_1__.editSetting)({
       data: formData
-    }));
+    })).then(response => {
+      if (response.payload && response.payload.status && response.payload.status === 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_4__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'General Settings',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'green'
+        });
+      }
+      if (response.payload && response.payload.status && response.payload.status !== 200) {
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_4__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'General Settings',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'red'
+        });
+      }
+    });
   };
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Paper, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Paper, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
     onSubmit: form.onSubmit(values => handleSubmit(values))
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Grid, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Grid.Col, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
     span: {
       md: 4,
       lg: 4
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.TextInput, {
     size: "md",
     withAsterisk: true,
     label: "Site title",
@@ -18478,24 +20426,24 @@ const GeneralSettings = () => {
     key: form.key('site_title'),
     ...form.getInputProps('site_title'),
     defaultValue: siteTitle
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Grid.Col, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Grid.Col, {
     span: {
       md: 4,
       lg: 4
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Flex, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Flex, {
     align: "end",
     gap: 10
   }, siteLogoPath &&
   // <Avatar size={60} src={siteLogoPath} alt="it's me" />
   // <Image src={siteLogoPath} alt={siteTitle} width={`60px`} height="auto"} />
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Image, {
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Image, {
     radius: "md",
     h: 60,
     w: "auto",
     fit: "contain",
     src: siteLogoPath
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.FileInput, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.FileInput, {
     className: `min-w-[250px]`,
     size: "md",
     accept: "image/png,image/jpeg,image/jpg",
@@ -18503,10 +20451,10 @@ const GeneralSettings = () => {
     placeholder: "Upload site logo",
     key: form.key('site_logo'),
     onChange: handleFileUpload
-  }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Group, {
+  }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Group, {
     justify: "flex-start",
     mt: "md"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Button, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
     variant: "filled",
     color: "#ED7D31",
     type: "submit"
@@ -18557,7 +20505,7 @@ const Projects = () => {
     projects
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_7__.useSelector)(state => state.settings.project);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.ScrollArea, {
-    className: "h-[calc(100vh-230px)] pb-[2px]",
+    className: "h-[calc(100vh-250px)] pb-[2px]",
     scrollbarSize: 4
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Grid, {
     gutter: {
@@ -18659,7 +20607,7 @@ __webpack_require__.r(__webpack_exports__);
 
 const Settings = () => {
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.ScrollArea, {
-    className: "h-[calc(100vh-230px)] pb-[2px]",
+    className: "h-[calc(100vh-250px)] pb-[2px]",
     scrollbarSize: 4
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Tabs, {
     color: "orange",
@@ -18940,7 +20888,7 @@ const Users = () => {
   }, [dispatch]);
   // console.log(usersData);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.ScrollArea, {
-    className: "h-[calc(100vh-230px)] pb-[2px]",
+    className: "h-[calc(100vh-250px)] pb-[2px]",
     scrollbarSize: 4
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid, {
     gutter: {
@@ -19020,7 +20968,7 @@ const Workspace = () => {
     companies
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_7__.useSelector)(state => state.settings.company);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.ScrollArea, {
-    className: "h-[calc(100vh-230px)] pb-[2px]",
+    className: "h-[calc(100vh-250px)] pb-[2px]",
     scrollbarSize: 4
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Grid, {
     gutter: {
@@ -19148,7 +21096,7 @@ const companySlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createSlic
     }).addCase(fetchAllCompanies.fulfilled, (state, action) => {
       state.isLoading = false;
       state.isError = false;
-      state.companies = action.payload.data;
+      state.companies = action.payload && action.payload.data && action.payload.data;
     }).addCase(fetchAllCompanies.rejected, (state, action) => {
       state.isLoading = false;
       state.isError = false;
@@ -19159,9 +21107,11 @@ const companySlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createSlic
     }).addCase(createCompany.fulfilled, (state, action) => {
       state.isLoading = false;
       state.isError = false;
-      state.companies.push(action.payload.data);
-      state.company = action.payload.data;
-      state.success = `${action.payload.data.name} Created Successfully`;
+      if (action.payload && action.payload.status && action.payload.status === 200) {
+        state.companies.push(action.payload && action.payload.data && action.payload.data);
+        state.company = action.payload && action.payload.data && action.payload.data;
+        state.success = action.payload && action.payload.data && `${action.payload.data.name} Created Successfully`;
+      }
     }).addCase(createCompany.rejected, (state, action) => {
       state.isLoading = false;
       state.isError = false;
@@ -19172,7 +21122,7 @@ const companySlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createSlic
     }).addCase(fetchCompany.fulfilled, (state, action) => {
       state.isLoading = false;
       state.isError = false;
-      state.company = action.payload.data;
+      state.company = action.payload && action.payload.data ? action.payload.data : {};
     }).addCase(fetchCompany.rejected, (state, action) => {
       state.isLoading = false;
       state.isError = false;
@@ -19183,8 +21133,8 @@ const companySlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createSlic
     }).addCase(deleteCompany.fulfilled, (state, action) => {
       state.isLoading = false;
       state.isError = false;
-      state.companies = state.companies.filter(company => parseInt(company.id) !== parseInt(action.payload.data.id));
       if (action.payload.status && action.payload.status === 200) {
+        state.companies = state.companies.filter(company => parseInt(company.id) !== parseInt(action.payload.data.id));
         state.success = `${action.payload.data.name} Deleted Successfully`;
       }
     }).addCase(deleteCompany.rejected, (state, action) => {
@@ -19210,12 +21160,14 @@ const companySlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createSlic
     }).addCase(editCompany.fulfilled, (state, action) => {
       state.isLoading = false;
       state.isError = false;
-      const indexToUpdate = state.companies.findIndex(company => parseInt(company.id) === parseInt(action.payload.data.id));
-      state.companies[indexToUpdate] = action.payload.data;
-      state.company = {
-        ...action.payload.data
-      };
-      state.success = `${action.payload.data.name} Update Successfully`;
+      if (action.payload && action.payload.status && action.payload.status === 200) {
+        const indexToUpdate = state.companies.findIndex(company => parseInt(company.id) === parseInt(action.payload.data.id));
+        state.companies[indexToUpdate] = action.payload.data;
+        state.company = {
+          ...action.payload.data
+        };
+        state.success = `${action.payload.data.name} Update Successfully`;
+      }
     }).addCase(editCompany.rejected, (state, action) => {
       state.isLoading = false;
       state.isError = false;
@@ -19226,8 +21178,7 @@ const companySlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createSlic
     }).addCase(fetchCompanyMembers.fulfilled, (state, action) => {
       state.isLoading = false;
       state.isError = false;
-      state.companyMembers = action.payload.data;
-      console.log(action.payload);
+      state.companyMembers = action.payload && action.payload.data ? action.payload.data : [];
     }).addCase(fetchCompanyMembers.rejected, (state, action) => {
       state.isLoading = false;
       state.isError = false;
@@ -19688,8 +21639,13 @@ const projectSlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createSlic
     }).addCase(deleteProject.fulfilled, (state, action) => {
       state.isLoading = false;
       state.isError = false;
-      state.projects = state.projects.filter(project => parseInt(project.id) !== parseInt(action.payload.data.id));
-      state.success = `${action.payload.data.name} Deleted Successfully`;
+      if (action.payload.data && action.payload.data.id) {
+        //remove project from state
+        state.projects = state.projects.filter(project => parseInt(project.id) !== parseInt(action.payload.data.id));
+        state.success = `${action.payload.data.name} Deleted Successfully`;
+      }
+      // state.projects = state.projects.filter(project => parseInt(project.id) !== parseInt(action.payload.data.id))
+      // state.success = `${action.payload.data.name} Deleted Successfully`
     }).addCase(deleteProject.rejected, (state, action) => {
       state.isLoading = false;
       state.isError = true;
@@ -19720,12 +21676,11 @@ const projectSlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createSlic
           }
           return project;
         });
+        state.project = {
+          ...action.payload.data
+        };
+        state.success = `${action.payload.data.name} Update Successfully`;
       }
-      state.project = {
-        ...action.payload.data
-      };
-      console.log(action.payload);
-      // state.success = `${action.payload.data.name} Update Successfully`
     }).addCase(editProject.rejected, (state, action) => {
       state.isLoading = false;
       state.isError = false;
@@ -19736,8 +21691,7 @@ const projectSlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createSlic
     }).addCase(fetchProjectMembers.fulfilled, (state, action) => {
       state.isLoading = false;
       state.isError = false;
-      state.projectMembers = action.payload.data;
-      console.log(action.payload);
+      state.projectMembers = action.payload && action.payload.data && action.payload.data;
     }).addCase(fetchProjectMembers.rejected, (state, action) => {
       state.isLoading = false;
       state.isError = false;
@@ -20895,11 +22849,11 @@ const InlineEditForm = ({
       editHandler(values);
       console.log(values);
     }
-    // document.activeElement.blur();
   };
   const handlerOnBlur = values => {
     if (form.isDirty('input')) {
       editHandler(values);
+      console.log(values);
     }
   };
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("form", {
@@ -20925,6 +22879,48 @@ const InlineEditForm = ({
   })));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (InlineEditForm);
+
+/***/ }),
+
+/***/ "./src/components/ui/TimePicker.jsx":
+/*!******************************************!*\
+  !*** ./src/components/ui/TimePicker.jsx ***!
+  \******************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
+/* harmony import */ var _mantine_dates__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/dates */ "./node_modules/@mantine/dates/esm/components/TimeInput/TimeInput.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconClock.mjs");
+
+
+
+
+
+const TimePicker = props => {
+  const ref = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const pickerControl = (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_1__.ActionIcon, {
+    variant: "subtle",
+    color: "gray",
+    onClick: () => ref.current?.showPicker()
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_2__["default"], {
+    size: 20,
+    stroke: 1.5
+  }));
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_dates__WEBPACK_IMPORTED_MODULE_3__.TimeInput, {
+    size: "sm",
+    ref: ref,
+    leftSection: pickerControl,
+    ...props
+  });
+};
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TimePicker);
 
 /***/ }),
 
@@ -21159,7 +23155,7 @@ const appConfig = {
   tourPath: '/',
   locale: 'en',
   enableMock: false,
-  liveApiUrl: `${appLocalizer?.apiUrl}/pms/api/v1`,
+  liveApiUrl: `${appLocalizer?.apiUrl}/lazytasks/api/v1`,
   liveSiteUrl: `${appLocalizer?.homeUrl}`,
   localApiUrl: 'http://localhost:9000'
 };
@@ -21670,7 +23666,6 @@ const updateUser = async (id, data) => {
       },
       data
     });
-    console.log(response.data);
     return response.data;
   } catch (error) {
     return error.message;
@@ -21896,7 +23891,6 @@ const addCompany = async data => {
       method: 'post',
       data
     });
-    console.log(response.data);
     return response.data;
   } catch (error) {
     return error.message;
@@ -21958,6 +23952,73 @@ const getCompanyMembers = async data => {
   } catch (error) {
     return error.message;
   }
+};
+
+/***/ }),
+
+/***/ "./src/services/MyZenService.js":
+/*!**************************************!*\
+  !*** ./src/services/MyZenService.js ***!
+  \**************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   addMyZen: () => (/* binding */ addMyZen),
+/* harmony export */   getAllMyZens: () => (/* binding */ getAllMyZens),
+/* harmony export */   getMyZen: () => (/* binding */ getMyZen),
+/* harmony export */   updateMyZen: () => (/* binding */ updateMyZen)
+/* harmony export */ });
+/* harmony import */ var _ApiService__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./ApiService */ "./src/services/ApiService.js");
+
+
+// Get All MyZens
+const getAllMyZens = async () => {
+  try {
+    const response = await _ApiService__WEBPACK_IMPORTED_MODULE_0__["default"].fetchData({
+      url: '/my-zen',
+      method: 'get'
+    });
+    return response.data;
+  } catch (error) {
+    return error.message;
+  }
+};
+const addMyZen = async data => {
+  try {
+    const response = await _ApiService__WEBPACK_IMPORTED_MODULE_0__["default"].fetchData({
+      url: '/my-zen/create',
+      method: 'post',
+      data
+    });
+    console.log(response.data);
+    return response.data;
+  } catch (error) {
+    return error.message;
+  }
+};
+const getMyZen = async id => {
+  try {
+    const response = await _ApiService__WEBPACK_IMPORTED_MODULE_0__["default"].fetchData({
+      url: `/my-zen/${id}`,
+      method: 'get'
+    });
+    return response.data;
+  } catch (error) {
+    return error.message;
+  }
+};
+
+// Update MyZen
+
+const updateMyZen = async (id, data) => {
+  const response = await _ApiService__WEBPACK_IMPORTED_MODULE_0__["default"].fetchData({
+    url: `/my-zen/edit/${id}`,
+    method: 'put',
+    data
+  });
+  return response.data;
 };
 
 /***/ }),
@@ -22116,7 +24177,6 @@ const addProject = async data => {
       method: 'post',
       data
     });
-    console.log(response.data);
     return response.data;
   } catch (error) {
     return error.message;
@@ -22274,7 +24334,6 @@ const Lazytask_updateSetting = async data => {
     },
     data
   });
-  console.log(response.data);
   return response.data;
 };
 
@@ -23052,7 +25111,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
 /* harmony export */ });
-/* harmony import */ var redux__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! redux */ "./node_modules/redux/dist/redux.mjs");
+/* harmony import */ var redux__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! redux */ "./node_modules/redux/dist/redux.mjs");
 /* harmony import */ var _components_Settings_store__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../components/Settings/store */ "./src/components/Settings/store/index.js");
 /* harmony import */ var _reducers_usersSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../reducers/usersSlice */ "./src/reducers/usersSlice.js");
 /* harmony import */ var _reducers_workspaceSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../reducers/workspaceSlice */ "./src/reducers/workspaceSlice.js");
@@ -23061,6 +25120,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _auth__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ./auth */ "./src/store/auth/index.js");
 /* harmony import */ var _base__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./base */ "./src/store/base/index.js");
 /* harmony import */ var _components_Notification_store__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ../components/Notification/store */ "./src/components/Notification/store/index.js");
+/* harmony import */ var _components_MyZen_store__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! ../components/MyZen/store */ "./src/components/MyZen/store/index.js");
+
 
 
 
@@ -23085,7 +25146,7 @@ __webpack_require__.r(__webpack_exports__);
     return combinedReducer(state, action)
 }*/
 
-const rootReducer = (0,redux__WEBPACK_IMPORTED_MODULE_8__.combineReducers)({
+const rootReducer = (0,redux__WEBPACK_IMPORTED_MODULE_9__.combineReducers)({
   auth: _auth__WEBPACK_IMPORTED_MODULE_5__["default"],
   users: _reducers_usersSlice__WEBPACK_IMPORTED_MODULE_1__["default"],
   workspace: _reducers_workspaceSlice__WEBPACK_IMPORTED_MODULE_2__["default"],
@@ -23093,7 +25154,8 @@ const rootReducer = (0,redux__WEBPACK_IMPORTED_MODULE_8__.combineReducers)({
   task: _reducers_taskSlice__WEBPACK_IMPORTED_MODULE_4__["default"],
   settings: _components_Settings_store__WEBPACK_IMPORTED_MODULE_0__["default"],
   notifications: _components_Notification_store__WEBPACK_IMPORTED_MODULE_7__["default"],
-  base: _base__WEBPACK_IMPORTED_MODULE_6__["default"]
+  base: _base__WEBPACK_IMPORTED_MODULE_6__["default"],
+  zen: _components_MyZen_store__WEBPACK_IMPORTED_MODULE_8__["default"]
 });
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (rootReducer);
 
@@ -23212,17 +25274,11 @@ function useAuth() {
               llc_permissions: []
             }));
             navigate(_configs_app_config__WEBPACK_IMPORTED_MODULE_3__["default"].authenticatedEntryPath);
-            return {
-              status: 'success',
-              message: 'Login successful'
-            };
+            return resp;
           }
         }
         navigate(_configs_app_config__WEBPACK_IMPORTED_MODULE_3__["default"].unAuthenticatedEntryPath);
-        return {
-          status: 'error',
-          message: 'Something went wrong'
-        };
+        return resp;
       }
     } catch (errors) {
       return {
@@ -48338,7 +50394,7 @@ function RemoveScrollSideCar(props) {
         return;
     }, [props.inert, props.lockRef.current, props.shards]);
     var shouldCancelEvent = react__WEBPACK_IMPORTED_MODULE_0__.useCallback(function (event, parent) {
-        if ('touches' in event && event.touches.length === 2) {
+        if (('touches' in event && event.touches.length === 2) || (event.type === 'wheel' && event.ctrlKey)) {
             return !lastProps.current.allowPinchZoom;
         }
         var touch = getTouchXY(event);
@@ -48806,7 +50862,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react_router__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! react-router */ "./node_modules/react-router/dist/index.js");
 /* harmony import */ var react_router__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! @remix-run/router */ "./node_modules/@remix-run/router/dist/router.js");
 /**
- * React Router DOM v6.26.1
+ * React Router DOM v6.26.2
  *
  * Copyright (c) Remix Software Inc.
  *
@@ -50328,7 +52384,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
 /* harmony import */ var _remix_run_router__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! @remix-run/router */ "./node_modules/@remix-run/router/dist/router.js");
 /**
- * React Router v6.26.1
+ * React Router v6.26.2
  *
  * Copyright (c) Remix Software Inc.
  *
@@ -76429,10 +78485,9 @@ async function convertValueToCoords(state, options) {
     crossAxis: 0,
     alignmentAxis: null
   } : {
-    mainAxis: 0,
-    crossAxis: 0,
-    alignmentAxis: null,
-    ...rawValue
+    mainAxis: rawValue.mainAxis || 0,
+    crossAxis: rawValue.crossAxis || 0,
+    alignmentAxis: rawValue.alignmentAxis
   };
   if (alignment && typeof alignmentAxis === 'number') {
     crossAxis = alignment === 'end' ? alignmentAxis * -1 : alignmentAxis;
@@ -76554,7 +78609,11 @@ const shift = function (options) {
         ...limitedCoords,
         data: {
           x: limitedCoords.x - x,
-          y: limitedCoords.y - y
+          y: limitedCoords.y - y,
+          enabled: {
+            [mainAxis]: checkMainAxis,
+            [crossAxis]: checkCrossAxis
+          }
         }
       };
     }
@@ -76643,6 +78702,7 @@ const size = function (options) {
     name: 'size',
     options,
     async fn(state) {
+      var _state$middlewareData, _state$middlewareData2;
       const {
         placement,
         rects,
@@ -76677,10 +78737,11 @@ const size = function (options) {
       const noShift = !state.middlewareData.shift;
       let availableHeight = overflowAvailableHeight;
       let availableWidth = overflowAvailableWidth;
-      if (isYAxis) {
-        availableWidth = alignment || noShift ? (0,_floating_ui_utils__WEBPACK_IMPORTED_MODULE_0__.min)(overflowAvailableWidth, maximumClippingWidth) : maximumClippingWidth;
-      } else {
-        availableHeight = alignment || noShift ? (0,_floating_ui_utils__WEBPACK_IMPORTED_MODULE_0__.min)(overflowAvailableHeight, maximumClippingHeight) : maximumClippingHeight;
+      if ((_state$middlewareData = state.middlewareData.shift) != null && _state$middlewareData.enabled.x) {
+        availableWidth = maximumClippingWidth;
+      }
+      if ((_state$middlewareData2 = state.middlewareData.shift) != null && _state$middlewareData2.enabled.y) {
+        availableHeight = maximumClippingHeight;
       }
       if (noShift && !alignment) {
         const xMin = (0,_floating_ui_utils__WEBPACK_IMPORTED_MODULE_0__.max)(overflow.left, 0);
@@ -76918,10 +78979,14 @@ function getClientRects(element) {
   return Array.from(element.getClientRects());
 }
 
-function getWindowScrollBarX(element) {
-  // If <html> has a CSS width greater than the viewport, then this will be
-  // incorrect for RTL.
-  return getBoundingClientRect((0,_floating_ui_utils_dom__WEBPACK_IMPORTED_MODULE_0__.getDocumentElement)(element)).left + (0,_floating_ui_utils_dom__WEBPACK_IMPORTED_MODULE_0__.getNodeScroll)(element).scrollLeft;
+// If <html> has a CSS width greater than the viewport, then this will be
+// incorrect for RTL.
+function getWindowScrollBarX(element, rect) {
+  const leftScroll = (0,_floating_ui_utils_dom__WEBPACK_IMPORTED_MODULE_0__.getNodeScroll)(element).scrollLeft;
+  if (!rect) {
+    return getBoundingClientRect((0,_floating_ui_utils_dom__WEBPACK_IMPORTED_MODULE_0__.getDocumentElement)(element)).left + leftScroll;
+  }
+  return rect.left + leftScroll;
 }
 
 // Gets the entire size of the scrollable document area, even extending outside
@@ -77105,11 +79170,22 @@ function getRectRelativeToOffsetParent(element, offsetParent, strategy) {
       offsets.x = offsetRect.x + offsetParent.clientLeft;
       offsets.y = offsetRect.y + offsetParent.clientTop;
     } else if (documentElement) {
+      // If the <body> scrollbar appears on the left (e.g. RTL systems). Use
+      // Firefox with layout.scrollbar.side = 3 in about:config to test this.
       offsets.x = getWindowScrollBarX(documentElement);
     }
   }
-  const x = rect.left + scroll.scrollLeft - offsets.x;
-  const y = rect.top + scroll.scrollTop - offsets.y;
+  let htmlX = 0;
+  let htmlY = 0;
+  if (documentElement && !isOffsetParentAnElement && !isFixed) {
+    const htmlRect = documentElement.getBoundingClientRect();
+    htmlY = htmlRect.top + scroll.scrollTop;
+    htmlX = htmlRect.left + scroll.scrollLeft -
+    // RTL <body> scrollbar.
+    getWindowScrollBarX(documentElement, htmlRect);
+  }
+  const x = rect.left + scroll.scrollLeft - offsets.x - htmlX;
+  const y = rect.top + scroll.scrollTop - offsets.y - htmlY;
   return {
     x,
     y,
@@ -77129,7 +79205,16 @@ function getTrueOffsetParent(element, polyfill) {
   if (polyfill) {
     return polyfill(element);
   }
-  return element.offsetParent;
+  let rawOffsetParent = element.offsetParent;
+
+  // Firefox returns the <html> element as the offsetParent if it's non-static,
+  // while Chrome and Safari return the <body> element. The <body> element must
+  // be used to perform the correct calculations even if the <html> element is
+  // non-static.
+  if ((0,_floating_ui_utils_dom__WEBPACK_IMPORTED_MODULE_0__.getDocumentElement)(element) === rawOffsetParent) {
+    rawOffsetParent = rawOffsetParent.ownerDocument.body;
+  }
+  return rawOffsetParent;
 }
 
 // Gets the closest ancestor positioned element. Handles some edge cases,
@@ -77614,6 +79699,7 @@ function useFloating(options) {
   const hasWhileElementsMounted = whileElementsMounted != null;
   const whileElementsMountedRef = useLatestRef(whileElementsMounted);
   const platformRef = useLatestRef(platform);
+  const openRef = useLatestRef(open);
   const update = react__WEBPACK_IMPORTED_MODULE_2__.useCallback(() => {
     if (!referenceRef.current || !floatingRef.current) {
       return;
@@ -77629,7 +79715,11 @@ function useFloating(options) {
     (0,_floating_ui_dom__WEBPACK_IMPORTED_MODULE_0__.computePosition)(referenceRef.current, floatingRef.current, config).then(data => {
       const fullData = {
         ...data,
-        isPositioned: true
+        // The floating element's position may be recomputed while it's closed
+        // but still mounted (such as when transitioning out). To ensure
+        // `isPositioned` will be `false` initially on the next open, avoid
+        // setting it to `true` when `open === false` (must be specified).
+        isPositioned: openRef.current !== false
       };
       if (isMountedRef.current && !deepEqual(dataRef.current, fullData)) {
         dataRef.current = fullData;
@@ -77638,7 +79728,7 @@ function useFloating(options) {
         });
       }
     });
-  }, [latestMiddleware, placement, strategy, platformRef]);
+  }, [latestMiddleware, placement, strategy, platformRef, openRef]);
   index(() => {
     if (open === false && dataRef.current.isPositioned) {
       dataRef.current.isPositioned = false;
@@ -78698,7 +80788,7 @@ const FloatingArrow = /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.forwardRef
       [xOffsetProp]: arrowX,
       [yOffsetProp]: arrowY,
       [side]: isVerticalSide || isCustomShape ? '100%' : "calc(100% - " + computedStrokeWidth / 2 + "px)",
-      transform: "" + rotation + (transform != null ? transform : ''),
+      transform: [rotation, transform].filter(t => !!t).join(' '),
       ...restStyle
     }
   }), computedStrokeWidth > 0 && /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement("path", {
@@ -79332,7 +81422,7 @@ function getDeepestNode(nodes, id) {
 let counterMap = /*#__PURE__*/new WeakMap();
 let uncontrolledElementsSet = /*#__PURE__*/new WeakSet();
 let markerMap = {};
-let lockCount = 0;
+let lockCount$1 = 0;
 const supportsInert = () => typeof HTMLElement !== 'undefined' && 'inert' in HTMLElement.prototype;
 const unwrapHost = node => node && (node.host || unwrapHost(node.parentNode));
 const correctElements = (parent, targets) => targets.map(target => {
@@ -79394,7 +81484,7 @@ function applyAttributeToOthers(uncorrectedAvoidElements, body, ariaHidden, iner
       }
     });
   }
-  lockCount++;
+  lockCount$1++;
   return () => {
     hiddenElements.forEach(element => {
       const counterValue = (counterMap.get(element) || 0) - 1;
@@ -79411,8 +81501,8 @@ function applyAttributeToOthers(uncorrectedAvoidElements, body, ariaHidden, iner
         element.removeAttribute(markerName);
       }
     });
-    lockCount--;
-    if (!lockCount) {
+    lockCount$1--;
+    if (!lockCount$1) {
       counterMap = new WeakMap();
       counterMap = new WeakMap();
       uncontrolledElementsSet = new WeakSet();
@@ -79477,32 +81567,6 @@ function enableFocusInside(container) {
       element.removeAttribute('tabindex');
     }
   });
-}
-function getClosestTabbableElement(tabbableElements, element, floating) {
-  const elementIndex = tabbableElements.indexOf(element);
-  function traverseTabbableElements(next) {
-    const attr = createAttribute('focus-guard');
-    let index = elementIndex + (next ? 1 : 0);
-    let currentElement = tabbableElements[index];
-    while (currentElement && (!currentElement.isConnected || currentElement.hasAttribute(attr) || (0,_floating_ui_react_utils__WEBPACK_IMPORTED_MODULE_5__.contains)(floating, currentElement))) {
-      if (next) {
-        index++;
-      } else {
-        index--;
-      }
-      currentElement = tabbableElements[index];
-    }
-    return currentElement;
-  }
-
-  // First, try to find the next tabbable element
-  const next = traverseTabbableElements(true);
-  if (next) {
-    return next;
-  }
-
-  // If we can't find a next tabbable element, try to find the previous one
-  return traverseTabbableElements(false);
 }
 
 // See Diego Haz's Sandbox for making this logic work well on Safari/iOS:
@@ -79987,7 +82051,6 @@ function FloatingFocusManager(props) {
     const previouslyFocusedElement = (0,_floating_ui_react_utils__WEBPACK_IMPORTED_MODULE_5__.activeElement)(doc);
     const contextData = dataRef.current;
     let openEvent = contextData.openEvent;
-    const domReference = refs.domReference.current;
     addPreviouslyFocusedElement(previouslyFocusedElement);
 
     // Dismissing via outside press should always ignore `returnFocus` to
@@ -80017,6 +82080,13 @@ function FloatingFocusManager(props) {
       }
     }
     events.on('openchange', onOpenChange);
+    const fallbackEl = doc.createElement('span');
+    fallbackEl.setAttribute('tabindex', '-1');
+    fallbackEl.setAttribute('aria-hidden', 'true');
+    Object.assign(fallbackEl.style, HIDDEN_STYLES);
+    if (isInsidePortal && domReference) {
+      domReference.insertAdjacentElement('afterend', fallbackEl);
+    }
     return () => {
       events.off('openchange', onOpenChange);
       const activeEl = (0,_floating_ui_react_utils__WEBPACK_IMPORTED_MODULE_5__.activeElement)(doc);
@@ -80028,16 +82098,8 @@ function FloatingFocusManager(props) {
       if (shouldFocusReference && refs.domReference.current) {
         addPreviouslyFocusedElement(refs.domReference.current);
       }
-      const returnContextElement = domReference || previouslyFocusedElement;
-      const tabbableElements = (0,tabbable__WEBPACK_IMPORTED_MODULE_7__.tabbable)((0,_floating_ui_react_utils__WEBPACK_IMPORTED_MODULE_5__.getDocument)(returnContextElement).body, getTabbableOptions());
-
-      // Wait for the return element to get potentially disconnected before
-      // checking.
+      const returnElement = getPreviouslyFocusedElement() || fallbackEl;
       queueMicrotask(() => {
-        let returnElement = getPreviouslyFocusedElement();
-        if (!returnElement && (0,_floating_ui_react_dom__WEBPACK_IMPORTED_MODULE_4__.isHTMLElement)(returnContextElement) && floating) {
-          returnElement = getClosestTabbableElement(tabbableElements, returnContextElement, floating);
-        }
         if (
         // eslint-disable-next-line react-hooks/exhaustive-deps
         returnFocusRef.current && !preventReturnFocusRef.current && (0,_floating_ui_react_dom__WEBPACK_IMPORTED_MODULE_4__.isHTMLElement)(returnElement) && (
@@ -80049,9 +82111,10 @@ function FloatingFocusManager(props) {
             preventScroll: preventReturnFocusScroll
           });
         }
+        fallbackEl.remove();
       });
     };
-  }, [disabled, floating, floatingFocusElement, returnFocusRef, dataRef, refs, events, tree, nodeId]);
+  }, [disabled, floating, floatingFocusElement, returnFocusRef, dataRef, refs, events, tree, nodeId, isInsidePortal, domReference]);
 
   // Synchronize the `context` & `modal` value to the FloatingPortal context.
   // It will decide whether or not it needs to render its own guards.
@@ -80151,7 +82214,53 @@ function FloatingFocusManager(props) {
   }));
 }
 
-const activeLocks = /*#__PURE__*/new Set();
+let lockCount = 0;
+function enableScrollLock() {
+  const isIOS = /iP(hone|ad|od)|iOS/.test((0,_floating_ui_react_utils__WEBPACK_IMPORTED_MODULE_5__.getPlatform)());
+  const bodyStyle = document.body.style;
+  // RTL <body> scrollbar
+  const scrollbarX = Math.round(document.documentElement.getBoundingClientRect().left) + document.documentElement.scrollLeft;
+  const paddingProp = scrollbarX ? 'paddingLeft' : 'paddingRight';
+  const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+  const scrollX = bodyStyle.left ? parseFloat(bodyStyle.left) : window.scrollX;
+  const scrollY = bodyStyle.top ? parseFloat(bodyStyle.top) : window.scrollY;
+  bodyStyle.overflow = 'hidden';
+  if (scrollbarWidth) {
+    bodyStyle[paddingProp] = scrollbarWidth + "px";
+  }
+
+  // Only iOS doesn't respect `overflow: hidden` on document.body, and this
+  // technique has fewer side effects.
+  if (isIOS) {
+    var _window$visualViewpor, _window$visualViewpor2;
+    // iOS 12 does not support `visualViewport`.
+    const offsetLeft = ((_window$visualViewpor = window.visualViewport) == null ? void 0 : _window$visualViewpor.offsetLeft) || 0;
+    const offsetTop = ((_window$visualViewpor2 = window.visualViewport) == null ? void 0 : _window$visualViewpor2.offsetTop) || 0;
+    Object.assign(bodyStyle, {
+      position: 'fixed',
+      top: -(scrollY - Math.floor(offsetTop)) + "px",
+      left: -(scrollX - Math.floor(offsetLeft)) + "px",
+      right: '0'
+    });
+  }
+  return () => {
+    Object.assign(bodyStyle, {
+      overflow: '',
+      [paddingProp]: ''
+    });
+    if (isIOS) {
+      Object.assign(bodyStyle, {
+        position: '',
+        top: '',
+        left: '',
+        right: ''
+      });
+      window.scrollTo(scrollX, scrollY);
+    }
+  };
+}
+let cleanup = () => {};
+
 /**
  * Provides base styling for a fixed overlay element to dim content or block
  * pointer events behind a floating element.
@@ -80163,56 +82272,19 @@ const FloatingOverlay = /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.forwardR
     lockScroll = false,
     ...rest
   } = props;
-  const lockId = useId();
   index(() => {
     if (!lockScroll) return;
-    activeLocks.add(lockId);
-    const isIOS = /iP(hone|ad|od)|iOS/.test((0,_floating_ui_react_utils__WEBPACK_IMPORTED_MODULE_5__.getPlatform)());
-    const bodyStyle = document.body.style;
-    // RTL <body> scrollbar
-    const scrollbarX = Math.round(document.documentElement.getBoundingClientRect().left) + document.documentElement.scrollLeft;
-    const paddingProp = scrollbarX ? 'paddingLeft' : 'paddingRight';
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    const scrollX = bodyStyle.left ? parseFloat(bodyStyle.left) : window.scrollX;
-    const scrollY = bodyStyle.top ? parseFloat(bodyStyle.top) : window.scrollY;
-    bodyStyle.overflow = 'hidden';
-    if (scrollbarWidth) {
-      bodyStyle[paddingProp] = scrollbarWidth + "px";
-    }
-
-    // Only iOS doesn't respect `overflow: hidden` on document.body, and this
-    // technique has fewer side effects.
-    if (isIOS) {
-      var _window$visualViewpor, _window$visualViewpor2;
-      // iOS 12 does not support `visualViewport`.
-      const offsetLeft = ((_window$visualViewpor = window.visualViewport) == null ? void 0 : _window$visualViewpor.offsetLeft) || 0;
-      const offsetTop = ((_window$visualViewpor2 = window.visualViewport) == null ? void 0 : _window$visualViewpor2.offsetTop) || 0;
-      Object.assign(bodyStyle, {
-        position: 'fixed',
-        top: -(scrollY - Math.floor(offsetTop)) + "px",
-        left: -(scrollX - Math.floor(offsetLeft)) + "px",
-        right: '0'
-      });
+    lockCount++;
+    if (lockCount === 1) {
+      cleanup = enableScrollLock();
     }
     return () => {
-      activeLocks.delete(lockId);
-      if (activeLocks.size === 0) {
-        Object.assign(bodyStyle, {
-          overflow: '',
-          [paddingProp]: ''
-        });
-        if (isIOS) {
-          Object.assign(bodyStyle, {
-            position: '',
-            top: '',
-            left: '',
-            right: ''
-          });
-          window.scrollTo(scrollX, scrollY);
-        }
+      lockCount--;
+      if (lockCount === 0) {
+        cleanup();
       }
     };
-  }, [lockId, lockScroll]);
+  }, [lockScroll]);
   return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement("div", _extends({
     ref: ref
   }, rest, {
@@ -82134,19 +84206,16 @@ const inner = props => ({
       ...detectOverflowOptions,
       elementContext: 'reference'
     });
-    const diffY = Math.max(0, overflow.top);
+    const diffY = (0,_floating_ui_utils__WEBPACK_IMPORTED_MODULE_6__.max)(0, overflow.top);
     const nextY = nextArgs.y + diffY;
-    const maxHeight = Math.max(0, scrollEl.scrollHeight + (floatingIsBordered && floatingIsScrollEl || scrollElIsBordered ? clientTop * 2 : 0) - diffY - Math.max(0, overflow.bottom));
+    const maxHeight = (0,_floating_ui_utils__WEBPACK_IMPORTED_MODULE_6__.round)((0,_floating_ui_utils__WEBPACK_IMPORTED_MODULE_6__.max)(0, scrollEl.scrollHeight + (floatingIsBordered && floatingIsScrollEl || scrollElIsBordered ? clientTop * 2 : 0) - diffY - (0,_floating_ui_utils__WEBPACK_IMPORTED_MODULE_6__.max)(0, overflow.bottom)));
     scrollEl.style.maxHeight = maxHeight + "px";
     scrollEl.scrollTop = diffY;
 
     // There is not enough space, fallback to standard anchored positioning
     if (onFallbackChange) {
-      if (scrollEl.offsetHeight < item.offsetHeight * Math.min(minItemsVisible, listRef.current.length - 1) - 1 || refOverflow.top >= -referenceOverflowThreshold || refOverflow.bottom >= -referenceOverflowThreshold) {
-        react_dom__WEBPACK_IMPORTED_MODULE_1__.flushSync(() => onFallbackChange(true));
-      } else {
-        react_dom__WEBPACK_IMPORTED_MODULE_1__.flushSync(() => onFallbackChange(false));
-      }
+      const shouldFallback = scrollEl.scrollHeight > scrollEl.offsetHeight && scrollEl.offsetHeight < item.offsetHeight * minItemsVisible - 1 || refOverflow.top >= -referenceOverflowThreshold || refOverflow.bottom >= -referenceOverflowThreshold;
+      react_dom__WEBPACK_IMPORTED_MODULE_1__.flushSync(() => onFallbackChange(shouldFallback));
     }
     if (overflowRef) {
       overflowRef.current = await (0,_floating_ui_react_dom__WEBPACK_IMPORTED_MODULE_3__.detectOverflow)(getArgsWithCustomFloatingHeight({
@@ -82683,6 +84752,9 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   isTopLayer: () => (/* binding */ isTopLayer),
 /* harmony export */   isWebKit: () => (/* binding */ isWebKit)
 /* harmony export */ });
+function hasWindow() {
+  return typeof window !== 'undefined';
+}
 function getNodeName(node) {
   if (isNode(node)) {
     return (node.nodeName || '').toLowerCase();
@@ -82701,17 +84773,25 @@ function getDocumentElement(node) {
   return (_ref = (isNode(node) ? node.ownerDocument : node.document) || window.document) == null ? void 0 : _ref.documentElement;
 }
 function isNode(value) {
+  if (!hasWindow()) {
+    return false;
+  }
   return value instanceof Node || value instanceof getWindow(value).Node;
 }
 function isElement(value) {
+  if (!hasWindow()) {
+    return false;
+  }
   return value instanceof Element || value instanceof getWindow(value).Element;
 }
 function isHTMLElement(value) {
+  if (!hasWindow()) {
+    return false;
+  }
   return value instanceof HTMLElement || value instanceof getWindow(value).HTMLElement;
 }
 function isShadowRoot(value) {
-  // Browsers without `ShadowRoot` support.
-  if (typeof ShadowRoot === 'undefined') {
+  if (!hasWindow() || typeof ShadowRoot === 'undefined') {
     return false;
   }
   return value instanceof ShadowRoot || value instanceof getWindow(value).ShadowRoot;
@@ -96238,7 +98318,8 @@ function runNow(f) {
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   BarChart: () => (/* binding */ BarChart)
+/* harmony export */   BarChart: () => (/* binding */ BarChart),
+/* harmony export */   BarLabel: () => (/* binding */ BarLabel)
 /* harmony export */ });
 /* harmony import */ var react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react/jsx-runtime */ "./node_modules/react/jsx-runtime.js");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! react */ "react");
@@ -96373,6 +98454,8 @@ const BarChart = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_4__.factory)((_props,
     withRightYAxis,
     rightYAxisLabel,
     rightYAxisProps,
+    minBarSize,
+    maxBarWidth,
     ...others
   } = props;
   const theme = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_6__.useMantineTheme)();
@@ -96418,9 +98501,10 @@ const BarChart = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_4__.factory)((_props,
         isAnimationActive: false,
         fillOpacity: dimmed ? 0.1 : fillOpacity,
         strokeOpacity: dimmed ? 0.2 : 0,
-        stackId: stacked ? "stack" : void 0,
+        stackId: stacked ? "stack" : item.stackId || void 0,
         label: withBarValueLabel ? /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(BarLabel, { valueFormatter }) : void 0,
         yAxisId: item.yAxisId || "left",
+        minPointSize: minBarSize,
         ...typeof barProps === "function" ? barProps(item) : barProps
       },
       inputData.map((entry, index) => /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(
@@ -96475,6 +98559,7 @@ const BarChart = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_4__.factory)((_props,
           data: inputData,
           stackOffset: type === "percent" ? "expand" : void 0,
           layout: orientation,
+          maxBarSize: maxBarWidth,
           margin: {
             bottom: xAxisLabel ? 30 : void 0,
             left: yAxisLabel ? 10 : void 0,
@@ -101810,8 +103895,9 @@ function useComboboxTargetProps({
       return;
     }
     if (withKeyboardNavigation) {
-      if (event.nativeEvent.isComposing)
+      if (event.nativeEvent.isComposing) {
         return;
+      }
       if (event.nativeEvent.code === "ArrowDown") {
         event.preventDefault();
         if (!ctx.store.dropdownOpened) {
@@ -101831,8 +103917,9 @@ function useComboboxTargetProps({
         }
       }
       if (event.nativeEvent.code === "Enter" || event.nativeEvent.code === "NumpadEnter") {
-        if (event.nativeEvent.keyCode === 229)
+        if (event.nativeEvent.keyCode === 229) {
           return;
+        }
         const selectedOptionIndex = ctx.store.getSelectedOptionIndex();
         if (ctx.store.dropdownOpened && selectedOptionIndex !== -1) {
           event.preventDefault();
@@ -103949,6 +106036,8 @@ const Grid = (0,_core_factory_factory_mjs__WEBPACK_IMPORTED_MODULE_4__.factory)(
     align,
     justify,
     children,
+    breakpoints,
+    type,
     ...others
   } = props;
   const getStyles = (0,_core_styles_api_use_styles_use_styles_mjs__WEBPACK_IMPORTED_MODULE_6__.useStyles)({
@@ -103964,7 +106053,13 @@ const Grid = (0,_core_factory_factory_mjs__WEBPACK_IMPORTED_MODULE_4__.factory)(
     varsResolver
   });
   const responsiveClassName = (0,_core_Box_use_random_classname_use_random_classname_mjs__WEBPACK_IMPORTED_MODULE_8__.useRandomClassName)();
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxs)(_Grid_context_mjs__WEBPACK_IMPORTED_MODULE_9__.GridProvider, { value: { getStyles, grow, columns }, children: [
+  if (type === "container" && breakpoints) {
+    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxs)(_Grid_context_mjs__WEBPACK_IMPORTED_MODULE_9__.GridProvider, { value: { getStyles, grow, columns: columns || 12, breakpoints, type }, children: [
+      /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(_GridVariables_mjs__WEBPACK_IMPORTED_MODULE_10__.GridVariables, { selector: `.${responsiveClassName}`, ...props }),
+      /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)("div", { ...getStyles("container"), children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(_core_Box_Box_mjs__WEBPACK_IMPORTED_MODULE_11__.Box, { ref, ...getStyles("root", { className: responsiveClassName }), ...others, children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)("div", { ...getStyles("inner"), children }) }) })
+    ] });
+  }
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxs)(_Grid_context_mjs__WEBPACK_IMPORTED_MODULE_9__.GridProvider, { value: { getStyles, grow, columns: columns || 12, breakpoints, type }, children: [
     /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(_GridVariables_mjs__WEBPACK_IMPORTED_MODULE_10__.GridVariables, { selector: `.${responsiveClassName}`, ...props }),
     /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(_core_Box_Box_mjs__WEBPACK_IMPORTED_MODULE_11__.Box, { ref, ...getStyles("root", { className: responsiveClassName }), ...others, children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)("div", { ...getStyles("inner"), children }) })
   ] });
@@ -103991,7 +106086,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   "default": () => (/* binding */ classes)
 /* harmony export */ });
 'use client';
-var classes = {"root":"m_410352e9","inner":"m_dee7bd2f","col":"m_96bdd299"};
+var classes = {"container":"m_8478a6da","root":"m_410352e9","inner":"m_dee7bd2f","col":"m_96bdd299"};
 
 
 //# sourceMappingURL=Grid.module.css.mjs.map
@@ -104149,6 +106244,7 @@ const getColumnOffset = (offset, columns) => offset === 0 ? "0" : offset ? `${10
 function GridColVariables({ span, order, offset, selector }) {
   const theme = (0,_core_MantineProvider_MantineThemeProvider_MantineThemeProvider_mjs__WEBPACK_IMPORTED_MODULE_3__.useMantineTheme)();
   const ctx = (0,_Grid_context_mjs__WEBPACK_IMPORTED_MODULE_4__.useGridContext)();
+  const _breakpoints = ctx.breakpoints || theme.breakpoints;
   const baseValue = (0,_core_utils_get_base_value_get_base_value_mjs__WEBPACK_IMPORTED_MODULE_5__.getBaseValue)(span);
   const baseSpan = baseValue === void 0 ? 12 : (0,_core_utils_get_base_value_get_base_value_mjs__WEBPACK_IMPORTED_MODULE_5__.getBaseValue)(span);
   const baseStyles = (0,_core_utils_filter_props_filter_props_mjs__WEBPACK_IMPORTED_MODULE_6__.filterProps)({
@@ -104159,7 +106255,7 @@ function GridColVariables({ span, order, offset, selector }) {
     "--col-max-width": getColumnMaxWidth(baseSpan, ctx.columns, ctx.grow),
     "--col-offset": getColumnOffset((0,_core_utils_get_base_value_get_base_value_mjs__WEBPACK_IMPORTED_MODULE_5__.getBaseValue)(offset), ctx.columns)
   });
-  const queries = (0,_core_utils_keys_keys_mjs__WEBPACK_IMPORTED_MODULE_7__.keys)(theme.breakpoints).reduce(
+  const queries = (0,_core_utils_keys_keys_mjs__WEBPACK_IMPORTED_MODULE_7__.keys)(_breakpoints).reduce(
     (acc, breakpoint) => {
       if (!acc[breakpoint]) {
         acc[breakpoint] = {};
@@ -104184,14 +106280,22 @@ function GridColVariables({ span, order, offset, selector }) {
     },
     {}
   );
-  const sortedBreakpoints = (0,_core_utils_get_sorted_breakpoints_get_sorted_breakpoints_mjs__WEBPACK_IMPORTED_MODULE_8__.getSortedBreakpoints)((0,_core_utils_keys_keys_mjs__WEBPACK_IMPORTED_MODULE_7__.keys)(queries), theme).filter(
+  const sortedBreakpoints = (0,_core_utils_get_sorted_breakpoints_get_sorted_breakpoints_mjs__WEBPACK_IMPORTED_MODULE_8__.getSortedBreakpoints)((0,_core_utils_keys_keys_mjs__WEBPACK_IMPORTED_MODULE_7__.keys)(queries), _breakpoints).filter(
     (breakpoint) => (0,_core_utils_keys_keys_mjs__WEBPACK_IMPORTED_MODULE_7__.keys)(queries[breakpoint.value]).length > 0
   );
-  const media = sortedBreakpoints.map((breakpoint) => ({
-    query: `(min-width: ${theme.breakpoints[breakpoint.value]})`,
+  const values = sortedBreakpoints.map((breakpoint) => ({
+    query: ctx.type === "container" ? `mantine-grid (min-width: ${_breakpoints[breakpoint.value]})` : `(min-width: ${_breakpoints[breakpoint.value]})`,
     styles: queries[breakpoint.value]
   }));
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(_core_InlineStyles_InlineStyles_mjs__WEBPACK_IMPORTED_MODULE_9__.InlineStyles, { styles: baseStyles, media, selector });
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(
+    _core_InlineStyles_InlineStyles_mjs__WEBPACK_IMPORTED_MODULE_9__.InlineStyles,
+    {
+      styles: baseStyles,
+      media: ctx.type === "container" ? void 0 : values,
+      container: ctx.type === "container" ? values : void 0,
+      selector
+    }
+  );
 }
 
 
@@ -104240,12 +106344,13 @@ __webpack_require__.r(__webpack_exports__);
 
 
 
-function GridVariables({ gutter, selector }) {
+function GridVariables({ gutter, selector, breakpoints, type }) {
   const theme = (0,_core_MantineProvider_MantineThemeProvider_MantineThemeProvider_mjs__WEBPACK_IMPORTED_MODULE_3__.useMantineTheme)();
+  const _breakpoints = breakpoints || theme.breakpoints;
   const baseStyles = (0,_core_utils_filter_props_filter_props_mjs__WEBPACK_IMPORTED_MODULE_4__.filterProps)({
     "--grid-gutter": (0,_core_utils_get_size_get_size_mjs__WEBPACK_IMPORTED_MODULE_5__.getSpacing)((0,_core_utils_get_base_value_get_base_value_mjs__WEBPACK_IMPORTED_MODULE_6__.getBaseValue)(gutter))
   });
-  const queries = (0,_core_utils_keys_keys_mjs__WEBPACK_IMPORTED_MODULE_7__.keys)(theme.breakpoints).reduce(
+  const queries = (0,_core_utils_keys_keys_mjs__WEBPACK_IMPORTED_MODULE_7__.keys)(_breakpoints).reduce(
     (acc, breakpoint) => {
       if (!acc[breakpoint]) {
         acc[breakpoint] = {};
@@ -104257,14 +106362,22 @@ function GridVariables({ gutter, selector }) {
     },
     {}
   );
-  const sortedBreakpoints = (0,_core_utils_get_sorted_breakpoints_get_sorted_breakpoints_mjs__WEBPACK_IMPORTED_MODULE_8__.getSortedBreakpoints)((0,_core_utils_keys_keys_mjs__WEBPACK_IMPORTED_MODULE_7__.keys)(queries), theme).filter(
+  const sortedBreakpoints = (0,_core_utils_get_sorted_breakpoints_get_sorted_breakpoints_mjs__WEBPACK_IMPORTED_MODULE_8__.getSortedBreakpoints)((0,_core_utils_keys_keys_mjs__WEBPACK_IMPORTED_MODULE_7__.keys)(queries), _breakpoints).filter(
     (breakpoint) => (0,_core_utils_keys_keys_mjs__WEBPACK_IMPORTED_MODULE_7__.keys)(queries[breakpoint.value]).length > 0
   );
-  const media = sortedBreakpoints.map((breakpoint) => ({
-    query: `(min-width: ${theme.breakpoints[breakpoint.value]})`,
+  const values = sortedBreakpoints.map((breakpoint) => ({
+    query: type === "container" ? `mantine-grid (min-width: ${_breakpoints[breakpoint.value]})` : `(min-width: ${_breakpoints[breakpoint.value]})`,
     styles: queries[breakpoint.value]
   }));
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(_core_InlineStyles_InlineStyles_mjs__WEBPACK_IMPORTED_MODULE_9__.InlineStyles, { styles: baseStyles, media, selector });
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(
+    _core_InlineStyles_InlineStyles_mjs__WEBPACK_IMPORTED_MODULE_9__.InlineStyles,
+    {
+      styles: baseStyles,
+      media: type === "container" ? void 0 : values,
+      container: type === "container" ? values : void 0,
+      selector
+    }
+  );
 }
 
 
@@ -106266,6 +108379,7 @@ const Bars = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)(({ className, ...
   /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)("span", { className: _Loader_module_css_mjs__WEBPACK_IMPORTED_MODULE_4__["default"].bar }),
   /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)("span", { className: _Loader_module_css_mjs__WEBPACK_IMPORTED_MODULE_4__["default"].bar })
 ] }));
+Bars.displayName = "@mantine/core/Bars";
 
 
 //# sourceMappingURL=Bars.mjs.map
@@ -106308,6 +108422,7 @@ const Dots = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)(({ className, ...
   /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)("span", { className: _Loader_module_css_mjs__WEBPACK_IMPORTED_MODULE_4__["default"].dot }),
   /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)("span", { className: _Loader_module_css_mjs__WEBPACK_IMPORTED_MODULE_4__["default"].dot })
 ] }));
+Dots.displayName = "@mantine/core/Dots";
 
 
 //# sourceMappingURL=Dots.mjs.map
@@ -106346,6 +108461,7 @@ __webpack_require__.r(__webpack_exports__);
 
 
 const Oval = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)(({ className, ...others }, ref) => /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(_core_Box_Box_mjs__WEBPACK_IMPORTED_MODULE_3__.Box, { component: "span", className: (0,clsx__WEBPACK_IMPORTED_MODULE_2__["default"])(_Loader_module_css_mjs__WEBPACK_IMPORTED_MODULE_4__["default"].ovalLoader, className), ...others, ref }));
+Oval.displayName = "@mantine/core/Oval";
 
 
 //# sourceMappingURL=Oval.mjs.map
@@ -108047,6 +110163,7 @@ const ModalBase = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)(
     ) });
   }
 );
+ModalBase.displayName = "@mantine/core/ModalBase";
 
 
 //# sourceMappingURL=ModalBase.mjs.map
@@ -108250,6 +110367,7 @@ const ModalBaseContent = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)(
     );
   }
 );
+ModalBaseContent.displayName = "@mantine/core/ModalBaseContent";
 
 
 //# sourceMappingURL=ModalBaseContent.mjs.map
@@ -111552,6 +113670,7 @@ const ScrollAreaScrollbar = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)(
     return context.type === "hover" ? /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(_ScrollAreaScrollbarHover_mjs__WEBPACK_IMPORTED_MODULE_3__.ScrollAreaScrollbarHover, { ...scrollbarProps, ref: forwardedRef, forceMount }) : context.type === "scroll" ? /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(_ScrollAreaScrollbarScroll_mjs__WEBPACK_IMPORTED_MODULE_4__.ScrollAreaScrollbarScroll, { ...scrollbarProps, ref: forwardedRef, forceMount }) : context.type === "auto" ? /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(_ScrollAreaScrollbarAuto_mjs__WEBPACK_IMPORTED_MODULE_5__.ScrollAreaScrollbarAuto, { ...scrollbarProps, ref: forwardedRef, forceMount }) : context.type === "always" ? /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(_ScrollAreaScrollbarVisible_mjs__WEBPACK_IMPORTED_MODULE_6__.ScrollAreaScrollbarVisible, { ...scrollbarProps, ref: forwardedRef }) : null;
   }
 );
+ScrollAreaScrollbar.displayName = "@mantine/core/ScrollAreaScrollbar";
 
 
 //# sourceMappingURL=ScrollAreaScrollbar.mjs.map
@@ -111612,6 +113731,7 @@ const ScrollAreaScrollbarAuto = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef
     return null;
   }
 );
+ScrollAreaScrollbarAuto.displayName = "@mantine/core/ScrollAreaScrollbarAuto";
 
 
 //# sourceMappingURL=ScrollAreaScrollbarAuto.mjs.map
@@ -111679,6 +113799,7 @@ const ScrollAreaScrollbarHover = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRe
     return null;
   }
 );
+ScrollAreaScrollbarHover.displayName = "@mantine/core/ScrollAreaScrollbarHover";
 
 
 //# sourceMappingURL=ScrollAreaScrollbarHover.mjs.map
@@ -111848,8 +113969,9 @@ const ScrollAreaScrollbarVisible = (0,react__WEBPACK_IMPORTED_MODULE_1__.forward
           }
         },
         onWheelScroll: (scrollPos) => {
-          if (context.viewport)
+          if (context.viewport) {
             context.viewport.scrollLeft = scrollPos;
+          }
         },
         onDragScroll: (pointerPos) => {
           if (context.viewport) {
@@ -111878,18 +114000,21 @@ const ScrollAreaScrollbarVisible = (0,react__WEBPACK_IMPORTED_MODULE_1__.forward
           }
         },
         onWheelScroll: (scrollPos) => {
-          if (context.viewport)
+          if (context.viewport) {
             context.viewport.scrollTop = scrollPos;
+          }
         },
         onDragScroll: (pointerPos) => {
-          if (context.viewport)
+          if (context.viewport) {
             context.viewport.scrollTop = getScrollPosition(pointerPos);
+          }
         }
       }
     );
   }
   return null;
 });
+ScrollAreaScrollbarVisible.displayName = "@mantine/core/ScrollAreaScrollbarVisible";
 
 
 //# sourceMappingURL=ScrollAreaScrollbarVisible.mjs.map
@@ -112000,8 +114125,9 @@ const Scrollbar = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)((props, forw
     const handleWheel = (event) => {
       const element = event.target;
       const isScrollbarWheel = scrollbar?.contains(element);
-      if (isScrollbarWheel)
+      if (isScrollbarWheel) {
         handleWheelScroll(event, maxScrollPos);
+      }
     };
     document.addEventListener("wheel", handleWheel, { passive: false });
     return () => document.removeEventListener("wheel", handleWheel, { passive: false });
@@ -112098,8 +114224,9 @@ const ScrollAreaScrollbarX = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)(
     const ref = (0,react__WEBPACK_IMPORTED_MODULE_1__.useRef)(null);
     const composeRefs = (0,_mantine_hooks__WEBPACK_IMPORTED_MODULE_3__.useMergedRef)(forwardedRef, ref, ctx.onScrollbarXChange);
     (0,react__WEBPACK_IMPORTED_MODULE_1__.useEffect)(() => {
-      if (ref.current)
+      if (ref.current) {
         setComputedStyle(getComputedStyle(ref.current));
+      }
     }, [ref]);
     return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(
       _Scrollbar_mjs__WEBPACK_IMPORTED_MODULE_4__.Scrollbar,
@@ -112140,6 +114267,7 @@ const ScrollAreaScrollbarX = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)(
     );
   }
 );
+ScrollAreaScrollbarX.displayName = "@mantine/core/ScrollAreaScrollbarX";
 
 
 //# sourceMappingURL=ScrollbarX.mjs.map
@@ -112227,6 +114355,7 @@ const ScrollAreaScrollbarY = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)(
     );
   }
 );
+ScrollAreaScrollbarY.displayName = "@mantine/core/ScrollAreaScrollbarY";
 
 
 //# sourceMappingURL=ScrollbarY.mjs.map
@@ -112315,6 +114444,7 @@ const Thumb = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)((props, forwarde
     }
   );
 });
+Thumb.displayName = "@mantine/core/ScrollAreaThumb";
 const ScrollAreaThumb = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)(
   (props, forwardedRef) => {
     const { forceMount, ...thumbProps } = props;
@@ -112325,6 +114455,7 @@ const ScrollAreaThumb = (0,react__WEBPACK_IMPORTED_MODULE_1__.forwardRef)(
     return null;
   }
 );
+ScrollAreaThumb.displayName = "@mantine/core/ScrollAreaThumb";
 
 
 //# sourceMappingURL=ScrollAreaThumb.mjs.map
@@ -112451,8 +114582,9 @@ function addUnlinkedScrollListener(node, handler = () => {
     const position = { left: node.scrollLeft, top: node.scrollTop };
     const isHorizontalScroll = prevPosition.left !== position.left;
     const isVerticalScroll = prevPosition.top !== position.top;
-    if (isHorizontalScroll || isVerticalScroll)
+    if (isHorizontalScroll || isVerticalScroll) {
       handler();
+    }
     prevPosition = position;
     rAF = window.requestAnimationFrame(loop);
   })();
@@ -112653,8 +114785,9 @@ __webpack_require__.r(__webpack_exports__);
 'use client';
 function linearScale(input, output) {
   return (value) => {
-    if (input[0] === input[1] || output[0] === output[1])
+    if (input[0] === input[1] || output[0] === output[1]) {
       return output[0];
+    }
     const ratio = (output[1] - output[0]) / (input[1] - input[0]);
     return output[0] + ratio * (value - input[0]);
   };
@@ -114174,8 +116307,9 @@ const TagsInput = (0,_core_factory_factory_mjs__WEBPACK_IMPORTED_MODULE_3__.fact
   };
   const handleInputKeydown = (event) => {
     onKeyDown?.(event);
-    if (event.isPropagationStopped())
+    if (event.isPropagationStopped()) {
       return;
+    }
     const inputValue = _searchValue.trim();
     const { length } = inputValue;
     if (splitChars.includes(event.key) && length > 0) {
@@ -114477,8 +116611,9 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 'use client';
 function splitTags(splitChars, value) {
-  if (!splitChars)
+  if (!splitChars) {
     return [value];
+  }
   return value.split(new RegExp(`[${splitChars.join("")}]`)).map((tag) => tag.trim()).filter((tag) => tag !== "");
 }
 function getSplittedTags({
@@ -115894,7 +118029,7 @@ function useTooltip(settings) {
     }),
     (0,_floating_ui_react__WEBPACK_IMPORTED_MODULE_3__.useFocus)(context, { enabled: settings.events?.focus, visibleOnly: true }),
     (0,_floating_ui_react__WEBPACK_IMPORTED_MODULE_3__.useRole)(context, { role: "tooltip" }),
-    // cannot be used with controlled tooltip, page jumps
+    // Cannot be used with controlled tooltip, page jumps
     (0,_floating_ui_react__WEBPACK_IMPORTED_MODULE_3__.useDismiss)(context, { enabled: typeof settings.opened === "undefined" }),
     (0,_floating_ui_react__WEBPACK_IMPORTED_MODULE_3__.useDelayGroup)(context, { id: uid })
   ]);
@@ -121201,8 +123336,8 @@ __webpack_require__.r(__webpack_exports__);
 'use client';
 function findElementAncestor(element, selector) {
   let _element = element;
-  while ((_element = _element.parentElement) && !_element.matches(selector))
-    ;
+  while ((_element = _element.parentElement) && !_element.matches(selector)) {
+  }
   return _element;
 }
 
@@ -121255,9 +123390,9 @@ __webpack_require__.r(__webpack_exports__);
 'use client';
 
 
-function getBreakpointValue(breakpoint, theme) {
-  if (breakpoint in theme.breakpoints) {
-    return (0,_units_converters_px_mjs__WEBPACK_IMPORTED_MODULE_0__.px)(theme.breakpoints[breakpoint]);
+function getBreakpointValue(breakpoint, breakpoints) {
+  if (breakpoint in breakpoints) {
+    return (0,_units_converters_px_mjs__WEBPACK_IMPORTED_MODULE_0__.px)(breakpoints[breakpoint]);
   }
   return (0,_units_converters_px_mjs__WEBPACK_IMPORTED_MODULE_0__.px)(breakpoint);
 }
@@ -121450,10 +123585,10 @@ __webpack_require__.r(__webpack_exports__);
 'use client';
 
 
-function getSortedBreakpoints(breakpoints, theme) {
-  const convertedBreakpoints = breakpoints.map((breakpoint) => ({
+function getSortedBreakpoints(values, breakpoints) {
+  const convertedBreakpoints = values.map((breakpoint) => ({
     value: breakpoint,
-    px: (0,_get_breakpoint_value_get_breakpoint_value_mjs__WEBPACK_IMPORTED_MODULE_0__.getBreakpointValue)(breakpoint, theme)
+    px: (0,_get_breakpoint_value_get_breakpoint_value_mjs__WEBPACK_IMPORTED_MODULE_0__.getBreakpointValue)(breakpoint, breakpoints)
   }));
   convertedBreakpoints.sort((a, b) => a.px - b.px);
   return convertedBreakpoints;
@@ -123932,6 +126067,130 @@ var classes = {"pickerControl":"m_dc6a3c71"};
 
 
 //# sourceMappingURL=PickerControl.module.css.mjs.map
+
+
+/***/ }),
+
+/***/ "./node_modules/@mantine/dates/esm/components/TimeInput/TimeInput.mjs":
+/*!****************************************************************************!*\
+  !*** ./node_modules/@mantine/dates/esm/components/TimeInput/TimeInput.mjs ***!
+  \****************************************************************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   TimeInput: () => (/* binding */ TimeInput)
+/* harmony export */ });
+/* harmony import */ var react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react/jsx-runtime */ "./node_modules/react/jsx-runtime.js");
+/* harmony import */ var clsx__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! clsx */ "./node_modules/clsx/dist/clsx.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/factory/factory.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/MantineProvider/use-props/use-props.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/styles-api/use-resolved-styles-api/use-resolved-styles-api.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/InputBase/InputBase.mjs");
+/* harmony import */ var _TimeInput_module_css_mjs__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./TimeInput.module.css.mjs */ "./node_modules/@mantine/dates/esm/components/TimeInput/TimeInput.module.css.mjs");
+'use client';
+
+
+
+
+
+const defaultProps = {};
+const TimeInput = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_2__.factory)((_props, ref) => {
+  const props = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_3__.useProps)("TimeInput", defaultProps, _props);
+  const {
+    classNames,
+    styles,
+    unstyled,
+    vars,
+    withSeconds,
+    minTime,
+    maxTime,
+    value,
+    onChange,
+    ...others
+  } = props;
+  const { resolvedClassNames, resolvedStyles } = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_4__.useResolvedStylesApi)({
+    classNames,
+    styles,
+    props
+  });
+  const checkIfTimeLimitExceeded = (val) => {
+    if (minTime !== void 0 || maxTime !== void 0) {
+      const [hours, minutes, seconds] = val.split(":").map(Number);
+      if (minTime) {
+        const [minHours, minMinutes, minSeconds] = minTime.split(":").map(Number);
+        if (hours < minHours || hours === minHours && minutes < minMinutes || withSeconds && hours === minHours && minutes === minMinutes && seconds < minSeconds) {
+          return -1;
+        }
+      }
+      if (maxTime) {
+        const [maxHours, maxMinutes, maxSeconds] = maxTime.split(":").map(Number);
+        if (hours > maxHours || hours === maxHours && minutes > maxMinutes || withSeconds && hours === maxHours && minutes === maxMinutes && seconds > maxSeconds) {
+          return 1;
+        }
+      }
+    }
+    return 0;
+  };
+  const onTimeBlur = (event) => {
+    props.onBlur?.(event);
+    if (minTime !== void 0 || maxTime !== void 0) {
+      const val = event.currentTarget.value;
+      if (val) {
+        const check = checkIfTimeLimitExceeded(val);
+        if (check === 1) {
+          event.currentTarget.value = maxTime;
+          props.onChange?.(event);
+        } else if (check === -1) {
+          event.currentTarget.value = minTime;
+          props.onChange?.(event);
+        }
+      }
+    }
+  };
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(
+    _mantine_core__WEBPACK_IMPORTED_MODULE_5__.InputBase,
+    {
+      classNames: { ...resolvedClassNames, input: (0,clsx__WEBPACK_IMPORTED_MODULE_1__["default"])(_TimeInput_module_css_mjs__WEBPACK_IMPORTED_MODULE_6__["default"].input, resolvedClassNames?.input) },
+      styles: resolvedStyles,
+      unstyled,
+      ref,
+      value,
+      ...others,
+      step: withSeconds ? 1 : 60,
+      onChange,
+      onBlur: onTimeBlur,
+      type: "time",
+      __staticSelector: "TimeInput"
+    }
+  );
+});
+TimeInput.classes = _mantine_core__WEBPACK_IMPORTED_MODULE_5__.InputBase.classes;
+TimeInput.displayName = "@mantine/dates/TimeInput";
+
+
+//# sourceMappingURL=TimeInput.mjs.map
+
+
+/***/ }),
+
+/***/ "./node_modules/@mantine/dates/esm/components/TimeInput/TimeInput.module.css.mjs":
+/*!***************************************************************************************!*\
+  !*** ./node_modules/@mantine/dates/esm/components/TimeInput/TimeInput.module.css.mjs ***!
+  \***************************************************************************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (/* binding */ classes)
+/* harmony export */ });
+'use client';
+var classes = {"input":"m_468e7eda"};
+
+
+//# sourceMappingURL=TimeInput.module.css.mjs.map
 
 
 /***/ }),
@@ -126847,8 +129106,9 @@ function useFocusTrap(active = true) {
     if (!focusElement) {
       const children = Array.from(node.querySelectorAll(_tabbable_mjs__WEBPACK_IMPORTED_MODULE_1__.FOCUS_SELECTOR));
       focusElement = children.find(_tabbable_mjs__WEBPACK_IMPORTED_MODULE_1__.tabbable) || children.find(_tabbable_mjs__WEBPACK_IMPORTED_MODULE_1__.focusable) || null;
-      if (!focusElement && (0,_tabbable_mjs__WEBPACK_IMPORTED_MODULE_1__.focusable)(node))
+      if (!focusElement && (0,_tabbable_mjs__WEBPACK_IMPORTED_MODULE_1__.focusable)(node)) {
         focusElement = node;
+      }
     }
     if (focusElement) {
       focusElement.focus({ preventScroll: true });
@@ -127542,7 +129802,7 @@ function ModalsProvider({ children, modalProps, labels, modals }) {
         const { children: currentModalChildren, ...rest } = currentModal.props;
         return {
           modalProps: rest,
-          content: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.jsx)(react_jsx_runtime__WEBPACK_IMPORTED_MODULE_0__.Fragment, { children: currentModalChildren })
+          content: currentModalChildren
         };
       }
       default: {
@@ -130625,7 +132885,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var _defaultAttributes_mjs__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./defaultAttributes.mjs */ "./node_modules/@tabler/icons-react/dist/esm/defaultAttributes.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -130681,7 +132941,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   "default": () => (/* binding */ defaultAttributes)
 /* harmony export */ });
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -130715,35 +132975,6 @@ var defaultAttributes = {
 
 /***/ }),
 
-/***/ "./node_modules/@tabler/icons-react/dist/esm/icons/IconAlertTriangleFilled.mjs":
-/*!*************************************************************************************!*\
-  !*** ./node_modules/@tabler/icons-react/dist/esm/icons/IconAlertTriangleFilled.mjs ***!
-  \*************************************************************************************/
-/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
-
-"use strict";
-__webpack_require__.r(__webpack_exports__);
-/* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   "default": () => (/* binding */ IconAlertTriangleFilled)
-/* harmony export */ });
-/* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
-/**
- * @license @tabler/icons-react v3.14.0 - MIT
- *
- * This source code is licensed under the MIT license.
- * See the LICENSE file in the root directory of this source tree.
- */
-
-
-
-var IconAlertTriangleFilled = (0,_createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__["default"])("filled", "alert-triangle-filled", "IconAlertTriangleFilled", [["path", { "d": "M12 1.67c.955 0 1.845 .467 2.39 1.247l.105 .16l8.114 13.548a2.914 2.914 0 0 1 -2.307 4.363l-.195 .008h-16.225a2.914 2.914 0 0 1 -2.582 -4.2l.099 -.185l8.11 -13.538a2.914 2.914 0 0 1 2.491 -1.403zm.01 13.33l-.127 .007a1 1 0 0 0 0 1.986l.117 .007l.127 -.007a1 1 0 0 0 0 -1.986l-.117 -.007zm-.01 -7a1 1 0 0 0 -.993 .883l-.007 .117v4l.007 .117a1 1 0 0 0 1.986 0l.007 -.117v-4l-.007 -.117a1 1 0 0 0 -.993 -.883z", "key": "svg-0" }]]);
-
-
-//# sourceMappingURL=IconAlertTriangleFilled.mjs.map
-
-
-/***/ }),
-
 /***/ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCalendarEvent.mjs":
 /*!*******************************************************************************!*\
   !*** ./node_modules/@tabler/icons-react/dist/esm/icons/IconCalendarEvent.mjs ***!
@@ -130757,7 +132988,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -130769,6 +133000,35 @@ var IconCalendarEvent = (0,_createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0_
 
 
 //# sourceMappingURL=IconCalendarEvent.mjs.map
+
+
+/***/ }),
+
+/***/ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCalendarMonth.mjs":
+/*!*******************************************************************************!*\
+  !*** ./node_modules/@tabler/icons-react/dist/esm/icons/IconCalendarMonth.mjs ***!
+  \*******************************************************************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (/* binding */ IconCalendarMonth)
+/* harmony export */ });
+/* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
+/**
+ * @license @tabler/icons-react v3.19.0 - MIT
+ *
+ * This source code is licensed under the MIT license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+
+
+
+var IconCalendarMonth = (0,_createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__["default"])("outline", "calendar-month", "IconCalendarMonth", [["path", { "d": "M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12z", "key": "svg-0" }], ["path", { "d": "M16 3v4", "key": "svg-1" }], ["path", { "d": "M8 3v4", "key": "svg-2" }], ["path", { "d": "M4 11h16", "key": "svg-3" }], ["path", { "d": "M7 14h.013", "key": "svg-4" }], ["path", { "d": "M10.01 14h.005", "key": "svg-5" }], ["path", { "d": "M13.01 14h.005", "key": "svg-6" }], ["path", { "d": "M16.015 14h.005", "key": "svg-7" }], ["path", { "d": "M13.015 17h.005", "key": "svg-8" }], ["path", { "d": "M7.01 17h.005", "key": "svg-9" }], ["path", { "d": "M10.01 17h.005", "key": "svg-10" }]]);
+
+
+//# sourceMappingURL=IconCalendarMonth.mjs.map
 
 
 /***/ }),
@@ -130786,7 +133046,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -130815,7 +133075,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -130844,7 +133104,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -130873,7 +133133,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -130902,7 +133162,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -130914,6 +133174,35 @@ var IconClipboardCopy = (0,_createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0_
 
 
 //# sourceMappingURL=IconClipboardCopy.mjs.map
+
+
+/***/ }),
+
+/***/ "./node_modules/@tabler/icons-react/dist/esm/icons/IconClock.mjs":
+/*!***********************************************************************!*\
+  !*** ./node_modules/@tabler/icons-react/dist/esm/icons/IconClock.mjs ***!
+  \***********************************************************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (/* binding */ IconClock)
+/* harmony export */ });
+/* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
+/**
+ * @license @tabler/icons-react v3.19.0 - MIT
+ *
+ * This source code is licensed under the MIT license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+
+
+
+var IconClock = (0,_createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__["default"])("outline", "clock", "IconClock", [["path", { "d": "M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0", "key": "svg-0" }], ["path", { "d": "M12 7v5l3 3", "key": "svg-1" }]]);
+
+
+//# sourceMappingURL=IconClock.mjs.map
 
 
 /***/ }),
@@ -130931,7 +133220,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -130960,7 +133249,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -130989,7 +133278,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131018,7 +133307,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131047,7 +133336,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131076,7 +133365,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131105,7 +133394,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131134,7 +133423,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131163,7 +133452,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131192,7 +133481,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131221,7 +133510,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131250,7 +133539,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131279,7 +133568,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131308,7 +133597,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131337,7 +133626,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131366,7 +133655,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131395,7 +133684,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131424,7 +133713,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131453,7 +133742,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131482,7 +133771,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131511,7 +133800,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -131540,7 +133829,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
 /**
- * @license @tabler/icons-react v3.14.0 - MIT
+ * @license @tabler/icons-react v3.19.0 - MIT
  *
  * This source code is licensed under the MIT license.
  * See the LICENSE file in the root directory of this source tree.
@@ -155106,7 +157395,7 @@ __webpack_require__.r(__webpack_exports__);
 // This file is a workaround for a bug in web browsers' "native"
 // ES6 importing system which is uncapable of importing "*.json" files.
 // https://github.com/catamphetamine/libphonenumber-js/issues/239
-/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ({"version":4,"country_calling_codes":{"1":["US","AG","AI","AS","BB","BM","BS","CA","DM","DO","GD","GU","JM","KN","KY","LC","MP","MS","PR","SX","TC","TT","VC","VG","VI"],"7":["RU","KZ"],"20":["EG"],"27":["ZA"],"30":["GR"],"31":["NL"],"32":["BE"],"33":["FR"],"34":["ES"],"36":["HU"],"39":["IT","VA"],"40":["RO"],"41":["CH"],"43":["AT"],"44":["GB","GG","IM","JE"],"45":["DK"],"46":["SE"],"47":["NO","SJ"],"48":["PL"],"49":["DE"],"51":["PE"],"52":["MX"],"53":["CU"],"54":["AR"],"55":["BR"],"56":["CL"],"57":["CO"],"58":["VE"],"60":["MY"],"61":["AU","CC","CX"],"62":["ID"],"63":["PH"],"64":["NZ"],"65":["SG"],"66":["TH"],"81":["JP"],"82":["KR"],"84":["VN"],"86":["CN"],"90":["TR"],"91":["IN"],"92":["PK"],"93":["AF"],"94":["LK"],"95":["MM"],"98":["IR"],"211":["SS"],"212":["MA","EH"],"213":["DZ"],"216":["TN"],"218":["LY"],"220":["GM"],"221":["SN"],"222":["MR"],"223":["ML"],"224":["GN"],"225":["CI"],"226":["BF"],"227":["NE"],"228":["TG"],"229":["BJ"],"230":["MU"],"231":["LR"],"232":["SL"],"233":["GH"],"234":["NG"],"235":["TD"],"236":["CF"],"237":["CM"],"238":["CV"],"239":["ST"],"240":["GQ"],"241":["GA"],"242":["CG"],"243":["CD"],"244":["AO"],"245":["GW"],"246":["IO"],"247":["AC"],"248":["SC"],"249":["SD"],"250":["RW"],"251":["ET"],"252":["SO"],"253":["DJ"],"254":["KE"],"255":["TZ"],"256":["UG"],"257":["BI"],"258":["MZ"],"260":["ZM"],"261":["MG"],"262":["RE","YT"],"263":["ZW"],"264":["NA"],"265":["MW"],"266":["LS"],"267":["BW"],"268":["SZ"],"269":["KM"],"290":["SH","TA"],"291":["ER"],"297":["AW"],"298":["FO"],"299":["GL"],"350":["GI"],"351":["PT"],"352":["LU"],"353":["IE"],"354":["IS"],"355":["AL"],"356":["MT"],"357":["CY"],"358":["FI","AX"],"359":["BG"],"370":["LT"],"371":["LV"],"372":["EE"],"373":["MD"],"374":["AM"],"375":["BY"],"376":["AD"],"377":["MC"],"378":["SM"],"380":["UA"],"381":["RS"],"382":["ME"],"383":["XK"],"385":["HR"],"386":["SI"],"387":["BA"],"389":["MK"],"420":["CZ"],"421":["SK"],"423":["LI"],"500":["FK"],"501":["BZ"],"502":["GT"],"503":["SV"],"504":["HN"],"505":["NI"],"506":["CR"],"507":["PA"],"508":["PM"],"509":["HT"],"590":["GP","BL","MF"],"591":["BO"],"592":["GY"],"593":["EC"],"594":["GF"],"595":["PY"],"596":["MQ"],"597":["SR"],"598":["UY"],"599":["CW","BQ"],"670":["TL"],"672":["NF"],"673":["BN"],"674":["NR"],"675":["PG"],"676":["TO"],"677":["SB"],"678":["VU"],"679":["FJ"],"680":["PW"],"681":["WF"],"682":["CK"],"683":["NU"],"685":["WS"],"686":["KI"],"687":["NC"],"688":["TV"],"689":["PF"],"690":["TK"],"691":["FM"],"692":["MH"],"850":["KP"],"852":["HK"],"853":["MO"],"855":["KH"],"856":["LA"],"880":["BD"],"886":["TW"],"960":["MV"],"961":["LB"],"962":["JO"],"963":["SY"],"964":["IQ"],"965":["KW"],"966":["SA"],"967":["YE"],"968":["OM"],"970":["PS"],"971":["AE"],"972":["IL"],"973":["BH"],"974":["QA"],"975":["BT"],"976":["MN"],"977":["NP"],"992":["TJ"],"993":["TM"],"994":["AZ"],"995":["GE"],"996":["KG"],"998":["UZ"]},"countries":{"AC":["247","00","(?:[01589]\\d|[46])\\d{4}",[5,6]],"AD":["376","00","(?:1|6\\d)\\d{7}|[135-9]\\d{5}",[6,8,9],[["(\\d{3})(\\d{3})","$1 $2",["[135-9]"]],["(\\d{4})(\\d{4})","$1 $2",["1"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["6"]]]],"AE":["971","00","(?:[4-7]\\d|9[0-689])\\d{7}|800\\d{2,9}|[2-4679]\\d{7}",[5,6,7,8,9,10,11,12],[["(\\d{3})(\\d{2,9})","$1 $2",["60|8"]],["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["[236]|[479][2-8]"],"0$1"],["(\\d{3})(\\d)(\\d{5})","$1 $2 $3",["[479]"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["5"],"0$1"]],"0"],"AF":["93","00","[2-7]\\d{8}",[9],[["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[2-7]"],"0$1"]],"0"],"AG":["1","011","(?:268|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([457]\\d{6})$|1","268$1",0,"268"],"AI":["1","011","(?:264|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2457]\\d{6})$|1","264$1",0,"264"],"AL":["355","00","(?:700\\d\\d|900)\\d{3}|8\\d{5,7}|(?:[2-5]|6\\d)\\d{7}",[6,7,8,9],[["(\\d{3})(\\d{3,4})","$1 $2",["80|9"],"0$1"],["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["4[2-6]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[2358][2-5]|4"],"0$1"],["(\\d{3})(\\d{5})","$1 $2",["[23578]"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["6"],"0$1"]],"0"],"AM":["374","00","(?:[1-489]\\d|55|60|77)\\d{6}",[8],[["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["[89]0"],"0 $1"],["(\\d{3})(\\d{5})","$1 $2",["2|3[12]"],"(0$1)"],["(\\d{2})(\\d{6})","$1 $2",["1|47"],"(0$1)"],["(\\d{2})(\\d{6})","$1 $2",["[3-9]"],"0$1"]],"0"],"AO":["244","00","[29]\\d{8}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[29]"]]]],"AR":["54","00","(?:11|[89]\\d\\d)\\d{8}|[2368]\\d{9}",[10,11],[["(\\d{4})(\\d{2})(\\d{4})","$1 $2-$3",["2(?:2[024-9]|3[0-59]|47|6[245]|9[02-8])|3(?:3[28]|4[03-9]|5[2-46-8]|7[1-578]|8[2-9])","2(?:[23]02|6(?:[25]|4[6-8])|9(?:[02356]|4[02568]|72|8[23]))|3(?:3[28]|4(?:[04679]|3[5-8]|5[4-68]|8[2379])|5(?:[2467]|3[237]|8[2-5])|7[1-578]|8(?:[2469]|3[2578]|5[4-8]|7[36-8]|8[5-8]))|2(?:2[24-9]|3[1-59]|47)","2(?:[23]02|6(?:[25]|4(?:64|[78]))|9(?:[02356]|4(?:[0268]|5[2-6])|72|8[23]))|3(?:3[28]|4(?:[04679]|3[78]|5(?:4[46]|8)|8[2379])|5(?:[2467]|3[237]|8[23])|7[1-578]|8(?:[2469]|3[278]|5[56][46]|86[3-6]))|2(?:2[24-9]|3[1-59]|47)|38(?:[58][78]|7[378])|3(?:4[35][56]|58[45]|8(?:[38]5|54|76))[4-6]","2(?:[23]02|6(?:[25]|4(?:64|[78]))|9(?:[02356]|4(?:[0268]|5[2-6])|72|8[23]))|3(?:3[28]|4(?:[04679]|3(?:5(?:4[0-25689]|[56])|[78])|58|8[2379])|5(?:[2467]|3[237]|8(?:[23]|4(?:[45]|60)|5(?:4[0-39]|5|64)))|7[1-578]|8(?:[2469]|3[278]|54(?:4|5[13-7]|6[89])|86[3-6]))|2(?:2[24-9]|3[1-59]|47)|38(?:[58][78]|7[378])|3(?:454|85[56])[46]|3(?:4(?:36|5[56])|8(?:[38]5|76))[4-6]"],"0$1",1],["(\\d{2})(\\d{4})(\\d{4})","$1 $2-$3",["1"],"0$1",1],["(\\d{3})(\\d{3})(\\d{4})","$1-$2-$3",["[68]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2-$3",["[23]"],"0$1",1],["(\\d)(\\d{4})(\\d{2})(\\d{4})","$2 15-$3-$4",["9(?:2[2-469]|3[3-578])","9(?:2(?:2[024-9]|3[0-59]|47|6[245]|9[02-8])|3(?:3[28]|4[03-9]|5[2-46-8]|7[1-578]|8[2-9]))","9(?:2(?:[23]02|6(?:[25]|4[6-8])|9(?:[02356]|4[02568]|72|8[23]))|3(?:3[28]|4(?:[04679]|3[5-8]|5[4-68]|8[2379])|5(?:[2467]|3[237]|8[2-5])|7[1-578]|8(?:[2469]|3[2578]|5[4-8]|7[36-8]|8[5-8])))|92(?:2[24-9]|3[1-59]|47)","9(?:2(?:[23]02|6(?:[25]|4(?:64|[78]))|9(?:[02356]|4(?:[0268]|5[2-6])|72|8[23]))|3(?:3[28]|4(?:[04679]|3[78]|5(?:4[46]|8)|8[2379])|5(?:[2467]|3[237]|8[23])|7[1-578]|8(?:[2469]|3[278]|5(?:[56][46]|[78])|7[378]|8(?:6[3-6]|[78]))))|92(?:2[24-9]|3[1-59]|47)|93(?:4[35][56]|58[45]|8(?:[38]5|54|76))[4-6]","9(?:2(?:[23]02|6(?:[25]|4(?:64|[78]))|9(?:[02356]|4(?:[0268]|5[2-6])|72|8[23]))|3(?:3[28]|4(?:[04679]|3(?:5(?:4[0-25689]|[56])|[78])|5(?:4[46]|8)|8[2379])|5(?:[2467]|3[237]|8(?:[23]|4(?:[45]|60)|5(?:4[0-39]|5|64)))|7[1-578]|8(?:[2469]|3[278]|5(?:4(?:4|5[13-7]|6[89])|[56][46]|[78])|7[378]|8(?:6[3-6]|[78]))))|92(?:2[24-9]|3[1-59]|47)|93(?:4(?:36|5[56])|8(?:[38]5|76))[4-6]"],"0$1",0,"$1 $2 $3-$4"],["(\\d)(\\d{2})(\\d{4})(\\d{4})","$2 15-$3-$4",["91"],"0$1",0,"$1 $2 $3-$4"],["(\\d{3})(\\d{3})(\\d{5})","$1-$2-$3",["8"],"0$1"],["(\\d)(\\d{3})(\\d{3})(\\d{4})","$2 15-$3-$4",["9"],"0$1",0,"$1 $2 $3-$4"]],"0",0,"0?(?:(11|2(?:2(?:02?|[13]|2[13-79]|4[1-6]|5[2457]|6[124-8]|7[1-4]|8[13-6]|9[1267])|3(?:02?|1[467]|2[03-6]|3[13-8]|[49][2-6]|5[2-8]|[67])|4(?:7[3-578]|9)|6(?:[0136]|2[24-6]|4[6-8]?|5[15-8])|80|9(?:0[1-3]|[19]|2\\d|3[1-6]|4[02568]?|5[2-4]|6[2-46]|72?|8[23]?))|3(?:3(?:2[79]|6|8[2578])|4(?:0[0-24-9]|[12]|3[5-8]?|4[24-7]|5[4-68]?|6[02-9]|7[126]|8[2379]?|9[1-36-8])|5(?:1|2[1245]|3[237]?|4[1-46-9]|6[2-4]|7[1-6]|8[2-5]?)|6[24]|7(?:[069]|1[1568]|2[15]|3[145]|4[13]|5[14-8]|7[2-57]|8[126])|8(?:[01]|2[15-7]|3[2578]?|4[13-6]|5[4-8]?|6[1-357-9]|7[36-8]?|8[5-8]?|9[124])))15)?","9$1"],"AS":["1","011","(?:[58]\\d\\d|684|900)\\d{7}",[10],0,"1",0,"([267]\\d{6})$|1","684$1",0,"684"],"AT":["43","00","1\\d{3,12}|2\\d{6,12}|43(?:(?:0\\d|5[02-9])\\d{3,9}|2\\d{4,5}|[3467]\\d{4}|8\\d{4,6}|9\\d{4,7})|5\\d{4,12}|8\\d{7,12}|9\\d{8,12}|(?:[367]\\d|4[0-24-9])\\d{4,11}",[4,5,6,7,8,9,10,11,12,13],[["(\\d)(\\d{3,12})","$1 $2",["1(?:11|[2-9])"],"0$1"],["(\\d{3})(\\d{2})","$1 $2",["517"],"0$1"],["(\\d{2})(\\d{3,5})","$1 $2",["5[079]"],"0$1"],["(\\d{3})(\\d{3,10})","$1 $2",["(?:31|4)6|51|6(?:5[0-3579]|[6-9])|7(?:20|32|8)|[89]"],"0$1"],["(\\d{4})(\\d{3,9})","$1 $2",["[2-467]|5[2-6]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["5"],"0$1"],["(\\d{2})(\\d{4})(\\d{4,7})","$1 $2 $3",["5"],"0$1"]],"0"],"AU":["61","001[14-689]|14(?:1[14]|34|4[17]|[56]6|7[47]|88)0011","1(?:[0-79]\\d{7}(?:\\d(?:\\d{2})?)?|8[0-24-9]\\d{7})|[2-478]\\d{8}|1\\d{4,7}",[5,6,7,8,9,10,12],[["(\\d{2})(\\d{3,4})","$1 $2",["16"],"0$1"],["(\\d{2})(\\d{3})(\\d{2,4})","$1 $2 $3",["16"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["14|4"],"0$1"],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["[2378]"],"(0$1)"],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1(?:30|[89])"]]],"0",0,"(183[12])|0",0,0,0,[["(?:(?:(?:2(?:[0-26-9]\\d|3[0-8]|4[02-9]|5[0135-9])|7(?:[013-57-9]\\d|2[0-8]))\\d|3(?:(?:[0-3589]\\d|6[1-9]|7[0-35-9])\\d|4(?:[0-578]\\d|90)))\\d\\d|8(?:51(?:0(?:0[03-9]|[12479]\\d|3[2-9]|5[0-8]|6[1-9]|8[0-7])|1(?:[0235689]\\d|1[0-69]|4[0-589]|7[0-47-9])|2(?:0[0-79]|[18][13579]|2[14-9]|3[0-46-9]|[4-6]\\d|7[89]|9[0-4])|3\\d\\d)|(?:6[0-8]|[78]\\d)\\d{3}|9(?:[02-9]\\d{3}|1(?:(?:[0-58]\\d|6[0135-9])\\d|7(?:0[0-24-9]|[1-9]\\d)|9(?:[0-46-9]\\d|5[0-79])))))\\d{3}",[9]],["4(?:79[01]|83[0-389]|94[0-4])\\d{5}|4(?:[0-36]\\d|4[047-9]|5[0-25-9]|7[02-8]|8[0-24-9]|9[0-37-9])\\d{6}",[9]],["180(?:0\\d{3}|2)\\d{3}",[7,10]],["190[0-26]\\d{6}",[10]],0,0,0,["163\\d{2,6}",[5,6,7,8,9]],["14(?:5(?:1[0458]|[23][458])|71\\d)\\d{4}",[9]],["13(?:00\\d{6}(?:\\d{2})?|45[0-4]\\d{3})|13\\d{4}",[6,8,10,12]]],"0011"],"AW":["297","00","(?:[25-79]\\d\\d|800)\\d{4}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[25-9]"]]]],"AX":["358","00|99(?:[01469]|5(?:[14]1|3[23]|5[59]|77|88|9[09]))","2\\d{4,9}|35\\d{4,5}|(?:60\\d\\d|800)\\d{4,6}|7\\d{5,11}|(?:[14]\\d|3[0-46-9]|50)\\d{4,8}",[5,6,7,8,9,10,11,12],0,"0",0,0,0,0,"18",0,"00"],"AZ":["994","00","365\\d{6}|(?:[124579]\\d|60|88)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["90"],"0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["1[28]|2|365|46","1[28]|2|365[45]|46","1[28]|2|365(?:4|5[02])|46"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[13-9]"],"0$1"]],"0"],"BA":["387","00","6\\d{8}|(?:[35689]\\d|49|70)\\d{6}",[8,9],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["6[1-3]|[7-9]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2-$3",["[3-5]|6[56]"],"0$1"],["(\\d{2})(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3 $4",["6"],"0$1"]],"0"],"BB":["1","011","(?:246|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","246$1",0,"246"],"BD":["880","00","[1-469]\\d{9}|8[0-79]\\d{7,8}|[2-79]\\d{8}|[2-9]\\d{7}|[3-9]\\d{6}|[57-9]\\d{5}",[6,7,8,9,10],[["(\\d{2})(\\d{4,6})","$1-$2",["31[5-8]|[459]1"],"0$1"],["(\\d{3})(\\d{3,7})","$1-$2",["3(?:[67]|8[013-9])|4(?:6[168]|7|[89][18])|5(?:6[128]|9)|6(?:[15]|28|4[14])|7[2-589]|8(?:0[014-9]|[12])|9[358]|(?:3[2-5]|4[235]|5[2-578]|6[0389]|76|8[3-7]|9[24])1|(?:44|66)[01346-9]"],"0$1"],["(\\d{4})(\\d{3,6})","$1-$2",["[13-9]|2[23]"],"0$1"],["(\\d)(\\d{7,8})","$1-$2",["2"],"0$1"]],"0"],"BE":["32","00","4\\d{8}|[1-9]\\d{7}",[8,9],[["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["(?:80|9)0"],"0$1"],["(\\d)(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[239]|4[23]"],"0$1"],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[15-8]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["4"],"0$1"]],"0"],"BF":["226","00","[025-7]\\d{7}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[025-7]"]]]],"BG":["359","00","00800\\d{7}|[2-7]\\d{6,7}|[89]\\d{6,8}|2\\d{5}",[6,7,8,9,12],[["(\\d)(\\d)(\\d{2})(\\d{2})","$1 $2 $3 $4",["2"],"0$1"],["(\\d{3})(\\d{4})","$1 $2",["43[1-6]|70[1-9]"],"0$1"],["(\\d)(\\d{3})(\\d{3,4})","$1 $2 $3",["2"],"0$1"],["(\\d{2})(\\d{3})(\\d{2,3})","$1 $2 $3",["[356]|4[124-7]|7[1-9]|8[1-6]|9[1-7]"],"0$1"],["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["(?:70|8)0"],"0$1"],["(\\d{3})(\\d{3})(\\d{2})","$1 $2 $3",["43[1-7]|7"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[48]|9[08]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["9"],"0$1"]],"0"],"BH":["973","00","[136-9]\\d{7}",[8],[["(\\d{4})(\\d{4})","$1 $2",["[13679]|8[02-4679]"]]]],"BI":["257","00","(?:[267]\\d|31)\\d{6}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2367]"]]]],"BJ":["229","00","[24-689]\\d{7}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[24-689]"]]]],"BL":["590","00","590\\d{6}|(?:69|80|9\\d)\\d{7}",[9],0,"0",0,0,0,0,0,[["590(?:2[7-9]|3[3-7]|5[12]|87)\\d{4}"],["69(?:0\\d\\d|1(?:2[2-9]|3[0-5])|4(?:0[89]|1[2-6]|9\\d)|6(?:1[016-9]|5[0-4]|[67]\\d))\\d{4}"],["80[0-5]\\d{6}"],0,0,0,0,0,["9(?:(?:39[5-7]|76[018])\\d|475[0-5])\\d{4}"]]],"BM":["1","011","(?:441|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","441$1",0,"441"],"BN":["673","00","[2-578]\\d{6}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[2-578]"]]]],"BO":["591","00(?:1\\d)?","8001\\d{5}|(?:[2-467]\\d|50)\\d{6}",[8,9],[["(\\d)(\\d{7})","$1 $2",["[235]|4[46]"]],["(\\d{8})","$1",["[67]"]],["(\\d{3})(\\d{2})(\\d{4})","$1 $2 $3",["8"]]],"0",0,"0(1\\d)?"],"BQ":["599","00","(?:[34]1|7\\d)\\d{5}",[7],0,0,0,0,0,0,"[347]"],"BR":["55","00(?:1[245]|2[1-35]|31|4[13]|[56]5|99)","(?:[1-46-9]\\d\\d|5(?:[0-46-9]\\d|5[0-46-9]))\\d{8}|[1-9]\\d{9}|[3589]\\d{8}|[34]\\d{7}",[8,9,10,11],[["(\\d{4})(\\d{4})","$1-$2",["300|4(?:0[02]|37)","4(?:02|37)0|[34]00"]],["(\\d{3})(\\d{2,3})(\\d{4})","$1 $2 $3",["(?:[358]|90)0"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1 $2-$3",["(?:[14689][1-9]|2[12478]|3[1-578]|5[13-5]|7[13-579])[2-57]"],"($1)"],["(\\d{2})(\\d{5})(\\d{4})","$1 $2-$3",["[16][1-9]|[2-57-9]"],"($1)"]],"0",0,"(?:0|90)(?:(1[245]|2[1-35]|31|4[13]|[56]5|99)(\\d{10,11}))?","$2"],"BS":["1","011","(?:242|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([3-8]\\d{6})$|1","242$1",0,"242"],"BT":["975","00","[17]\\d{7}|[2-8]\\d{6}",[7,8],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["[2-68]|7[246]"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["1[67]|7"]]]],"BW":["267","00","(?:0800|(?:[37]|800)\\d)\\d{6}|(?:[2-6]\\d|90)\\d{5}",[7,8,10],[["(\\d{2})(\\d{5})","$1 $2",["90"]],["(\\d{3})(\\d{4})","$1 $2",["[24-6]|3[15-9]"]],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[37]"]],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["0"]],["(\\d{3})(\\d{4})(\\d{3})","$1 $2 $3",["8"]]]],"BY":["375","810","(?:[12]\\d|33|44|902)\\d{7}|8(?:0[0-79]\\d{5,7}|[1-7]\\d{9})|8(?:1[0-489]|[5-79]\\d)\\d{7}|8[1-79]\\d{6,7}|8[0-79]\\d{5}|8\\d{5}",[6,7,8,9,10,11],[["(\\d{3})(\\d{3})","$1 $2",["800"],"8 $1"],["(\\d{3})(\\d{2})(\\d{2,4})","$1 $2 $3",["800"],"8 $1"],["(\\d{4})(\\d{2})(\\d{3})","$1 $2-$3",["1(?:5[169]|6[3-5]|7[179])|2(?:1[35]|2[34]|3[3-5])","1(?:5[169]|6(?:3[1-3]|4|5[125])|7(?:1[3-9]|7[0-24-6]|9[2-7]))|2(?:1[35]|2[34]|3[3-5])"],"8 0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2-$3-$4",["1(?:[56]|7[467])|2[1-3]"],"8 0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2-$3-$4",["[1-4]"],"8 0$1"],["(\\d{3})(\\d{3,4})(\\d{4})","$1 $2 $3",["[89]"],"8 $1"]],"8",0,"0|80?",0,0,0,0,"8~10"],"BZ":["501","00","(?:0800\\d|[2-8])\\d{6}",[7,11],[["(\\d{3})(\\d{4})","$1-$2",["[2-8]"]],["(\\d)(\\d{3})(\\d{4})(\\d{3})","$1-$2-$3-$4",["0"]]]],"CA":["1","011","(?:[2-8]\\d|90)\\d{8}|3\\d{6}",[7,10],0,"1",0,0,0,0,0,[["(?:2(?:04|[23]6|[48]9|50|63)|3(?:06|43|54|6[578]|82)|4(?:03|1[68]|[26]8|3[178]|50|74)|5(?:06|1[49]|48|79|8[147])|6(?:04|[18]3|39|47|72)|7(?:0[59]|42|53|78|8[02])|8(?:[06]7|19|25|7[39])|90[25])[2-9]\\d{6}",[10]],["",[10]],["8(?:00|33|44|55|66|77|88)[2-9]\\d{6}",[10]],["900[2-9]\\d{6}",[10]],["52(?:3(?:[2-46-9][02-9]\\d|5(?:[02-46-9]\\d|5[0-46-9]))|4(?:[2-478][02-9]\\d|5(?:[034]\\d|2[024-9]|5[0-46-9])|6(?:0[1-9]|[2-9]\\d)|9(?:[05-9]\\d|2[0-5]|49)))\\d{4}|52[34][2-9]1[02-9]\\d{4}|(?:5(?:00|2[125-9]|33|44|66|77|88)|622)[2-9]\\d{6}",[10]],0,["310\\d{4}",[7]],0,["600[2-9]\\d{6}",[10]]]],"CC":["61","001[14-689]|14(?:1[14]|34|4[17]|[56]6|7[47]|88)0011","1(?:[0-79]\\d{8}(?:\\d{2})?|8[0-24-9]\\d{7})|[148]\\d{8}|1\\d{5,7}",[6,7,8,9,10,12],0,"0",0,"([59]\\d{7})$|0","8$1",0,0,[["8(?:51(?:0(?:02|31|60|89)|1(?:18|76)|223)|91(?:0(?:1[0-2]|29)|1(?:[28]2|50|79)|2(?:10|64)|3(?:[06]8|22)|4[29]8|62\\d|70[23]|959))\\d{3}",[9]],["4(?:79[01]|83[0-389]|94[0-4])\\d{5}|4(?:[0-36]\\d|4[047-9]|5[0-25-9]|7[02-8]|8[0-24-9]|9[0-37-9])\\d{6}",[9]],["180(?:0\\d{3}|2)\\d{3}",[7,10]],["190[0-26]\\d{6}",[10]],0,0,0,0,["14(?:5(?:1[0458]|[23][458])|71\\d)\\d{4}",[9]],["13(?:00\\d{6}(?:\\d{2})?|45[0-4]\\d{3})|13\\d{4}",[6,8,10,12]]],"0011"],"CD":["243","00","[189]\\d{8}|[1-68]\\d{6}",[7,9],[["(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3",["88"],"0$1"],["(\\d{2})(\\d{5})","$1 $2",["[1-6]"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["1"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[89]"],"0$1"]],"0"],"CF":["236","00","(?:[27]\\d{3}|8776)\\d{4}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[278]"]]]],"CG":["242","00","222\\d{6}|(?:0\\d|80)\\d{7}",[9],[["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["8"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[02]"]]]],"CH":["41","00","8\\d{11}|[2-9]\\d{8}",[9,12],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["8[047]|90"],"0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2-79]|81"],"0$1"],["(\\d{3})(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4 $5",["8"],"0$1"]],"0"],"CI":["225","00","[02]\\d{9}",[10],[["(\\d{2})(\\d{2})(\\d)(\\d{5})","$1 $2 $3 $4",["2"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{4})","$1 $2 $3 $4",["0"]]]],"CK":["682","00","[2-578]\\d{4}",[5],[["(\\d{2})(\\d{3})","$1 $2",["[2-578]"]]]],"CL":["56","(?:0|1(?:1[0-69]|2[02-5]|5[13-58]|69|7[0167]|8[018]))0","12300\\d{6}|6\\d{9,10}|[2-9]\\d{8}",[9,10,11],[["(\\d{5})(\\d{4})","$1 $2",["219","2196"],"($1)"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["44"]],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["2[1-36]"],"($1)"],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["9[2-9]"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["3[2-5]|[47]|5[1-3578]|6[13-57]|8(?:0[1-9]|[1-9])"],"($1)"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["60|8"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["1"]],["(\\d{3})(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3 $4",["60"]]]],"CM":["237","00","[26]\\d{8}|88\\d{6,7}",[8,9],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["88"]],["(\\d)(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4 $5",["[26]|88"]]]],"CN":["86","00|1(?:[12]\\d|79)\\d\\d00","(?:(?:1[03-689]|2\\d)\\d\\d|6)\\d{8}|1\\d{10}|[126]\\d{6}(?:\\d(?:\\d{2})?)?|86\\d{5,6}|(?:[3-579]\\d|8[0-57-9])\\d{5,9}",[7,8,9,10,11,12],[["(\\d{2})(\\d{5,6})","$1 $2",["(?:10|2[0-57-9])[19]|3(?:[157]|35|49|9[1-68])|4(?:1[124-9]|2[179]|6[47-9]|7|8[23])|5(?:[1357]|2[37]|4[36]|6[1-46]|80)|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:07|1[236-8]|2[5-7]|[37]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|3|4[13]|5[1-5]|7[0-79]|9[0-35-9])|(?:4[35]|59|85)[1-9]","(?:10|2[0-57-9])(?:1[02]|9[56])|8078|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:1[124-9]|2[179]|[35][1-9]|6[47-9]|7\\d|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[1-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|3\\d|4[13]|5[1-5]|7[0-79]|9[0-35-9]))1","10(?:1(?:0|23)|9[56])|2[0-57-9](?:1(?:00|23)|9[56])|80781|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:1[124-9]|2[179]|[35][1-9]|6[47-9]|7\\d|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[1-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|3\\d|4[13]|5[1-5]|7[0-79]|9[0-35-9]))12","10(?:1(?:0|23)|9[56])|2[0-57-9](?:1(?:00|23)|9[56])|807812|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:1[124-9]|2[179]|[35][1-9]|6[47-9]|7\\d|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[1-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|3\\d|4[13]|5[1-5]|7[0-79]|9[0-35-9]))123","10(?:1(?:0|23)|9[56])|2[0-57-9](?:1(?:00|23)|9[56])|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:1[124-9]|2[179]|[35][1-9]|6[47-9]|7\\d|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:078|1[236-8]|2[5-7]|[37]\\d|5[1-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|3\\d|4[13]|5[1-5]|7[0-79]|9[0-35-9]))123"],"0$1"],["(\\d{3})(\\d{5,6})","$1 $2",["3(?:[157]|35|49|9[1-68])|4(?:[17]|2[179]|6[47-9]|8[23])|5(?:[1357]|2[37]|4[36]|6[1-46]|80)|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|[379]|4[13]|5[1-5])|(?:4[35]|59|85)[1-9]","(?:3(?:[157]\\d|35|49|9[1-68])|4(?:[17]\\d|2[179]|[35][1-9]|6[47-9]|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[1-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|[379]\\d|4[13]|5[1-5]))[19]","85[23](?:10|95)|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:[17]\\d|2[179]|[35][1-9]|6[47-9]|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[14-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|[379]\\d|4[13]|5[1-5]))(?:10|9[56])","85[23](?:100|95)|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:[17]\\d|2[179]|[35][1-9]|6[47-9]|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[14-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|[379]\\d|4[13]|5[1-5]))(?:100|9[56])"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["(?:4|80)0"]],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["10|2(?:[02-57-9]|1[1-9])","10|2(?:[02-57-9]|1[1-9])","10[0-79]|2(?:[02-57-9]|1[1-79])|(?:10|21)8(?:0[1-9]|[1-9])"],"0$1",1],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["3(?:[3-59]|7[02-68])|4(?:[26-8]|3[3-9]|5[2-9])|5(?:3[03-9]|[468]|7[028]|9[2-46-9])|6|7(?:[0-247]|3[04-9]|5[0-4689]|6[2368])|8(?:[1-358]|9[1-7])|9(?:[013479]|5[1-5])|(?:[34]1|55|79|87)[02-9]"],"0$1",1],["(\\d{3})(\\d{7,8})","$1 $2",["9"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["80"],"0$1",1],["(\\d{3})(\\d{4})(\\d{4})","$1 $2 $3",["[3-578]"],"0$1",1],["(\\d{3})(\\d{4})(\\d{4})","$1 $2 $3",["1[3-9]"]],["(\\d{2})(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3 $4",["[12]"],"0$1",1]],"0",0,"(1(?:[12]\\d|79)\\d\\d)|0",0,0,0,0,"00"],"CO":["57","00(?:4(?:[14]4|56)|[579])","(?:60\\d\\d|9101)\\d{6}|(?:1\\d|3)\\d{9}",[10,11],[["(\\d{3})(\\d{7})","$1 $2",["6"],"($1)"],["(\\d{3})(\\d{7})","$1 $2",["3[0-357]|91"]],["(\\d)(\\d{3})(\\d{7})","$1-$2-$3",["1"],"0$1",0,"$1 $2 $3"]],"0",0,"0([3579]|4(?:[14]4|56))?"],"CR":["506","00","(?:8\\d|90)\\d{8}|(?:[24-8]\\d{3}|3005)\\d{4}",[8,10],[["(\\d{4})(\\d{4})","$1 $2",["[2-7]|8[3-9]"]],["(\\d{3})(\\d{3})(\\d{4})","$1-$2-$3",["[89]"]]],0,0,"(19(?:0[0-2468]|1[09]|20|66|77|99))"],"CU":["53","119","(?:[2-7]|8\\d\\d)\\d{7}|[2-47]\\d{6}|[34]\\d{5}",[6,7,8,10],[["(\\d{2})(\\d{4,6})","$1 $2",["2[1-4]|[34]"],"(0$1)"],["(\\d)(\\d{6,7})","$1 $2",["7"],"(0$1)"],["(\\d)(\\d{7})","$1 $2",["[56]"],"0$1"],["(\\d{3})(\\d{7})","$1 $2",["8"],"0$1"]],"0"],"CV":["238","0","(?:[2-59]\\d\\d|800)\\d{4}",[7],[["(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3",["[2-589]"]]]],"CW":["599","00","(?:[34]1|60|(?:7|9\\d)\\d)\\d{5}",[7,8],[["(\\d{3})(\\d{4})","$1 $2",["[3467]"]],["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["9[4-8]"]]],0,0,0,0,0,"[69]"],"CX":["61","001[14-689]|14(?:1[14]|34|4[17]|[56]6|7[47]|88)0011","1(?:[0-79]\\d{8}(?:\\d{2})?|8[0-24-9]\\d{7})|[148]\\d{8}|1\\d{5,7}",[6,7,8,9,10,12],0,"0",0,"([59]\\d{7})$|0","8$1",0,0,[["8(?:51(?:0(?:01|30|59|88)|1(?:17|46|75)|2(?:22|35))|91(?:00[6-9]|1(?:[28]1|49|78)|2(?:09|63)|3(?:12|26|75)|4(?:56|97)|64\\d|7(?:0[01]|1[0-2])|958))\\d{3}",[9]],["4(?:79[01]|83[0-389]|94[0-4])\\d{5}|4(?:[0-36]\\d|4[047-9]|5[0-25-9]|7[02-8]|8[0-24-9]|9[0-37-9])\\d{6}",[9]],["180(?:0\\d{3}|2)\\d{3}",[7,10]],["190[0-26]\\d{6}",[10]],0,0,0,0,["14(?:5(?:1[0458]|[23][458])|71\\d)\\d{4}",[9]],["13(?:00\\d{6}(?:\\d{2})?|45[0-4]\\d{3})|13\\d{4}",[6,8,10,12]]],"0011"],"CY":["357","00","(?:[279]\\d|[58]0)\\d{6}",[8],[["(\\d{2})(\\d{6})","$1 $2",["[257-9]"]]]],"CZ":["420","00","(?:[2-578]\\d|60)\\d{7}|9\\d{8,11}",[9,10,11,12],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[2-8]|9[015-7]"]],["(\\d{2})(\\d{3})(\\d{3})(\\d{2})","$1 $2 $3 $4",["96"]],["(\\d{2})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["9"]],["(\\d{3})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["9"]]]],"DE":["49","00","[2579]\\d{5,14}|49(?:[34]0|69|8\\d)\\d\\d?|49(?:37|49|60|7[089]|9\\d)\\d{1,3}|49(?:2[024-9]|3[2-689]|7[1-7])\\d{1,8}|(?:1|[368]\\d|4[0-8])\\d{3,13}|49(?:[015]\\d|2[13]|31|[46][1-8])\\d{1,9}",[4,5,6,7,8,9,10,11,12,13,14,15],[["(\\d{2})(\\d{3,13})","$1 $2",["3[02]|40|[68]9"],"0$1"],["(\\d{3})(\\d{3,12})","$1 $2",["2(?:0[1-389]|1[124]|2[18]|3[14])|3(?:[35-9][15]|4[015])|906|(?:2[4-9]|4[2-9]|[579][1-9]|[68][1-8])1","2(?:0[1-389]|12[0-8])|3(?:[35-9][15]|4[015])|906|2(?:[13][14]|2[18])|(?:2[4-9]|4[2-9]|[579][1-9]|[68][1-8])1"],"0$1"],["(\\d{4})(\\d{2,11})","$1 $2",["[24-6]|3(?:[3569][02-46-9]|4[2-4679]|7[2-467]|8[2-46-8])|70[2-8]|8(?:0[2-9]|[1-8])|90[7-9]|[79][1-9]","[24-6]|3(?:3(?:0[1-467]|2[127-9]|3[124578]|7[1257-9]|8[1256]|9[145])|4(?:2[135]|4[13578]|9[1346])|5(?:0[14]|2[1-3589]|6[1-4]|7[13468]|8[13568])|6(?:2[1-489]|3[124-6]|6[13]|7[12579]|8[1-356]|9[135])|7(?:2[1-7]|4[145]|6[1-5]|7[1-4])|8(?:21|3[1468]|6|7[1467]|8[136])|9(?:0[12479]|2[1358]|4[134679]|6[1-9]|7[136]|8[147]|9[1468]))|70[2-8]|8(?:0[2-9]|[1-8])|90[7-9]|[79][1-9]|3[68]4[1347]|3(?:47|60)[1356]|3(?:3[46]|46|5[49])[1246]|3[4579]3[1357]"],"0$1"],["(\\d{3})(\\d{4})","$1 $2",["138"],"0$1"],["(\\d{5})(\\d{2,10})","$1 $2",["3"],"0$1"],["(\\d{3})(\\d{5,11})","$1 $2",["181"],"0$1"],["(\\d{3})(\\d)(\\d{4,10})","$1 $2 $3",["1(?:3|80)|9"],"0$1"],["(\\d{3})(\\d{7,8})","$1 $2",["1[67]"],"0$1"],["(\\d{3})(\\d{7,12})","$1 $2",["8"],"0$1"],["(\\d{5})(\\d{6})","$1 $2",["185","1850","18500"],"0$1"],["(\\d{3})(\\d{4})(\\d{4})","$1 $2 $3",["7"],"0$1"],["(\\d{4})(\\d{7})","$1 $2",["18[68]"],"0$1"],["(\\d{4})(\\d{7})","$1 $2",["15[1279]"],"0$1"],["(\\d{5})(\\d{6})","$1 $2",["15[03568]","15(?:[0568]|31)"],"0$1"],["(\\d{3})(\\d{8})","$1 $2",["18"],"0$1"],["(\\d{3})(\\d{2})(\\d{7,8})","$1 $2 $3",["1(?:6[023]|7)"],"0$1"],["(\\d{4})(\\d{2})(\\d{7})","$1 $2 $3",["15[279]"],"0$1"],["(\\d{3})(\\d{2})(\\d{8})","$1 $2 $3",["15"],"0$1"]],"0"],"DJ":["253","00","(?:2\\d|77)\\d{6}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[27]"]]]],"DK":["45","00","[2-9]\\d{7}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2-9]"]]]],"DM":["1","011","(?:[58]\\d\\d|767|900)\\d{7}",[10],0,"1",0,"([2-7]\\d{6})$|1","767$1",0,"767"],"DO":["1","011","(?:[58]\\d\\d|900)\\d{7}",[10],0,"1",0,0,0,0,"8001|8[024]9"],"DZ":["213","00","(?:[1-4]|[5-79]\\d|80)\\d{7}",[8,9],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[1-4]"],"0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["9"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[5-8]"],"0$1"]],"0"],"EC":["593","00","1\\d{9,10}|(?:[2-7]|9\\d)\\d{7}",[8,9,10,11],[["(\\d)(\\d{3})(\\d{4})","$1 $2-$3",["[2-7]"],"(0$1)",0,"$1-$2-$3"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["9"],"0$1"],["(\\d{4})(\\d{3})(\\d{3,4})","$1 $2 $3",["1"]]],"0"],"EE":["372","00","8\\d{9}|[4578]\\d{7}|(?:[3-8]\\d|90)\\d{5}",[7,8,10],[["(\\d{3})(\\d{4})","$1 $2",["[369]|4[3-8]|5(?:[0-2]|5[0-478]|6[45])|7[1-9]|88","[369]|4[3-8]|5(?:[02]|1(?:[0-8]|95)|5[0-478]|6(?:4[0-4]|5[1-589]))|7[1-9]|88"]],["(\\d{4})(\\d{3,4})","$1 $2",["[45]|8(?:00|[1-49])","[45]|8(?:00[1-9]|[1-49])"]],["(\\d{2})(\\d{2})(\\d{4})","$1 $2 $3",["7"]],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["8"]]]],"EG":["20","00","[189]\\d{8,9}|[24-6]\\d{8}|[135]\\d{7}",[8,9,10],[["(\\d)(\\d{7,8})","$1 $2",["[23]"],"0$1"],["(\\d{2})(\\d{6,7})","$1 $2",["1[35]|[4-6]|8[2468]|9[235-7]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[89]"],"0$1"],["(\\d{2})(\\d{8})","$1 $2",["1"],"0$1"]],"0"],"EH":["212","00","[5-8]\\d{8}",[9],0,"0",0,0,0,0,"528[89]"],"ER":["291","00","[178]\\d{6}",[7],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["[178]"],"0$1"]],"0"],"ES":["34","00","[5-9]\\d{8}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[89]00"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[5-9]"]]]],"ET":["251","00","(?:11|[2-579]\\d)\\d{7}",[9],[["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[1-579]"],"0$1"]],"0"],"FI":["358","00|99(?:[01469]|5(?:[14]1|3[23]|5[59]|77|88|9[09]))","[1-35689]\\d{4}|7\\d{10,11}|(?:[124-7]\\d|3[0-46-9])\\d{8}|[1-9]\\d{5,8}",[5,6,7,8,9,10,11,12],[["(\\d{5})","$1",["20[2-59]"],"0$1"],["(\\d{3})(\\d{3,7})","$1 $2",["(?:[1-3]0|[68])0|70[07-9]"],"0$1"],["(\\d{2})(\\d{4,8})","$1 $2",["[14]|2[09]|50|7[135]"],"0$1"],["(\\d{2})(\\d{6,10})","$1 $2",["7"],"0$1"],["(\\d)(\\d{4,9})","$1 $2",["(?:1[49]|[2568])[1-8]|3(?:0[1-9]|[1-9])|9"],"0$1"]],"0",0,0,0,0,"1[03-79]|[2-9]",0,"00"],"FJ":["679","0(?:0|52)","45\\d{5}|(?:0800\\d|[235-9])\\d{6}",[7,11],[["(\\d{3})(\\d{4})","$1 $2",["[235-9]|45"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["0"]]],0,0,0,0,0,0,0,"00"],"FK":["500","00","[2-7]\\d{4}",[5]],"FM":["691","00","(?:[39]\\d\\d|820)\\d{4}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[389]"]]]],"FO":["298","00","[2-9]\\d{5}",[6],[["(\\d{6})","$1",["[2-9]"]]],0,0,"(10(?:01|[12]0|88))"],"FR":["33","00","[1-9]\\d{8}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"],"0 $1"],["(\\d)(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4 $5",["[1-79]"],"0$1"]],"0"],"GA":["241","00","(?:[067]\\d|11)\\d{6}|[2-7]\\d{6}",[7,8],[["(\\d)(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2-7]"],"0$1"],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["0"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["11|[67]"],"0$1"]],0,0,"0(11\\d{6}|60\\d{6}|61\\d{6}|6[256]\\d{6}|7[467]\\d{6})","$1"],"GB":["44","00","[1-357-9]\\d{9}|[18]\\d{8}|8\\d{6}",[7,9,10],[["(\\d{3})(\\d{4})","$1 $2",["800","8001","80011","800111","8001111"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3",["845","8454","84546","845464"],"0$1"],["(\\d{3})(\\d{6})","$1 $2",["800"],"0$1"],["(\\d{5})(\\d{4,5})","$1 $2",["1(?:38|5[23]|69|76|94)","1(?:(?:38|69)7|5(?:24|39)|768|946)","1(?:3873|5(?:242|39[4-6])|(?:697|768)[347]|9467)"],"0$1"],["(\\d{4})(\\d{5,6})","$1 $2",["1(?:[2-69][02-9]|[78])"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["[25]|7(?:0|6[02-9])","[25]|7(?:0|6(?:[03-9]|2[356]))"],"0$1"],["(\\d{4})(\\d{6})","$1 $2",["7"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[1389]"],"0$1"]],"0",0,0,0,0,0,[["(?:1(?:1(?:3(?:[0-58]\\d\\d|73[0-35])|4(?:(?:[0-5]\\d|70)\\d|69[7-9])|(?:(?:5[0-26-9]|[78][0-49])\\d|6(?:[0-4]\\d|50))\\d)|(?:2(?:(?:0[024-9]|2[3-9]|3[3-79]|4[1-689]|[58][02-9]|6[0-47-9]|7[013-9]|9\\d)\\d|1(?:[0-7]\\d|8[0-3]))|(?:3(?:0\\d|1[0-8]|[25][02-9]|3[02-579]|[468][0-46-9]|7[1-35-79]|9[2-578])|4(?:0[03-9]|[137]\\d|[28][02-57-9]|4[02-69]|5[0-8]|[69][0-79])|5(?:0[1-35-9]|[16]\\d|2[024-9]|3[015689]|4[02-9]|5[03-9]|7[0-35-9]|8[0-468]|9[0-57-9])|6(?:0[034689]|1\\d|2[0-35689]|[38][013-9]|4[1-467]|5[0-69]|6[13-9]|7[0-8]|9[0-24578])|7(?:0[0246-9]|2\\d|3[0236-8]|4[03-9]|5[0-46-9]|6[013-9]|7[0-35-9]|8[024-9]|9[02-9])|8(?:0[35-9]|2[1-57-9]|3[02-578]|4[0-578]|5[124-9]|6[2-69]|7\\d|8[02-9]|9[02569])|9(?:0[02-589]|[18]\\d|2[02-689]|3[1-57-9]|4[2-9]|5[0-579]|6[2-47-9]|7[0-24578]|9[2-57]))\\d)\\d)|2(?:0[013478]|3[0189]|4[017]|8[0-46-9]|9[0-2])\\d{3})\\d{4}|1(?:2(?:0(?:46[1-4]|87[2-9])|545[1-79]|76(?:2\\d|3[1-8]|6[1-6])|9(?:7(?:2[0-4]|3[2-5])|8(?:2[2-8]|7[0-47-9]|8[3-5])))|3(?:6(?:38[2-5]|47[23])|8(?:47[04-9]|64[0157-9]))|4(?:044[1-7]|20(?:2[23]|8\\d)|6(?:0(?:30|5[2-57]|6[1-8]|7[2-8])|140)|8(?:052|87[1-3]))|5(?:2(?:4(?:3[2-79]|6\\d)|76\\d)|6(?:26[06-9]|686))|6(?:06(?:4\\d|7[4-79])|295[5-7]|35[34]\\d|47(?:24|61)|59(?:5[08]|6[67]|74)|9(?:55[0-4]|77[23]))|7(?:26(?:6[13-9]|7[0-7])|(?:442|688)\\d|50(?:2[0-3]|[3-68]2|76))|8(?:27[56]\\d|37(?:5[2-5]|8[239])|843[2-58])|9(?:0(?:0(?:6[1-8]|85)|52\\d)|3583|4(?:66[1-8]|9(?:2[01]|81))|63(?:23|3[1-4])|9561))\\d{3}",[9,10]],["7(?:457[0-57-9]|700[01]|911[028])\\d{5}|7(?:[1-3]\\d\\d|4(?:[0-46-9]\\d|5[0-689])|5(?:0[0-8]|[13-9]\\d|2[0-35-9])|7(?:0[1-9]|[1-7]\\d|8[02-9]|9[0-689])|8(?:[014-9]\\d|[23][0-8])|9(?:[024-9]\\d|1[02-9]|3[0-689]))\\d{6}",[10]],["80[08]\\d{7}|800\\d{6}|8001111"],["(?:8(?:4[2-5]|7[0-3])|9(?:[01]\\d|8[2-49]))\\d{7}|845464\\d",[7,10]],["70\\d{8}",[10]],0,["(?:3[0347]|55)\\d{8}",[10]],["76(?:464|652)\\d{5}|76(?:0[0-28]|2[356]|34|4[01347]|5[49]|6[0-369]|77|8[14]|9[139])\\d{6}",[10]],["56\\d{8}",[10]]],0," x"],"GD":["1","011","(?:473|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","473$1",0,"473"],"GE":["995","00","(?:[3-57]\\d\\d|800)\\d{6}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["70"],"0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["32"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[57]"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[348]"],"0$1"]],"0"],"GF":["594","00","[56]94\\d{6}|(?:80|9\\d)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[56]|9[47]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[89]"],"0$1"]],"0"],"GG":["44","00","(?:1481|[357-9]\\d{3})\\d{6}|8\\d{6}(?:\\d{2})?",[7,9,10],0,"0",0,"([25-9]\\d{5})$|0","1481$1",0,0,[["1481[25-9]\\d{5}",[10]],["7(?:(?:781|839)\\d|911[17])\\d{5}",[10]],["80[08]\\d{7}|800\\d{6}|8001111"],["(?:8(?:4[2-5]|7[0-3])|9(?:[01]\\d|8[0-3]))\\d{7}|845464\\d",[7,10]],["70\\d{8}",[10]],0,["(?:3[0347]|55)\\d{8}",[10]],["76(?:464|652)\\d{5}|76(?:0[0-28]|2[356]|34|4[01347]|5[49]|6[0-369]|77|8[14]|9[139])\\d{6}",[10]],["56\\d{8}",[10]]]],"GH":["233","00","(?:[235]\\d{3}|800)\\d{5}",[8,9],[["(\\d{3})(\\d{5})","$1 $2",["8"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[235]"],"0$1"]],"0"],"GI":["350","00","(?:[25]\\d|60)\\d{6}",[8],[["(\\d{3})(\\d{5})","$1 $2",["2"]]]],"GL":["299","00","(?:19|[2-689]\\d|70)\\d{4}",[6],[["(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3",["19|[2-9]"]]]],"GM":["220","00","[2-9]\\d{6}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[2-9]"]]]],"GN":["224","00","722\\d{6}|(?:3|6\\d)\\d{7}",[8,9],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["3"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[67]"]]]],"GP":["590","00","590\\d{6}|(?:69|80|9\\d)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[569]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"],"0$1"]],"0",0,0,0,0,0,[["590(?:0[1-68]|[14][0-24-9]|2[0-68]|3[1-9]|5[3-579]|[68][0-689]|7[08]|9\\d)\\d{4}"],["69(?:0\\d\\d|1(?:2[2-9]|3[0-5])|4(?:0[89]|1[2-6]|9\\d)|6(?:1[016-9]|5[0-4]|[67]\\d))\\d{4}"],["80[0-5]\\d{6}"],0,0,0,0,0,["9(?:(?:39[5-7]|76[018])\\d|475[0-5])\\d{4}"]]],"GQ":["240","00","222\\d{6}|(?:3\\d|55|[89]0)\\d{7}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[235]"]],["(\\d{3})(\\d{6})","$1 $2",["[89]"]]]],"GR":["30","00","5005000\\d{3}|8\\d{9,11}|(?:[269]\\d|70)\\d{8}",[10,11,12],[["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["21|7"]],["(\\d{4})(\\d{6})","$1 $2",["2(?:2|3[2-57-9]|4[2-469]|5[2-59]|6[2-9]|7[2-69]|8[2-49])|5"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[2689]"]],["(\\d{3})(\\d{3,4})(\\d{5})","$1 $2 $3",["8"]]]],"GT":["502","00","80\\d{6}|(?:1\\d{3}|[2-7])\\d{7}",[8,11],[["(\\d{4})(\\d{4})","$1 $2",["[2-8]"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["1"]]]],"GU":["1","011","(?:[58]\\d\\d|671|900)\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","671$1",0,"671"],"GW":["245","00","[49]\\d{8}|4\\d{6}",[7,9],[["(\\d{3})(\\d{4})","$1 $2",["40"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[49]"]]]],"GY":["592","001","(?:[2-8]\\d{3}|9008)\\d{3}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[2-9]"]]]],"HK":["852","00(?:30|5[09]|[126-9]?)","8[0-46-9]\\d{6,7}|9\\d{4,7}|(?:[2-7]|9\\d{3})\\d{7}",[5,6,7,8,9,11],[["(\\d{3})(\\d{2,5})","$1 $2",["900","9003"]],["(\\d{4})(\\d{4})","$1 $2",["[2-7]|8[1-4]|9(?:0[1-9]|[1-8])"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["8"]],["(\\d{3})(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3 $4",["9"]]],0,0,0,0,0,0,0,"00"],"HN":["504","00","8\\d{10}|[237-9]\\d{7}",[8,11],[["(\\d{4})(\\d{4})","$1-$2",["[237-9]"]]]],"HR":["385","00","(?:[24-69]\\d|3[0-79])\\d{7}|80\\d{5,7}|[1-79]\\d{7}|6\\d{5,6}",[6,7,8,9],[["(\\d{2})(\\d{2})(\\d{2,3})","$1 $2 $3",["6[01]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2,3})","$1 $2 $3",["8"],"0$1"],["(\\d)(\\d{4})(\\d{3})","$1 $2 $3",["1"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["6|7[245]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["9"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[2-57]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["8"],"0$1"]],"0"],"HT":["509","00","(?:[2-489]\\d|55)\\d{6}",[8],[["(\\d{2})(\\d{2})(\\d{4})","$1 $2 $3",["[2-589]"]]]],"HU":["36","00","[235-7]\\d{8}|[1-9]\\d{7}",[8,9],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["1"],"(06 $1)"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[27][2-9]|3[2-7]|4[24-9]|5[2-79]|6|8[2-57-9]|9[2-69]"],"(06 $1)"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[2-9]"],"06 $1"]],"06"],"ID":["62","00[89]","(?:(?:00[1-9]|8\\d)\\d{4}|[1-36])\\d{6}|00\\d{10}|[1-9]\\d{8,10}|[2-9]\\d{7}",[7,8,9,10,11,12,13],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["15"]],["(\\d{2})(\\d{5,9})","$1 $2",["2[124]|[36]1"],"(0$1)"],["(\\d{3})(\\d{5,7})","$1 $2",["800"],"0$1"],["(\\d{3})(\\d{5,8})","$1 $2",["[2-79]"],"(0$1)"],["(\\d{3})(\\d{3,4})(\\d{3})","$1-$2-$3",["8[1-35-9]"],"0$1"],["(\\d{3})(\\d{6,8})","$1 $2",["1"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["804"],"0$1"],["(\\d{3})(\\d)(\\d{3})(\\d{3})","$1 $2 $3 $4",["80"],"0$1"],["(\\d{3})(\\d{4})(\\d{4,5})","$1-$2-$3",["8"],"0$1"]],"0"],"IE":["353","00","(?:1\\d|[2569])\\d{6,8}|4\\d{6,9}|7\\d{8}|8\\d{8,9}",[7,8,9,10],[["(\\d{2})(\\d{5})","$1 $2",["2[24-9]|47|58|6[237-9]|9[35-9]"],"(0$1)"],["(\\d{3})(\\d{5})","$1 $2",["[45]0"],"(0$1)"],["(\\d)(\\d{3,4})(\\d{4})","$1 $2 $3",["1"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[2569]|4[1-69]|7[14]"],"(0$1)"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["70"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["81"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[78]"],"0$1"],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1"]],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["4"],"(0$1)"],["(\\d{2})(\\d)(\\d{3})(\\d{4})","$1 $2 $3 $4",["8"],"0$1"]],"0"],"IL":["972","0(?:0|1[2-9])","1\\d{6}(?:\\d{3,5})?|[57]\\d{8}|[1-489]\\d{7}",[7,8,9,10,11,12],[["(\\d{4})(\\d{3})","$1-$2",["125"]],["(\\d{4})(\\d{2})(\\d{2})","$1-$2-$3",["121"]],["(\\d)(\\d{3})(\\d{4})","$1-$2-$3",["[2-489]"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1-$2-$3",["[57]"],"0$1"],["(\\d{4})(\\d{3})(\\d{3})","$1-$2-$3",["12"]],["(\\d{4})(\\d{6})","$1-$2",["159"]],["(\\d)(\\d{3})(\\d{3})(\\d{3})","$1-$2-$3-$4",["1[7-9]"]],["(\\d{3})(\\d{1,2})(\\d{3})(\\d{4})","$1-$2 $3-$4",["15"]]],"0"],"IM":["44","00","1624\\d{6}|(?:[3578]\\d|90)\\d{8}",[10],0,"0",0,"([25-8]\\d{5})$|0","1624$1",0,"74576|(?:16|7[56])24"],"IN":["91","00","(?:000800|[2-9]\\d\\d)\\d{7}|1\\d{7,12}",[8,9,10,11,12,13],[["(\\d{8})","$1",["5(?:0|2[23]|3[03]|[67]1|88)","5(?:0|2(?:21|3)|3(?:0|3[23])|616|717|888)","5(?:0|2(?:21|3)|3(?:0|3[23])|616|717|8888)"],0,1],["(\\d{4})(\\d{4,5})","$1 $2",["180","1800"],0,1],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["140"],0,1],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["11|2[02]|33|4[04]|79[1-7]|80[2-46]","11|2[02]|33|4[04]|79(?:[1-6]|7[19])|80(?:[2-4]|6[0-589])","11|2[02]|33|4[04]|79(?:[124-6]|3(?:[02-9]|1[0-24-9])|7(?:1|9[1-6]))|80(?:[2-4]|6[0-589])"],"0$1",1],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["1(?:2[0-249]|3[0-25]|4[145]|[68]|7[1257])|2(?:1[257]|3[013]|4[01]|5[0137]|6[0158]|78|8[1568])|3(?:26|4[1-3]|5[34]|6[01489]|7[02-46]|8[159])|4(?:1[36]|2[1-47]|5[12]|6[0-26-9]|7[0-24-9]|8[013-57]|9[014-7])|5(?:1[025]|22|[36][25]|4[28]|5[12]|[78]1)|6(?:12|[2-4]1|5[17]|6[13]|80)|7(?:12|3[134]|4[47]|61|88)|8(?:16|2[014]|3[126]|6[136]|7[078]|8[34]|91)|(?:43|59|75)[15]|(?:1[59]|29|67|72)[14]","1(?:2[0-24]|3[0-25]|4[145]|[59][14]|6[1-9]|7[1257]|8[1-57-9])|2(?:1[257]|3[013]|4[01]|5[0137]|6[058]|78|8[1568]|9[14])|3(?:26|4[1-3]|5[34]|6[01489]|7[02-46]|8[159])|4(?:1[36]|2[1-47]|3[15]|5[12]|6[0-26-9]|7[0-24-9]|8[013-57]|9[014-7])|5(?:1[025]|22|[36][25]|4[28]|[578]1|9[15])|674|7(?:(?:2[14]|3[34]|5[15])[2-6]|61[346]|88[0-8])|8(?:70[2-6]|84[235-7]|91[3-7])|(?:1(?:29|60|8[06])|261|552|6(?:12|[2-47]1|5[17]|6[13]|80)|7(?:12|31|4[47])|8(?:16|2[014]|3[126]|6[136]|7[78]|83))[2-7]","1(?:2[0-24]|3[0-25]|4[145]|[59][14]|6[1-9]|7[1257]|8[1-57-9])|2(?:1[257]|3[013]|4[01]|5[0137]|6[058]|78|8[1568]|9[14])|3(?:26|4[1-3]|5[34]|6[01489]|7[02-46]|8[159])|4(?:1[36]|2[1-47]|3[15]|5[12]|6[0-26-9]|7[0-24-9]|8[013-57]|9[014-7])|5(?:1[025]|22|[36][25]|4[28]|[578]1|9[15])|6(?:12(?:[2-6]|7[0-8])|74[2-7])|7(?:(?:2[14]|5[15])[2-6]|3171|61[346]|88(?:[2-7]|82))|8(?:70[2-6]|84(?:[2356]|7[19])|91(?:[3-6]|7[19]))|73[134][2-6]|(?:74[47]|8(?:16|2[014]|3[126]|6[136]|7[78]|83))(?:[2-6]|7[19])|(?:1(?:29|60|8[06])|261|552|6(?:[2-4]1|5[17]|6[13]|7(?:1|4[0189])|80)|7(?:12|88[01]))[2-7]"],"0$1",1],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1(?:[2-479]|5[0235-9])|[2-5]|6(?:1[1358]|2[2457-9]|3[2-5]|4[235-7]|5[2-689]|6[24578]|7[235689]|8[1-6])|7(?:1[013-9]|28|3[129]|4[1-35689]|5[29]|6[02-5]|70)|807","1(?:[2-479]|5[0235-9])|[2-5]|6(?:1[1358]|2(?:[2457]|84|95)|3(?:[2-4]|55)|4[235-7]|5[2-689]|6[24578]|7[235689]|8[1-6])|7(?:1(?:[013-8]|9[6-9])|28[6-8]|3(?:17|2[0-49]|9[2-57])|4(?:1[2-4]|[29][0-7]|3[0-8]|[56]|8[0-24-7])|5(?:2[1-3]|9[0-6])|6(?:0[5689]|2[5-9]|3[02-8]|4|5[0-367])|70[13-7])|807[19]","1(?:[2-479]|5(?:[0236-9]|5[013-9]))|[2-5]|6(?:2(?:84|95)|355|83)|73179|807(?:1|9[1-3])|(?:1552|6(?:1[1358]|2[2457]|3[2-4]|4[235-7]|5[2-689]|6[24578]|7[235689]|8[124-6])\\d|7(?:1(?:[013-8]\\d|9[6-9])|28[6-8]|3(?:2[0-49]|9[2-57])|4(?:1[2-4]|[29][0-7]|3[0-8]|[56]\\d|8[0-24-7])|5(?:2[1-3]|9[0-6])|6(?:0[5689]|2[5-9]|3[02-8]|4\\d|5[0-367])|70[13-7]))[2-7]"],"0$1",1],["(\\d{5})(\\d{5})","$1 $2",["[6-9]"],"0$1",1],["(\\d{4})(\\d{2,4})(\\d{4})","$1 $2 $3",["1(?:6|8[06])","1(?:6|8[06]0)"],0,1],["(\\d{4})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["18"],0,1]],"0"],"IO":["246","00","3\\d{6}",[7],[["(\\d{3})(\\d{4})","$1 $2",["3"]]]],"IQ":["964","00","(?:1|7\\d\\d)\\d{7}|[2-6]\\d{7,8}",[8,9,10],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["1"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[2-6]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["7"],"0$1"]],"0"],"IR":["98","00","[1-9]\\d{9}|(?:[1-8]\\d\\d|9)\\d{3,4}",[4,5,6,7,10],[["(\\d{4,5})","$1",["96"],"0$1"],["(\\d{2})(\\d{4,5})","$1 $2",["(?:1[137]|2[13-68]|3[1458]|4[145]|5[1468]|6[16]|7[1467]|8[13467])[12689]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["9"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["[1-8]"],"0$1"]],"0"],"IS":["354","00|1(?:0(?:01|[12]0)|100)","(?:38\\d|[4-9])\\d{6}",[7,9],[["(\\d{3})(\\d{4})","$1 $2",["[4-9]"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["3"]]],0,0,0,0,0,0,0,"00"],"IT":["39","00","0\\d{5,10}|1\\d{8,10}|3(?:[0-8]\\d{7,10}|9\\d{7,8})|(?:43|55|70)\\d{8}|8\\d{5}(?:\\d{2,4})?",[6,7,8,9,10,11,12],[["(\\d{2})(\\d{4,6})","$1 $2",["0[26]"]],["(\\d{3})(\\d{3,6})","$1 $2",["0[13-57-9][0159]|8(?:03|4[17]|9[2-5])","0[13-57-9][0159]|8(?:03|4[17]|9(?:2|3[04]|[45][0-4]))"]],["(\\d{4})(\\d{2,6})","$1 $2",["0(?:[13-579][2-46-8]|8[236-8])"]],["(\\d{4})(\\d{4})","$1 $2",["894"]],["(\\d{2})(\\d{3,4})(\\d{4})","$1 $2 $3",["0[26]|5"]],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["1(?:44|[679])|[378]|43"]],["(\\d{3})(\\d{3,4})(\\d{4})","$1 $2 $3",["0[13-57-9][0159]|14"]],["(\\d{2})(\\d{4})(\\d{5})","$1 $2 $3",["0[26]"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["0"]],["(\\d{3})(\\d{4})(\\d{4,5})","$1 $2 $3",["3"]]],0,0,0,0,0,0,[["0669[0-79]\\d{1,6}|0(?:1(?:[0159]\\d|[27][1-5]|31|4[1-4]|6[1356]|8[2-57])|2\\d\\d|3(?:[0159]\\d|2[1-4]|3[12]|[48][1-6]|6[2-59]|7[1-7])|4(?:[0159]\\d|[23][1-9]|4[245]|6[1-5]|7[1-4]|81)|5(?:[0159]\\d|2[1-5]|3[2-6]|4[1-79]|6[4-6]|7[1-578]|8[3-8])|6(?:[0-57-9]\\d|6[0-8])|7(?:[0159]\\d|2[12]|3[1-7]|4[2-46]|6[13569]|7[13-6]|8[1-59])|8(?:[0159]\\d|2[3-578]|3[1-356]|[6-8][1-5])|9(?:[0159]\\d|[238][1-5]|4[12]|6[1-8]|7[1-6]))\\d{2,7}",[6,7,8,9,10,11]],["3[2-9]\\d{7,8}|(?:31|43)\\d{8}",[9,10]],["80(?:0\\d{3}|3)\\d{3}",[6,9]],["(?:0878\\d{3}|89(?:2\\d|3[04]|4(?:[0-4]|[5-9]\\d\\d)|5[0-4]))\\d\\d|(?:1(?:44|6[346])|89(?:38|5[5-9]|9))\\d{6}",[6,8,9,10]],["1(?:78\\d|99)\\d{6}",[9,10]],["3[2-8]\\d{9,10}",[11,12]],0,0,["55\\d{8}",[10]],["84(?:[08]\\d{3}|[17])\\d{3}",[6,9]]]],"JE":["44","00","1534\\d{6}|(?:[3578]\\d|90)\\d{8}",[10],0,"0",0,"([0-24-8]\\d{5})$|0","1534$1",0,0,[["1534[0-24-8]\\d{5}"],["7(?:(?:(?:50|82)9|937)\\d|7(?:00[378]|97\\d))\\d{5}"],["80(?:07(?:35|81)|8901)\\d{4}"],["(?:8(?:4(?:4(?:4(?:05|42|69)|703)|5(?:041|800))|7(?:0002|1206))|90(?:066[59]|1810|71(?:07|55)))\\d{4}"],["701511\\d{4}"],0,["(?:3(?:0(?:07(?:35|81)|8901)|3\\d{4}|4(?:4(?:4(?:05|42|69)|703)|5(?:041|800))|7(?:0002|1206))|55\\d{4})\\d{4}"],["76(?:464|652)\\d{5}|76(?:0[0-28]|2[356]|34|4[01347]|5[49]|6[0-369]|77|8[14]|9[139])\\d{6}"],["56\\d{8}"]]],"JM":["1","011","(?:[58]\\d\\d|658|900)\\d{7}",[10],0,"1",0,0,0,0,"658|876"],"JO":["962","00","(?:(?:[2689]|7\\d)\\d|32|53)\\d{6}",[8,9],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["[2356]|87"],"(0$1)"],["(\\d{3})(\\d{5,6})","$1 $2",["[89]"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["70"],"0$1"],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["7"],"0$1"]],"0"],"JP":["81","010","00[1-9]\\d{6,14}|[257-9]\\d{9}|(?:00|[1-9]\\d\\d)\\d{6}",[8,9,10,11,12,13,14,15,16,17],[["(\\d{3})(\\d{3})(\\d{3})","$1-$2-$3",["(?:12|57|99)0"],"0$1"],["(\\d{4})(\\d)(\\d{4})","$1-$2-$3",["1(?:26|3[79]|4[56]|5[4-68]|6[3-5])|499|5(?:76|97)|746|8(?:3[89]|47|51)|9(?:80|9[16])","1(?:267|3(?:7[247]|9[278])|466|5(?:47|58|64)|6(?:3[245]|48|5[4-68]))|499[2468]|5(?:76|97)9|7468|8(?:3(?:8[7-9]|96)|477|51[2-9])|9(?:802|9(?:1[23]|69))|1(?:45|58)[67]","1(?:267|3(?:7[247]|9[278])|466|5(?:47|58|64)|6(?:3[245]|48|5[4-68]))|499[2468]|5(?:769|979[2-69])|7468|8(?:3(?:8[7-9]|96[2457-9])|477|51[2-9])|9(?:802|9(?:1[23]|69))|1(?:45|58)[67]"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1-$2-$3",["60"],"0$1"],["(\\d)(\\d{4})(\\d{4})","$1-$2-$3",["[36]|4(?:2[09]|7[01])","[36]|4(?:2(?:0|9[02-69])|7(?:0[019]|1))"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1-$2-$3",["1(?:1|5[45]|77|88|9[69])|2(?:2[1-37]|3[0-269]|4[59]|5|6[24]|7[1-358]|8[1369]|9[0-38])|4(?:[28][1-9]|3[0-57]|[45]|6[248]|7[2-579]|9[29])|5(?:2|3[0459]|4[0-369]|5[29]|8[02389]|9[0-389])|7(?:2[02-46-9]|34|[58]|6[0249]|7[57]|9[2-6])|8(?:2[124589]|3[26-9]|49|51|6|7[0-468]|8[68]|9[019])|9(?:[23][1-9]|4[15]|5[138]|6[1-3]|7[156]|8[189]|9[1-489])","1(?:1|5(?:4[018]|5[017])|77|88|9[69])|2(?:2(?:[127]|3[014-9])|3[0-269]|4[59]|5(?:[1-3]|5[0-69]|9[19])|62|7(?:[1-35]|8[0189])|8(?:[16]|3[0134]|9[0-5])|9(?:[028]|17))|4(?:2(?:[13-79]|8[014-6])|3[0-57]|[45]|6[248]|7[2-47]|8[1-9]|9[29])|5(?:2|3(?:[045]|9[0-8])|4[0-369]|5[29]|8[02389]|9[0-3])|7(?:2[02-46-9]|34|[58]|6[0249]|7[57]|9(?:[23]|4[0-59]|5[01569]|6[0167]))|8(?:2(?:[1258]|4[0-39]|9[0-2469])|3(?:[29]|60)|49|51|6(?:[0-24]|36|5[0-3589]|7[23]|9[01459])|7[0-468]|8[68])|9(?:[23][1-9]|4[15]|5[138]|6[1-3]|7[156]|8[189]|9(?:[1289]|3[34]|4[0178]))|(?:264|837)[016-9]|2(?:57|93)[015-9]|(?:25[0468]|422|838)[01]|(?:47[59]|59[89]|8(?:6[68]|9))[019]","1(?:1|5(?:4[018]|5[017])|77|88|9[69])|2(?:2[127]|3[0-269]|4[59]|5(?:[1-3]|5[0-69]|9(?:17|99))|6(?:2|4[016-9])|7(?:[1-35]|8[0189])|8(?:[16]|3[0134]|9[0-5])|9(?:[028]|17))|4(?:2(?:[13-79]|8[014-6])|3[0-57]|[45]|6[248]|7[2-47]|9[29])|5(?:2|3(?:[045]|9(?:[0-58]|6[4-9]|7[0-35689]))|4[0-369]|5[29]|8[02389]|9[0-3])|7(?:2[02-46-9]|34|[58]|6[0249]|7[57]|9(?:[23]|4[0-59]|5[01569]|6[0167]))|8(?:2(?:[1258]|4[0-39]|9[0169])|3(?:[29]|60|7(?:[017-9]|6[6-8]))|49|51|6(?:[0-24]|36[2-57-9]|5(?:[0-389]|5[23])|6(?:[01]|9[178])|7(?:2[2-468]|3[78])|9[0145])|7[0-468]|8[68])|9(?:4[15]|5[138]|7[156]|8[189]|9(?:[1289]|3(?:31|4[357])|4[0178]))|(?:8294|96)[1-3]|2(?:57|93)[015-9]|(?:223|8699)[014-9]|(?:25[0468]|422|838)[01]|(?:48|8292|9[23])[1-9]|(?:47[59]|59[89]|8(?:68|9))[019]"],"0$1"],["(\\d{3})(\\d{2})(\\d{4})","$1-$2-$3",["[14]|[289][2-9]|5[3-9]|7[2-4679]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1-$2-$3",["800"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1-$2-$3",["[257-9]"],"0$1"]],"0",0,"(000[259]\\d{6})$|(?:(?:003768)0?)|0","$1"],"KE":["254","000","(?:[17]\\d\\d|900)\\d{6}|(?:2|80)0\\d{6,7}|[4-6]\\d{6,8}",[7,8,9,10],[["(\\d{2})(\\d{5,7})","$1 $2",["[24-6]"],"0$1"],["(\\d{3})(\\d{6})","$1 $2",["[17]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["[89]"],"0$1"]],"0"],"KG":["996","00","8\\d{9}|[235-9]\\d{8}",[9,10],[["(\\d{4})(\\d{5})","$1 $2",["3(?:1[346]|[24-79])"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[235-79]|88"],"0$1"],["(\\d{3})(\\d{3})(\\d)(\\d{2,3})","$1 $2 $3 $4",["8"],"0$1"]],"0"],"KH":["855","00[14-9]","1\\d{9}|[1-9]\\d{7,8}",[8,9,10],[["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[1-9]"],"0$1"],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1"]]],"0"],"KI":["686","00","(?:[37]\\d|6[0-79])\\d{6}|(?:[2-48]\\d|50)\\d{3}",[5,8],0,"0"],"KM":["269","00","[3478]\\d{6}",[7],[["(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3",["[3478]"]]]],"KN":["1","011","(?:[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-7]\\d{6})$|1","869$1",0,"869"],"KP":["850","00|99","85\\d{6}|(?:19\\d|[2-7])\\d{7}",[8,10],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["8"],"0$1"],["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["[2-7]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["1"],"0$1"]],"0"],"KR":["82","00(?:[125689]|3(?:[46]5|91)|7(?:00|27|3|55|6[126]))","00[1-9]\\d{8,11}|(?:[12]|5\\d{3})\\d{7}|[13-6]\\d{9}|(?:[1-6]\\d|80)\\d{7}|[3-6]\\d{4,5}|(?:00|7)0\\d{8}",[5,6,8,9,10,11,12,13,14],[["(\\d{2})(\\d{3,4})","$1-$2",["(?:3[1-3]|[46][1-4]|5[1-5])1"],"0$1"],["(\\d{4})(\\d{4})","$1-$2",["1"]],["(\\d)(\\d{3,4})(\\d{4})","$1-$2-$3",["2"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1-$2-$3",["[36]0|8"],"0$1"],["(\\d{2})(\\d{3,4})(\\d{4})","$1-$2-$3",["[1346]|5[1-5]"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1-$2-$3",["[57]"],"0$1"],["(\\d{2})(\\d{5})(\\d{4})","$1-$2-$3",["5"],"0$1"]],"0",0,"0(8(?:[1-46-8]|5\\d\\d))?"],"KW":["965","00","18\\d{5}|(?:[2569]\\d|41)\\d{6}",[7,8],[["(\\d{4})(\\d{3,4})","$1 $2",["[169]|2(?:[235]|4[1-35-9])|52"]],["(\\d{3})(\\d{5})","$1 $2",["[245]"]]]],"KY":["1","011","(?:345|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","345$1",0,"345"],"KZ":["7","810","(?:33622|8\\d{8})\\d{5}|[78]\\d{9}",[10,14],0,"8",0,0,0,0,"33|7",0,"8~10"],"LA":["856","00","[23]\\d{9}|3\\d{8}|(?:[235-8]\\d|41)\\d{6}",[8,9,10],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["2[13]|3[14]|[4-8]"],"0$1"],["(\\d{2})(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3 $4",["30[0135-9]"],"0$1"],["(\\d{2})(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3 $4",["[23]"],"0$1"]],"0"],"LB":["961","00","[27-9]\\d{7}|[13-9]\\d{6}",[7,8],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["[13-69]|7(?:[2-57]|62|8[0-7]|9[04-9])|8[02-9]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[27-9]"]]],"0"],"LC":["1","011","(?:[58]\\d\\d|758|900)\\d{7}",[10],0,"1",0,"([2-8]\\d{6})$|1","758$1",0,"758"],"LI":["423","00","[68]\\d{8}|(?:[2378]\\d|90)\\d{5}",[7,9],[["(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3",["[2379]|8(?:0[09]|7)","[2379]|8(?:0(?:02|9)|7)"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["8"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["69"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["6"]]],"0",0,"(1001)|0"],"LK":["94","00","[1-9]\\d{8}",[9],[["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["7"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[1-689]"],"0$1"]],"0"],"LR":["231","00","(?:[245]\\d|33|77|88)\\d{7}|(?:2\\d|[4-6])\\d{6}",[7,8,9],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["4[67]|[56]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["2"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[2-578]"],"0$1"]],"0"],"LS":["266","00","(?:[256]\\d\\d|800)\\d{5}",[8],[["(\\d{4})(\\d{4})","$1 $2",["[2568]"]]]],"LT":["370","00","(?:[3469]\\d|52|[78]0)\\d{6}",[8],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["52[0-7]"],"(0-$1)",1],["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["[7-9]"],"0 $1",1],["(\\d{2})(\\d{6})","$1 $2",["37|4(?:[15]|6[1-8])"],"(0-$1)",1],["(\\d{3})(\\d{5})","$1 $2",["[3-6]"],"(0-$1)",1]],"0",0,"[08]"],"LU":["352","00","35[013-9]\\d{4,8}|6\\d{8}|35\\d{2,4}|(?:[2457-9]\\d|3[0-46-9])\\d{2,9}",[4,5,6,7,8,9,10,11],[["(\\d{2})(\\d{3})","$1 $2",["2(?:0[2-689]|[2-9])|[3-57]|8(?:0[2-9]|[13-9])|9(?:0[89]|[2-579])"]],["(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3",["2(?:0[2-689]|[2-9])|[3-57]|8(?:0[2-9]|[13-9])|9(?:0[89]|[2-579])"]],["(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3",["20[2-689]"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{1,2})","$1 $2 $3 $4",["2(?:[0367]|4[3-8])"]],["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["80[01]|90[015]"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3 $4",["20"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["6"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})(\\d{1,2})","$1 $2 $3 $4 $5",["2(?:[0367]|4[3-8])"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{1,5})","$1 $2 $3 $4",["[3-57]|8[13-9]|9(?:0[89]|[2-579])|(?:2|80)[2-9]"]]],0,0,"(15(?:0[06]|1[12]|[35]5|4[04]|6[26]|77|88|99)\\d)"],"LV":["371","00","(?:[268]\\d|90)\\d{6}",[8],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[269]|8[01]"]]]],"LY":["218","00","[2-9]\\d{8}",[9],[["(\\d{2})(\\d{7})","$1-$2",["[2-9]"],"0$1"]],"0"],"MA":["212","00","[5-8]\\d{8}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["5[45]"],"0$1"],["(\\d{4})(\\d{5})","$1-$2",["5(?:2[2-46-9]|3[3-9]|9)|8(?:0[89]|92)"],"0$1"],["(\\d{2})(\\d{7})","$1-$2",["8"],"0$1"],["(\\d{3})(\\d{6})","$1-$2",["[5-7]"],"0$1"]],"0",0,0,0,0,0,[["5(?:2(?:[0-25-79]\\d|3[1-578]|4[02-46-8]|8[0235-7])|3(?:[0-47]\\d|5[02-9]|6[02-8]|8[014-9]|9[3-9])|(?:4[067]|5[03])\\d)\\d{5}"],["(?:6(?:[0-79]\\d|8[0-247-9])|7(?:[0167]\\d|2[0-4]|5[01]|8[0-3]))\\d{6}"],["80[0-7]\\d{6}"],["89\\d{7}"],0,0,0,0,["(?:592(?:4[0-2]|93)|80[89]\\d\\d)\\d{4}"]]],"MC":["377","00","(?:[3489]|6\\d)\\d{7}",[8,9],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["4"],"0$1"],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[389]"]],["(\\d)(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4 $5",["6"],"0$1"]],"0"],"MD":["373","00","(?:[235-7]\\d|[89]0)\\d{6}",[8],[["(\\d{3})(\\d{5})","$1 $2",["[89]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["22|3"],"0$1"],["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["[25-7]"],"0$1"]],"0"],"ME":["382","00","(?:20|[3-79]\\d)\\d{6}|80\\d{6,7}",[8,9],[["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[2-9]"],"0$1"]],"0"],"MF":["590","00","590\\d{6}|(?:69|80|9\\d)\\d{7}",[9],0,"0",0,0,0,0,0,[["590(?:0[079]|[14]3|[27][79]|3[03-7]|5[0-268]|87)\\d{4}"],["69(?:0\\d\\d|1(?:2[2-9]|3[0-5])|4(?:0[89]|1[2-6]|9\\d)|6(?:1[016-9]|5[0-4]|[67]\\d))\\d{4}"],["80[0-5]\\d{6}"],0,0,0,0,0,["9(?:(?:39[5-7]|76[018])\\d|475[0-5])\\d{4}"]]],"MG":["261","00","[23]\\d{8}",[9],[["(\\d{2})(\\d{2})(\\d{3})(\\d{2})","$1 $2 $3 $4",["[23]"],"0$1"]],"0",0,"([24-9]\\d{6})$|0","20$1"],"MH":["692","011","329\\d{4}|(?:[256]\\d|45)\\d{5}",[7],[["(\\d{3})(\\d{4})","$1-$2",["[2-6]"]]],"1"],"MK":["389","00","[2-578]\\d{7}",[8],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["2|34[47]|4(?:[37]7|5[47]|64)"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[347]"],"0$1"],["(\\d{3})(\\d)(\\d{2})(\\d{2})","$1 $2 $3 $4",["[58]"],"0$1"]],"0"],"ML":["223","00","[24-9]\\d{7}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[24-9]"]]]],"MM":["95","00","1\\d{5,7}|95\\d{6}|(?:[4-7]|9[0-46-9])\\d{6,8}|(?:2|8\\d)\\d{5,8}",[6,7,8,9,10],[["(\\d)(\\d{2})(\\d{3})","$1 $2 $3",["16|2"],"0$1"],["(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3",["[45]|6(?:0[23]|[1-689]|7[235-7])|7(?:[0-4]|5[2-7])|8[1-6]"],"0$1"],["(\\d)(\\d{3})(\\d{3,4})","$1 $2 $3",["[12]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[4-7]|8[1-35]"],"0$1"],["(\\d)(\\d{3})(\\d{4,6})","$1 $2 $3",["9(?:2[0-4]|[35-9]|4[137-9])"],"0$1"],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["2"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["8"],"0$1"],["(\\d)(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["92"],"0$1"],["(\\d)(\\d{5})(\\d{4})","$1 $2 $3",["9"],"0$1"]],"0"],"MN":["976","001","[12]\\d{7,9}|[5-9]\\d{7}",[8,9,10],[["(\\d{2})(\\d{2})(\\d{4})","$1 $2 $3",["[12]1"],"0$1"],["(\\d{4})(\\d{4})","$1 $2",["[5-9]"]],["(\\d{3})(\\d{5,6})","$1 $2",["[12]2[1-3]"],"0$1"],["(\\d{4})(\\d{5,6})","$1 $2",["[12](?:27|3[2-8]|4[2-68]|5[1-4689])","[12](?:27|3[2-8]|4[2-68]|5[1-4689])[0-3]"],"0$1"],["(\\d{5})(\\d{4,5})","$1 $2",["[12]"],"0$1"]],"0"],"MO":["853","00","0800\\d{3}|(?:28|[68]\\d)\\d{6}",[7,8],[["(\\d{4})(\\d{3})","$1 $2",["0"]],["(\\d{4})(\\d{4})","$1 $2",["[268]"]]]],"MP":["1","011","[58]\\d{9}|(?:67|90)0\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","670$1",0,"670"],"MQ":["596","00","596\\d{6}|(?:69|80|9\\d)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[569]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"],"0$1"]],"0"],"MR":["222","00","(?:[2-4]\\d\\d|800)\\d{5}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2-48]"]]]],"MS":["1","011","(?:[58]\\d\\d|664|900)\\d{7}",[10],0,"1",0,"([34]\\d{6})$|1","664$1",0,"664"],"MT":["356","00","3550\\d{4}|(?:[2579]\\d\\d|800)\\d{5}",[8],[["(\\d{4})(\\d{4})","$1 $2",["[2357-9]"]]]],"MU":["230","0(?:0|[24-7]0|3[03])","(?:[57]|8\\d\\d)\\d{7}|[2-468]\\d{6}",[7,8,10],[["(\\d{3})(\\d{4})","$1 $2",["[2-46]|8[013]"]],["(\\d{4})(\\d{4})","$1 $2",["[57]"]],["(\\d{5})(\\d{5})","$1 $2",["8"]]],0,0,0,0,0,0,0,"020"],"MV":["960","0(?:0|19)","(?:800|9[0-57-9]\\d)\\d{7}|[34679]\\d{6}",[7,10],[["(\\d{3})(\\d{4})","$1-$2",["[34679]"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[89]"]]],0,0,0,0,0,0,0,"00"],"MW":["265","00","(?:[1289]\\d|31|77)\\d{7}|1\\d{6}",[7,9],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["1[2-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["2"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[137-9]"],"0$1"]],"0"],"MX":["52","0[09]","[2-9]\\d{9}",[10],[["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["33|5[56]|81"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[2-9]"]]],0,0,0,0,0,0,0,"00"],"MY":["60","00","1\\d{8,9}|(?:3\\d|[4-9])\\d{7}",[8,9,10],[["(\\d)(\\d{3})(\\d{4})","$1-$2 $3",["[4-79]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1-$2 $3",["1(?:[02469]|[378][1-9]|53)|8","1(?:[02469]|[37][1-9]|53|8(?:[1-46-9]|5[7-9]))|8"],"0$1"],["(\\d)(\\d{4})(\\d{4})","$1-$2 $3",["3"],"0$1"],["(\\d)(\\d{3})(\\d{2})(\\d{4})","$1-$2-$3-$4",["1(?:[367]|80)"]],["(\\d{3})(\\d{3})(\\d{4})","$1-$2 $3",["15"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1-$2 $3",["1"],"0$1"]],"0"],"MZ":["258","00","(?:2|8\\d)\\d{7}",[8,9],[["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["2|8[2-79]"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["8"]]]],"NA":["264","00","[68]\\d{7,8}",[8,9],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["88"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["6"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["87"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["8"],"0$1"]],"0"],"NC":["687","00","(?:050|[2-57-9]\\d\\d)\\d{3}",[6],[["(\\d{2})(\\d{2})(\\d{2})","$1.$2.$3",["[02-57-9]"]]]],"NE":["227","00","[027-9]\\d{7}",[8],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["08"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[089]|2[013]|7[0467]"]]]],"NF":["672","00","[13]\\d{5}",[6],[["(\\d{2})(\\d{4})","$1 $2",["1[0-3]"]],["(\\d)(\\d{5})","$1 $2",["[13]"]]],0,0,"([0-258]\\d{4})$","3$1"],"NG":["234","009","2[0-24-9]\\d{8}|[78]\\d{10,13}|[7-9]\\d{9}|[1-9]\\d{7}|[124-7]\\d{6}",[7,8,10,11,12,13,14],[["(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3",["78"],"0$1"],["(\\d)(\\d{3})(\\d{3,4})","$1 $2 $3",["[12]|9(?:0[3-9]|[1-9])"],"0$1"],["(\\d{2})(\\d{3})(\\d{2,3})","$1 $2 $3",["[3-6]|7(?:0[0-689]|[1-79])|8[2-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["[7-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["20[129]"],"0$1"],["(\\d{4})(\\d{2})(\\d{4})","$1 $2 $3",["2"],"0$1"],["(\\d{3})(\\d{4})(\\d{4,5})","$1 $2 $3",["[78]"],"0$1"],["(\\d{3})(\\d{5})(\\d{5,6})","$1 $2 $3",["[78]"],"0$1"]],"0"],"NI":["505","00","(?:1800|[25-8]\\d{3})\\d{4}",[8],[["(\\d{4})(\\d{4})","$1 $2",["[125-8]"]]]],"NL":["31","00","(?:[124-7]\\d\\d|3(?:[02-9]\\d|1[0-8]))\\d{6}|8\\d{6,9}|9\\d{6,10}|1\\d{4,5}",[5,6,7,8,9,10,11],[["(\\d{3})(\\d{4,7})","$1 $2",["[89]0"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["66"],"0$1"],["(\\d)(\\d{8})","$1 $2",["6"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["1[16-8]|2[259]|3[124]|4[17-9]|5[124679]"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[1-578]|91"],"0$1"],["(\\d{3})(\\d{3})(\\d{5})","$1 $2 $3",["9"],"0$1"]],"0"],"NO":["47","00","(?:0|[2-9]\\d{3})\\d{4}",[5,8],[["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["8"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2-79]"]]],0,0,0,0,0,"[02-689]|7[0-8]"],"NP":["977","00","(?:1\\d|9)\\d{9}|[1-9]\\d{7}",[8,10,11],[["(\\d)(\\d{7})","$1-$2",["1[2-6]"],"0$1"],["(\\d{2})(\\d{6})","$1-$2",["1[01]|[2-8]|9(?:[1-59]|[67][2-6])"],"0$1"],["(\\d{3})(\\d{7})","$1-$2",["9"]]],"0"],"NR":["674","00","(?:444|(?:55|8\\d)\\d|666)\\d{4}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[4-68]"]]]],"NU":["683","00","(?:[4-7]|888\\d)\\d{3}",[4,7],[["(\\d{3})(\\d{4})","$1 $2",["8"]]]],"NZ":["64","0(?:0|161)","[1289]\\d{9}|50\\d{5}(?:\\d{2,3})?|[27-9]\\d{7,8}|(?:[34]\\d|6[0-35-9])\\d{6}|8\\d{4,6}",[5,6,7,8,9,10],[["(\\d{2})(\\d{3,8})","$1 $2",["8[1-79]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2,3})","$1 $2 $3",["50[036-8]|8|90","50(?:[0367]|88)|8|90"],"0$1"],["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["24|[346]|7[2-57-9]|9[2-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["2(?:10|74)|[589]"],"0$1"],["(\\d{2})(\\d{3,4})(\\d{4})","$1 $2 $3",["1|2[028]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,5})","$1 $2 $3",["2(?:[169]|7[0-35-9])|7"],"0$1"]],"0",0,0,0,0,0,0,"00"],"OM":["968","00","(?:1505|[279]\\d{3}|500)\\d{4}|800\\d{5,6}",[7,8,9],[["(\\d{3})(\\d{4,6})","$1 $2",["[58]"]],["(\\d{2})(\\d{6})","$1 $2",["2"]],["(\\d{4})(\\d{4})","$1 $2",["[179]"]]]],"PA":["507","00","(?:00800|8\\d{3})\\d{6}|[68]\\d{7}|[1-57-9]\\d{6}",[7,8,10,11],[["(\\d{3})(\\d{4})","$1-$2",["[1-57-9]"]],["(\\d{4})(\\d{4})","$1-$2",["[68]"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["8"]]]],"PE":["51","00|19(?:1[124]|77|90)00","(?:[14-8]|9\\d)\\d{7}",[8,9],[["(\\d{3})(\\d{5})","$1 $2",["80"],"(0$1)"],["(\\d)(\\d{7})","$1 $2",["1"],"(0$1)"],["(\\d{2})(\\d{6})","$1 $2",["[4-8]"],"(0$1)"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["9"]]],"0",0,0,0,0,0,0,"00"," Anexo "],"PF":["689","00","4\\d{5}(?:\\d{2})?|8\\d{7,8}",[6,8,9],[["(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3",["44"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["4|8[7-9]"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"]]]],"PG":["675","00|140[1-3]","(?:180|[78]\\d{3})\\d{4}|(?:[2-589]\\d|64)\\d{5}",[7,8],[["(\\d{3})(\\d{4})","$1 $2",["18|[2-69]|85"]],["(\\d{4})(\\d{4})","$1 $2",["[78]"]]],0,0,0,0,0,0,0,"00"],"PH":["63","00","(?:[2-7]|9\\d)\\d{8}|2\\d{5}|(?:1800|8)\\d{7,9}",[6,8,9,10,11,12,13],[["(\\d)(\\d{5})","$1 $2",["2"],"(0$1)"],["(\\d{4})(\\d{4,6})","$1 $2",["3(?:23|39|46)|4(?:2[3-6]|[35]9|4[26]|76)|544|88[245]|(?:52|64|86)2","3(?:230|397|461)|4(?:2(?:35|[46]4|51)|396|4(?:22|63)|59[347]|76[15])|5(?:221|446)|642[23]|8(?:622|8(?:[24]2|5[13]))"],"(0$1)"],["(\\d{5})(\\d{4})","$1 $2",["346|4(?:27|9[35])|883","3469|4(?:279|9(?:30|56))|8834"],"(0$1)"],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["2"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[3-7]|8[2-8]"],"(0$1)"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[89]"],"0$1"],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["1"]],["(\\d{4})(\\d{1,2})(\\d{3})(\\d{4})","$1 $2 $3 $4",["1"]]],"0"],"PK":["92","00","122\\d{6}|[24-8]\\d{10,11}|9(?:[013-9]\\d{8,10}|2(?:[01]\\d\\d|2(?:[06-8]\\d|1[01]))\\d{7})|(?:[2-8]\\d{3}|92(?:[0-7]\\d|8[1-9]))\\d{6}|[24-9]\\d{8}|[89]\\d{7}",[8,9,10,11,12],[["(\\d{3})(\\d{3})(\\d{2,7})","$1 $2 $3",["[89]0"],"0$1"],["(\\d{4})(\\d{5})","$1 $2",["1"]],["(\\d{3})(\\d{6,7})","$1 $2",["2(?:3[2358]|4[2-4]|9[2-8])|45[3479]|54[2-467]|60[468]|72[236]|8(?:2[2-689]|3[23578]|4[3478]|5[2356])|9(?:2[2-8]|3[27-9]|4[2-6]|6[3569]|9[25-8])","9(?:2[3-8]|98)|(?:2(?:3[2358]|4[2-4]|9[2-8])|45[3479]|54[2-467]|60[468]|72[236]|8(?:2[2-689]|3[23578]|4[3478]|5[2356])|9(?:22|3[27-9]|4[2-6]|6[3569]|9[25-7]))[2-9]"],"(0$1)"],["(\\d{2})(\\d{7,8})","$1 $2",["(?:2[125]|4[0-246-9]|5[1-35-7]|6[1-8]|7[14]|8[16]|91)[2-9]"],"(0$1)"],["(\\d{5})(\\d{5})","$1 $2",["58"],"(0$1)"],["(\\d{3})(\\d{7})","$1 $2",["3"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["2[125]|4[0-246-9]|5[1-35-7]|6[1-8]|7[14]|8[16]|91"],"(0$1)"],["(\\d{3})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["[24-9]"],"(0$1)"]],"0"],"PL":["48","00","(?:6|8\\d\\d)\\d{7}|[1-9]\\d{6}(?:\\d{2})?|[26]\\d{5}",[6,7,8,9,10],[["(\\d{5})","$1",["19"]],["(\\d{3})(\\d{3})","$1 $2",["11|20|64"]],["(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3",["(?:1[2-8]|2[2-69]|3[2-4]|4[1-468]|5[24-689]|6[1-3578]|7[14-7]|8[1-79]|9[145])1","(?:1[2-8]|2[2-69]|3[2-4]|4[1-468]|5[24-689]|6[1-3578]|7[14-7]|8[1-79]|9[145])19"]],["(\\d{3})(\\d{2})(\\d{2,3})","$1 $2 $3",["64"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["21|39|45|5[0137]|6[0469]|7[02389]|8(?:0[14]|8)"]],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["1[2-8]|[2-7]|8[1-79]|9[145]"]],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["8"]]]],"PM":["508","00","[45]\\d{5}|(?:708|80\\d)\\d{6}",[6,9],[["(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3",["[45]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["7"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"],"0$1"]],"0"],"PR":["1","011","(?:[589]\\d\\d|787)\\d{7}",[10],0,"1",0,0,0,0,"787|939"],"PS":["970","00","[2489]2\\d{6}|(?:1\\d|5)\\d{8}",[8,9,10],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["[2489]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["5"],"0$1"],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1"]]],"0"],"PT":["351","00","1693\\d{5}|(?:[26-9]\\d|30)\\d{7}",[9],[["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["2[12]"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["16|[236-9]"]]]],"PW":["680","01[12]","(?:[24-8]\\d\\d|345|900)\\d{4}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[2-9]"]]]],"PY":["595","00","59\\d{4,6}|9\\d{5,10}|(?:[2-46-8]\\d|5[0-8])\\d{4,7}",[6,7,8,9,10,11],[["(\\d{3})(\\d{3,6})","$1 $2",["[2-9]0"],"0$1"],["(\\d{2})(\\d{5})","$1 $2",["[26]1|3[289]|4[1246-8]|7[1-3]|8[1-36]"],"(0$1)"],["(\\d{3})(\\d{4,5})","$1 $2",["2[279]|3[13-5]|4[359]|5|6(?:[34]|7[1-46-8])|7[46-8]|85"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["2[14-68]|3[26-9]|4[1246-8]|6(?:1|75)|7[1-35]|8[1-36]"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["87"]],["(\\d{3})(\\d{6})","$1 $2",["9(?:[5-79]|8[1-7])"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[2-8]"],"0$1"],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["9"]]],"0"],"QA":["974","00","800\\d{4}|(?:2|800)\\d{6}|(?:0080|[3-7])\\d{7}",[7,8,9,11],[["(\\d{3})(\\d{4})","$1 $2",["2[16]|8"]],["(\\d{4})(\\d{4})","$1 $2",["[3-7]"]]]],"RE":["262","00","(?:26|[689]\\d)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2689]"],"0$1"]],"0",0,0,0,0,0,[["26(?:2\\d\\d|3(?:0\\d|1[0-6]))\\d{4}"],["69(?:2\\d\\d|3(?:[06][0-6]|1[013]|2[0-2]|3[0-39]|4\\d|5[0-5]|7[0-37]|8[0-8]|9[0-479]))\\d{4}"],["80\\d{7}"],["89[1-37-9]\\d{6}"],0,0,0,0,["9(?:399[0-3]|479[0-5]|76(?:2[278]|3[0-37]))\\d{4}"],["8(?:1[019]|2[0156]|84|90)\\d{6}"]]],"RO":["40","00","(?:[236-8]\\d|90)\\d{7}|[23]\\d{5}",[6,9],[["(\\d{3})(\\d{3})","$1 $2",["2[3-6]","2[3-6]\\d9"],"0$1"],["(\\d{2})(\\d{4})","$1 $2",["219|31"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[23]1"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[236-9]"],"0$1"]],"0",0,0,0,0,0,0,0," int "],"RS":["381","00","38[02-9]\\d{6,9}|6\\d{7,9}|90\\d{4,8}|38\\d{5,6}|(?:7\\d\\d|800)\\d{3,9}|(?:[12]\\d|3[0-79])\\d{5,10}",[6,7,8,9,10,11,12],[["(\\d{3})(\\d{3,9})","$1 $2",["(?:2[389]|39)0|[7-9]"],"0$1"],["(\\d{2})(\\d{5,10})","$1 $2",["[1-36]"],"0$1"]],"0"],"RU":["7","810","8\\d{13}|[347-9]\\d{9}",[10,14],[["(\\d{4})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["7(?:1[0-8]|2[1-9])","7(?:1(?:[0-356]2|4[29]|7|8[27])|2(?:1[23]|[2-9]2))","7(?:1(?:[0-356]2|4[29]|7|8[27])|2(?:13[03-69]|62[013-9]))|72[1-57-9]2"],"8 ($1)",1],["(\\d{5})(\\d)(\\d{2})(\\d{2})","$1 $2 $3 $4",["7(?:1[0-68]|2[1-9])","7(?:1(?:[06][3-6]|[18]|2[35]|[3-5][3-5])|2(?:[13][3-5]|[24-689]|7[457]))","7(?:1(?:0(?:[356]|4[023])|[18]|2(?:3[013-9]|5)|3[45]|43[013-79]|5(?:3[1-8]|4[1-7]|5)|6(?:3[0-35-9]|[4-6]))|2(?:1(?:3[178]|[45])|[24-689]|3[35]|7[457]))|7(?:14|23)4[0-8]|71(?:33|45)[1-79]"],"8 ($1)",1],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["7"],"8 ($1)",1],["(\\d{3})(\\d{3})(\\d{2})(\\d{2})","$1 $2-$3-$4",["[349]|8(?:[02-7]|1[1-8])"],"8 ($1)",1],["(\\d{4})(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3 $4",["8"],"8 ($1)"]],"8",0,0,0,0,"3[04-689]|[489]",0,"8~10"],"RW":["250","00","(?:06|[27]\\d\\d|[89]00)\\d{6}",[8,9],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["0"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["2"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[7-9]"],"0$1"]],"0"],"SA":["966","00","92\\d{7}|(?:[15]|8\\d)\\d{8}",[9,10],[["(\\d{4})(\\d{5})","$1 $2",["9"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["1"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["5"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["81"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["8"]]],"0"],"SB":["677","0[01]","[6-9]\\d{6}|[1-6]\\d{4}",[5,7],[["(\\d{2})(\\d{5})","$1 $2",["6[89]|7|8[4-9]|9(?:[1-8]|9[0-8])"]]]],"SC":["248","010|0[0-2]","(?:[2489]\\d|64)\\d{5}",[7],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["[246]|9[57]"]]],0,0,0,0,0,0,0,"00"],"SD":["249","00","[19]\\d{8}",[9],[["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[19]"],"0$1"]],"0"],"SE":["46","00","(?:[26]\\d\\d|9)\\d{9}|[1-9]\\d{8}|[1-689]\\d{7}|[1-4689]\\d{6}|2\\d{5}",[6,7,8,9,10,12],[["(\\d{2})(\\d{2,3})(\\d{2})","$1-$2 $3",["20"],"0$1",0,"$1 $2 $3"],["(\\d{3})(\\d{4})","$1-$2",["9(?:00|39|44|9)"],"0$1",0,"$1 $2"],["(\\d{2})(\\d{3})(\\d{2})","$1-$2 $3",["[12][136]|3[356]|4[0246]|6[03]|90[1-9]"],"0$1",0,"$1 $2 $3"],["(\\d)(\\d{2,3})(\\d{2})(\\d{2})","$1-$2 $3 $4",["8"],"0$1",0,"$1 $2 $3 $4"],["(\\d{3})(\\d{2,3})(\\d{2})","$1-$2 $3",["1[2457]|2(?:[247-9]|5[0138])|3[0247-9]|4[1357-9]|5[0-35-9]|6(?:[125689]|4[02-57]|7[0-2])|9(?:[125-8]|3[02-5]|4[0-3])"],"0$1",0,"$1 $2 $3"],["(\\d{3})(\\d{2,3})(\\d{3})","$1-$2 $3",["9(?:00|39|44)"],"0$1",0,"$1 $2 $3"],["(\\d{2})(\\d{2,3})(\\d{2})(\\d{2})","$1-$2 $3 $4",["1[13689]|2[0136]|3[1356]|4[0246]|54|6[03]|90[1-9]"],"0$1",0,"$1 $2 $3 $4"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1-$2 $3 $4",["10|7"],"0$1",0,"$1 $2 $3 $4"],["(\\d)(\\d{3})(\\d{3})(\\d{2})","$1-$2 $3 $4",["8"],"0$1",0,"$1 $2 $3 $4"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1-$2 $3 $4",["[13-5]|2(?:[247-9]|5[0138])|6(?:[124-689]|7[0-2])|9(?:[125-8]|3[02-5]|4[0-3])"],"0$1",0,"$1 $2 $3 $4"],["(\\d{3})(\\d{2})(\\d{2})(\\d{3})","$1-$2 $3 $4",["9"],"0$1",0,"$1 $2 $3 $4"],["(\\d{3})(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1-$2 $3 $4 $5",["[26]"],"0$1",0,"$1 $2 $3 $4 $5"]],"0"],"SG":["65","0[0-3]\\d","(?:(?:1\\d|8)\\d\\d|7000)\\d{7}|[3689]\\d{7}",[8,10,11],[["(\\d{4})(\\d{4})","$1 $2",["[369]|8(?:0[1-9]|[1-9])"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["8"]],["(\\d{4})(\\d{4})(\\d{3})","$1 $2 $3",["7"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["1"]]]],"SH":["290","00","(?:[256]\\d|8)\\d{3}",[4,5],0,0,0,0,0,0,"[256]"],"SI":["386","00|10(?:22|66|88|99)","[1-7]\\d{7}|8\\d{4,7}|90\\d{4,6}",[5,6,7,8],[["(\\d{2})(\\d{3,6})","$1 $2",["8[09]|9"],"0$1"],["(\\d{3})(\\d{5})","$1 $2",["59|8"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[37][01]|4[0139]|51|6"],"0$1"],["(\\d)(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[1-57]"],"(0$1)"]],"0",0,0,0,0,0,0,"00"],"SJ":["47","00","0\\d{4}|(?:[489]\\d|79)\\d{6}",[5,8],0,0,0,0,0,0,"79"],"SK":["421","00","[2-689]\\d{8}|[2-59]\\d{6}|[2-5]\\d{5}",[6,7,9],[["(\\d)(\\d{2})(\\d{3,4})","$1 $2 $3",["21"],"0$1"],["(\\d{2})(\\d{2})(\\d{2,3})","$1 $2 $3",["[3-5][1-8]1","[3-5][1-8]1[67]"],"0$1"],["(\\d)(\\d{3})(\\d{3})(\\d{2})","$1/$2 $3 $4",["2"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[689]"],"0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1/$2 $3 $4",["[3-5]"],"0$1"]],"0"],"SL":["232","00","(?:[237-9]\\d|66)\\d{6}",[8],[["(\\d{2})(\\d{6})","$1 $2",["[236-9]"],"(0$1)"]],"0"],"SM":["378","00","(?:0549|[5-7]\\d)\\d{6}",[8,10],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[5-7]"]],["(\\d{4})(\\d{6})","$1 $2",["0"]]],0,0,"([89]\\d{5})$","0549$1"],"SN":["221","00","(?:[378]\\d|93)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"]],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[379]"]]]],"SO":["252","00","[346-9]\\d{8}|[12679]\\d{7}|[1-5]\\d{6}|[1348]\\d{5}",[6,7,8,9],[["(\\d{2})(\\d{4})","$1 $2",["8[125]"]],["(\\d{6})","$1",["[134]"]],["(\\d)(\\d{6})","$1 $2",["[15]|2[0-79]|3[0-46-8]|4[0-7]"]],["(\\d)(\\d{7})","$1 $2",["(?:2|90)4|[67]"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[348]|64|79|90"]],["(\\d{2})(\\d{5,7})","$1 $2",["1|28|6[0-35-9]|77|9[2-9]"]]],"0"],"SR":["597","00","(?:[2-5]|68|[78]\\d)\\d{5}",[6,7],[["(\\d{2})(\\d{2})(\\d{2})","$1-$2-$3",["56"]],["(\\d{3})(\\d{3})","$1-$2",["[2-5]"]],["(\\d{3})(\\d{4})","$1-$2",["[6-8]"]]]],"SS":["211","00","[19]\\d{8}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[19]"],"0$1"]],"0"],"ST":["239","00","(?:22|9\\d)\\d{5}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[29]"]]]],"SV":["503","00","[267]\\d{7}|(?:80\\d|900)\\d{4}(?:\\d{4})?",[7,8,11],[["(\\d{3})(\\d{4})","$1 $2",["[89]"]],["(\\d{4})(\\d{4})","$1 $2",["[267]"]],["(\\d{3})(\\d{4})(\\d{4})","$1 $2 $3",["[89]"]]]],"SX":["1","011","7215\\d{6}|(?:[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"(5\\d{6})$|1","721$1",0,"721"],"SY":["963","00","[1-39]\\d{8}|[1-5]\\d{7}",[8,9],[["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[1-5]"],"0$1",1],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["9"],"0$1",1]],"0"],"SZ":["268","00","0800\\d{4}|(?:[237]\\d|900)\\d{6}",[8,9],[["(\\d{4})(\\d{4})","$1 $2",["[0237]"]],["(\\d{5})(\\d{4})","$1 $2",["9"]]]],"TA":["290","00","8\\d{3}",[4],0,0,0,0,0,0,"8"],"TC":["1","011","(?:[58]\\d\\d|649|900)\\d{7}",[10],0,"1",0,"([2-479]\\d{6})$|1","649$1",0,"649"],"TD":["235","00|16","(?:22|[689]\\d|77)\\d{6}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[26-9]"]]],0,0,0,0,0,0,0,"00"],"TG":["228","00","[279]\\d{7}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[279]"]]]],"TH":["66","00[1-9]","(?:001800|[2-57]|[689]\\d)\\d{7}|1\\d{7,9}",[8,9,10,13],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["2"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[13-9]"],"0$1"],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1"]]],"0"],"TJ":["992","810","[0-57-9]\\d{8}",[9],[["(\\d{6})(\\d)(\\d{2})","$1 $2 $3",["331","3317"]],["(\\d{3})(\\d{2})(\\d{4})","$1 $2 $3",["44[02-479]|[34]7"]],["(\\d{4})(\\d)(\\d{4})","$1 $2 $3",["3(?:[1245]|3[12])"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[0-57-9]"]]],0,0,0,0,0,0,0,"8~10"],"TK":["690","00","[2-47]\\d{3,6}",[4,5,6,7]],"TL":["670","00","7\\d{7}|(?:[2-47]\\d|[89]0)\\d{5}",[7,8],[["(\\d{3})(\\d{4})","$1 $2",["[2-489]|70"]],["(\\d{4})(\\d{4})","$1 $2",["7"]]]],"TM":["993","810","(?:[1-6]\\d|71)\\d{6}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2-$3-$4",["12"],"(8 $1)"],["(\\d{3})(\\d)(\\d{2})(\\d{2})","$1 $2-$3-$4",["[1-5]"],"(8 $1)"],["(\\d{2})(\\d{6})","$1 $2",["[67]"],"8 $1"]],"8",0,0,0,0,0,0,"8~10"],"TN":["216","00","[2-57-9]\\d{7}",[8],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[2-57-9]"]]]],"TO":["676","00","(?:0800|(?:[5-8]\\d\\d|999)\\d)\\d{3}|[2-8]\\d{4}",[5,7],[["(\\d{2})(\\d{3})","$1-$2",["[2-4]|50|6[09]|7[0-24-69]|8[05]"]],["(\\d{4})(\\d{3})","$1 $2",["0"]],["(\\d{3})(\\d{4})","$1 $2",["[5-9]"]]]],"TR":["90","00","4\\d{6}|8\\d{11,12}|(?:[2-58]\\d\\d|900)\\d{7}",[7,10,12,13],[["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["512|8[01589]|90"],"0$1",1],["(\\d{3})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["5(?:[0-59]|61)","5(?:[0-59]|61[06])","5(?:[0-59]|61[06]1)"],"0$1",1],["(\\d{3})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[24][1-8]|3[1-9]"],"(0$1)",1],["(\\d{3})(\\d{3})(\\d{6,7})","$1 $2 $3",["80"],"0$1",1]],"0"],"TT":["1","011","(?:[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-46-8]\\d{6})$|1","868$1",0,"868"],"TV":["688","00","(?:2|7\\d\\d|90)\\d{4}",[5,6,7],[["(\\d{2})(\\d{3})","$1 $2",["2"]],["(\\d{2})(\\d{4})","$1 $2",["90"]],["(\\d{2})(\\d{5})","$1 $2",["7"]]]],"TW":["886","0(?:0[25-79]|19)","[2-689]\\d{8}|7\\d{9,10}|[2-8]\\d{7}|2\\d{6}",[7,8,9,10,11],[["(\\d{2})(\\d)(\\d{4})","$1 $2 $3",["202"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[258]0"],"0$1"],["(\\d)(\\d{3,4})(\\d{4})","$1 $2 $3",["[23568]|4(?:0[02-48]|[1-47-9])|7[1-9]","[23568]|4(?:0[2-48]|[1-47-9])|(?:400|7)[1-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[49]"],"0$1"],["(\\d{2})(\\d{4})(\\d{4,5})","$1 $2 $3",["7"],"0$1"]],"0",0,0,0,0,0,0,0,"#"],"TZ":["255","00[056]","(?:[25-8]\\d|41|90)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{4})","$1 $2 $3",["[89]"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[24]"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["5"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[67]"],"0$1"]],"0"],"UA":["380","00","[89]\\d{9}|[3-9]\\d{8}",[9,10],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["6[12][29]|(?:3[1-8]|4[136-8]|5[12457]|6[49])2|(?:56|65)[24]","6[12][29]|(?:35|4[1378]|5[12457]|6[49])2|(?:56|65)[24]|(?:3[1-46-8]|46)2[013-9]"],"0$1"],["(\\d{4})(\\d{5})","$1 $2",["3[1-8]|4(?:[1367]|[45][6-9]|8[4-6])|5(?:[1-5]|6[0135689]|7[4-6])|6(?:[12][3-7]|[459])","3[1-8]|4(?:[1367]|[45][6-9]|8[4-6])|5(?:[1-5]|6(?:[015689]|3[02389])|7[4-6])|6(?:[12][3-7]|[459])"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[3-7]|89|9[1-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["[89]"],"0$1"]],"0",0,0,0,0,0,0,"0~0"],"UG":["256","00[057]","800\\d{6}|(?:[29]0|[347]\\d)\\d{7}",[9],[["(\\d{4})(\\d{5})","$1 $2",["202","2024"],"0$1"],["(\\d{3})(\\d{6})","$1 $2",["[27-9]|4(?:6[45]|[7-9])"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["[34]"],"0$1"]],"0"],"US":["1","011","[2-9]\\d{9}|3\\d{6}",[10],[["(\\d{3})(\\d{4})","$1-$2",["310"],0,1],["(\\d{3})(\\d{3})(\\d{4})","($1) $2-$3",["[2-9]"],0,1,"$1-$2-$3"]],"1",0,0,0,0,0,[["(?:3052(?:0[0-8]|[1-9]\\d)|5056(?:[0-35-9]\\d|4[468])|7302[0-4]\\d)\\d{4}|(?:305[3-9]|472[24]|505[2-57-9]|7306|983[2-47-9])\\d{6}|(?:2(?:0[1-35-9]|1[02-9]|2[03-57-9]|3[1459]|4[08]|5[1-46]|6[0279]|7[0269]|8[13])|3(?:0[1-47-9]|1[02-9]|2[013569]|3[0-24679]|4[167]|5[0-2]|6[01349]|8[056])|4(?:0[124-9]|1[02-579]|2[3-5]|3[0245]|4[023578]|58|6[349]|7[0589]|8[04])|5(?:0[1-47-9]|1[0235-8]|20|3[0149]|4[01]|5[179]|6[1-47]|7[0-5]|8[0256])|6(?:0[1-35-9]|1[024-9]|2[03689]|3[016]|4[0156]|5[01679]|6[0-279]|78|8[0-29])|7(?:0[1-46-8]|1[2-9]|2[04-8]|3[1247]|4[037]|5[47]|6[02359]|7[0-59]|8[156])|8(?:0[1-68]|1[02-8]|2[068]|3[0-2589]|4[03578]|5[046-9]|6[02-5]|7[028])|9(?:0[1346-9]|1[02-9]|2[0589]|3[0146-8]|4[01357-9]|5[12469]|7[0-389]|8[04-69]))[2-9]\\d{6}"],[""],["8(?:00|33|44|55|66|77|88)[2-9]\\d{6}"],["900[2-9]\\d{6}"],["52(?:3(?:[2-46-9][02-9]\\d|5(?:[02-46-9]\\d|5[0-46-9]))|4(?:[2-478][02-9]\\d|5(?:[034]\\d|2[024-9]|5[0-46-9])|6(?:0[1-9]|[2-9]\\d)|9(?:[05-9]\\d|2[0-5]|49)))\\d{4}|52[34][2-9]1[02-9]\\d{4}|5(?:00|2[125-9]|33|44|66|77|88)[2-9]\\d{6}"],0,0,0,["305209\\d{4}"]]],"UY":["598","0(?:0|1[3-9]\\d)","0004\\d{2,9}|[1249]\\d{7}|(?:[49]\\d|80)\\d{5}",[6,7,8,9,10,11,12,13],[["(\\d{3})(\\d{3,4})","$1 $2",["0"]],["(\\d{3})(\\d{4})","$1 $2",["[49]0|8"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["9"],"0$1"],["(\\d{4})(\\d{4})","$1 $2",["[124]"]],["(\\d{3})(\\d{3})(\\d{2,4})","$1 $2 $3",["0"]],["(\\d{3})(\\d{3})(\\d{3})(\\d{2,4})","$1 $2 $3 $4",["0"]]],"0",0,0,0,0,0,0,"00"," int. "],"UZ":["998","00","(?:20|33|[5-79]\\d|88)\\d{7}",[9],[["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[235-9]"]]]],"VA":["39","00","0\\d{5,10}|3[0-8]\\d{7,10}|55\\d{8}|8\\d{5}(?:\\d{2,4})?|(?:1\\d|39)\\d{7,8}",[6,7,8,9,10,11,12],0,0,0,0,0,0,"06698"],"VC":["1","011","(?:[58]\\d\\d|784|900)\\d{7}",[10],0,"1",0,"([2-7]\\d{6})$|1","784$1",0,"784"],"VE":["58","00","[68]00\\d{7}|(?:[24]\\d|[59]0)\\d{8}",[10],[["(\\d{3})(\\d{7})","$1-$2",["[24-689]"],"0$1"]],"0"],"VG":["1","011","(?:284|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-578]\\d{6})$|1","284$1",0,"284"],"VI":["1","011","[58]\\d{9}|(?:34|90)0\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","340$1",0,"340"],"VN":["84","00","[12]\\d{9}|[135-9]\\d{8}|[16]\\d{7}|[16-8]\\d{6}",[7,8,9,10],[["(\\d{2})(\\d{5})","$1 $2",["80"],"0$1",1],["(\\d{4})(\\d{4,6})","$1 $2",["1"],0,1],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["6"],"0$1",1],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[357-9]"],"0$1",1],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["2[48]"],"0$1",1],["(\\d{3})(\\d{4})(\\d{3})","$1 $2 $3",["2"],"0$1",1]],"0"],"VU":["678","00","[57-9]\\d{6}|(?:[238]\\d|48)\\d{3}",[5,7],[["(\\d{3})(\\d{4})","$1 $2",["[57-9]"]]]],"WF":["681","00","(?:40|72)\\d{4}|8\\d{5}(?:\\d{3})?",[6,9],[["(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3",["[478]"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"]]]],"WS":["685","0","(?:[2-6]|8\\d{5})\\d{4}|[78]\\d{6}|[68]\\d{5}",[5,6,7,10],[["(\\d{5})","$1",["[2-5]|6[1-9]"]],["(\\d{3})(\\d{3,7})","$1 $2",["[68]"]],["(\\d{2})(\\d{5})","$1 $2",["7"]]]],"XK":["383","00","2\\d{7,8}|3\\d{7,11}|(?:4\\d\\d|[89]00)\\d{5}",[8,9,10,11,12],[["(\\d{3})(\\d{5})","$1 $2",["[89]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[2-4]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["2|39"],"0$1"],["(\\d{2})(\\d{7,10})","$1 $2",["3"],"0$1"]],"0"],"YE":["967","00","(?:1|7\\d)\\d{7}|[1-7]\\d{6}",[7,8,9],[["(\\d)(\\d{3})(\\d{3,4})","$1 $2 $3",["[1-6]|7(?:[24-6]|8[0-7])"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["7"],"0$1"]],"0"],"YT":["262","00","(?:80|9\\d)\\d{7}|(?:26|63)9\\d{6}",[9],0,"0",0,0,0,0,0,[["269(?:0[0-467]|15|5[0-4]|6\\d|[78]0)\\d{4}"],["639(?:0[0-79]|1[019]|[267]\\d|3[09]|40|5[05-9]|9[04-79])\\d{4}"],["80\\d{7}"],0,0,0,0,0,["9(?:(?:39|47)8[01]|769\\d)\\d{4}"]]],"ZA":["27","00","[1-79]\\d{8}|8\\d{4,9}",[5,6,7,8,9,10],[["(\\d{2})(\\d{3,4})","$1 $2",["8[1-4]"],"0$1"],["(\\d{2})(\\d{3})(\\d{2,3})","$1 $2 $3",["8[1-4]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["860"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[1-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["8"],"0$1"]],"0"],"ZM":["260","00","800\\d{6}|(?:21|63|[79]\\d)\\d{7}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[28]"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["[79]"],"0$1"]],"0"],"ZW":["263","00","2(?:[0-57-9]\\d{6,8}|6[0-24-9]\\d{6,7})|[38]\\d{9}|[35-8]\\d{8}|[3-6]\\d{7}|[1-689]\\d{6}|[1-3569]\\d{5}|[1356]\\d{4}",[5,6,7,8,9,10],[["(\\d{3})(\\d{3,5})","$1 $2",["2(?:0[45]|2[278]|[49]8)|3(?:[09]8|17)|6(?:[29]8|37|75)|[23][78]|(?:33|5[15]|6[68])[78]"],"0$1"],["(\\d)(\\d{3})(\\d{2,4})","$1 $2 $3",["[49]"],"0$1"],["(\\d{3})(\\d{4})","$1 $2",["80"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["24|8[13-59]|(?:2[05-79]|39|5[45]|6[15-8])2","2(?:02[014]|4|[56]20|[79]2)|392|5(?:42|525)|6(?:[16-8]21|52[013])|8[13-59]"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["7"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["2(?:1[39]|2[0157]|[378]|[56][14])|3(?:12|29)","2(?:1[39]|2[0157]|[378]|[56][14])|3(?:123|29)"],"0$1"],["(\\d{4})(\\d{6})","$1 $2",["8"],"0$1"],["(\\d{2})(\\d{3,5})","$1 $2",["1|2(?:0[0-36-9]|12|29|[56])|3(?:1[0-689]|[24-6])|5(?:[0236-9]|1[2-4])|6(?:[013-59]|7[0-46-9])|(?:33|55|6[68])[0-69]|(?:29|3[09]|62)[0-79]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["29[013-9]|39|54"],"0$1"],["(\\d{4})(\\d{3,5})","$1 $2",["(?:25|54)8","258|5483"],"0$1"]],"0"]},"nonGeographic":{"800":["800",0,"(?:00|[1-9]\\d)\\d{6}",[8],[["(\\d{4})(\\d{4})","$1 $2",["\\d"]]],0,0,0,0,0,0,[0,0,["(?:00|[1-9]\\d)\\d{6}"]]],"808":["808",0,"[1-9]\\d{7}",[8],[["(\\d{4})(\\d{4})","$1 $2",["[1-9]"]]],0,0,0,0,0,0,[0,0,0,0,0,0,0,0,0,["[1-9]\\d{7}"]]],"870":["870",0,"7\\d{11}|[35-7]\\d{8}",[9,12],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[35-7]"]]],0,0,0,0,0,0,[0,["(?:[356]|774[45])\\d{8}|7[6-8]\\d{7}"]]],"878":["878",0,"10\\d{10}",[12],[["(\\d{2})(\\d{5})(\\d{5})","$1 $2 $3",["1"]]],0,0,0,0,0,0,[0,0,0,0,0,0,0,0,["10\\d{10}"]]],"881":["881",0,"6\\d{9}|[0-36-9]\\d{8}",[9,10],[["(\\d)(\\d{3})(\\d{5})","$1 $2 $3",["[0-37-9]"]],["(\\d)(\\d{3})(\\d{5,6})","$1 $2 $3",["6"]]],0,0,0,0,0,0,[0,["6\\d{9}|[0-36-9]\\d{8}"]]],"882":["882",0,"[13]\\d{6}(?:\\d{2,5})?|[19]\\d{7}|(?:[25]\\d\\d|4)\\d{7}(?:\\d{2})?",[7,8,9,10,11,12],[["(\\d{2})(\\d{5})","$1 $2",["16|342"]],["(\\d{2})(\\d{6})","$1 $2",["49"]],["(\\d{2})(\\d{2})(\\d{4})","$1 $2 $3",["1[36]|9"]],["(\\d{2})(\\d{4})(\\d{3})","$1 $2 $3",["3[23]"]],["(\\d{2})(\\d{3,4})(\\d{4})","$1 $2 $3",["16"]],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["10|23|3(?:[15]|4[57])|4|51"]],["(\\d{3})(\\d{4})(\\d{4})","$1 $2 $3",["34"]],["(\\d{2})(\\d{4,5})(\\d{5})","$1 $2 $3",["[1-35]"]]],0,0,0,0,0,0,[0,["342\\d{4}|(?:337|49)\\d{6}|(?:3(?:2|47|7\\d{3})|50\\d{3})\\d{7}",[7,8,9,10,12]],0,0,0,["348[57]\\d{7}",[11]],0,0,["1(?:3(?:0[0347]|[13][0139]|2[035]|4[013568]|6[0459]|7[06]|8[15-8]|9[0689])\\d{4}|6\\d{5,10})|(?:345\\d|9[89])\\d{6}|(?:10|2(?:3|85\\d)|3(?:[15]|[69]\\d\\d)|4[15-8]|51)\\d{8}"]]],"883":["883",0,"(?:[1-4]\\d|51)\\d{6,10}",[8,9,10,11,12],[["(\\d{3})(\\d{3})(\\d{2,8})","$1 $2 $3",["[14]|2[24-689]|3[02-689]|51[24-9]"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["510"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["21"]],["(\\d{4})(\\d{4})(\\d{4})","$1 $2 $3",["51[13]"]],["(\\d{3})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["[235]"]]],0,0,0,0,0,0,[0,0,0,0,0,0,0,0,["(?:2(?:00\\d\\d|10)|(?:370[1-9]|51\\d0)\\d)\\d{7}|51(?:00\\d{5}|[24-9]0\\d{4,7})|(?:1[0-79]|2[24-689]|3[02-689]|4[0-4])0\\d{5,9}"]]],"888":["888",0,"\\d{11}",[11],[["(\\d{3})(\\d{3})(\\d{5})","$1 $2 $3"]],0,0,0,0,0,0,[0,0,0,0,0,0,["\\d{11}"]]],"979":["979",0,"[1359]\\d{8}",[9],[["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["[1359]"]]],0,0,0,0,0,0,[0,0,0,["[1359]\\d{8}"]]]}});
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ({"version":4,"country_calling_codes":{"1":["US","AG","AI","AS","BB","BM","BS","CA","DM","DO","GD","GU","JM","KN","KY","LC","MP","MS","PR","SX","TC","TT","VC","VG","VI"],"7":["RU","KZ"],"20":["EG"],"27":["ZA"],"30":["GR"],"31":["NL"],"32":["BE"],"33":["FR"],"34":["ES"],"36":["HU"],"39":["IT","VA"],"40":["RO"],"41":["CH"],"43":["AT"],"44":["GB","GG","IM","JE"],"45":["DK"],"46":["SE"],"47":["NO","SJ"],"48":["PL"],"49":["DE"],"51":["PE"],"52":["MX"],"53":["CU"],"54":["AR"],"55":["BR"],"56":["CL"],"57":["CO"],"58":["VE"],"60":["MY"],"61":["AU","CC","CX"],"62":["ID"],"63":["PH"],"64":["NZ"],"65":["SG"],"66":["TH"],"81":["JP"],"82":["KR"],"84":["VN"],"86":["CN"],"90":["TR"],"91":["IN"],"92":["PK"],"93":["AF"],"94":["LK"],"95":["MM"],"98":["IR"],"211":["SS"],"212":["MA","EH"],"213":["DZ"],"216":["TN"],"218":["LY"],"220":["GM"],"221":["SN"],"222":["MR"],"223":["ML"],"224":["GN"],"225":["CI"],"226":["BF"],"227":["NE"],"228":["TG"],"229":["BJ"],"230":["MU"],"231":["LR"],"232":["SL"],"233":["GH"],"234":["NG"],"235":["TD"],"236":["CF"],"237":["CM"],"238":["CV"],"239":["ST"],"240":["GQ"],"241":["GA"],"242":["CG"],"243":["CD"],"244":["AO"],"245":["GW"],"246":["IO"],"247":["AC"],"248":["SC"],"249":["SD"],"250":["RW"],"251":["ET"],"252":["SO"],"253":["DJ"],"254":["KE"],"255":["TZ"],"256":["UG"],"257":["BI"],"258":["MZ"],"260":["ZM"],"261":["MG"],"262":["RE","YT"],"263":["ZW"],"264":["NA"],"265":["MW"],"266":["LS"],"267":["BW"],"268":["SZ"],"269":["KM"],"290":["SH","TA"],"291":["ER"],"297":["AW"],"298":["FO"],"299":["GL"],"350":["GI"],"351":["PT"],"352":["LU"],"353":["IE"],"354":["IS"],"355":["AL"],"356":["MT"],"357":["CY"],"358":["FI","AX"],"359":["BG"],"370":["LT"],"371":["LV"],"372":["EE"],"373":["MD"],"374":["AM"],"375":["BY"],"376":["AD"],"377":["MC"],"378":["SM"],"380":["UA"],"381":["RS"],"382":["ME"],"383":["XK"],"385":["HR"],"386":["SI"],"387":["BA"],"389":["MK"],"420":["CZ"],"421":["SK"],"423":["LI"],"500":["FK"],"501":["BZ"],"502":["GT"],"503":["SV"],"504":["HN"],"505":["NI"],"506":["CR"],"507":["PA"],"508":["PM"],"509":["HT"],"590":["GP","BL","MF"],"591":["BO"],"592":["GY"],"593":["EC"],"594":["GF"],"595":["PY"],"596":["MQ"],"597":["SR"],"598":["UY"],"599":["CW","BQ"],"670":["TL"],"672":["NF"],"673":["BN"],"674":["NR"],"675":["PG"],"676":["TO"],"677":["SB"],"678":["VU"],"679":["FJ"],"680":["PW"],"681":["WF"],"682":["CK"],"683":["NU"],"685":["WS"],"686":["KI"],"687":["NC"],"688":["TV"],"689":["PF"],"690":["TK"],"691":["FM"],"692":["MH"],"850":["KP"],"852":["HK"],"853":["MO"],"855":["KH"],"856":["LA"],"880":["BD"],"886":["TW"],"960":["MV"],"961":["LB"],"962":["JO"],"963":["SY"],"964":["IQ"],"965":["KW"],"966":["SA"],"967":["YE"],"968":["OM"],"970":["PS"],"971":["AE"],"972":["IL"],"973":["BH"],"974":["QA"],"975":["BT"],"976":["MN"],"977":["NP"],"992":["TJ"],"993":["TM"],"994":["AZ"],"995":["GE"],"996":["KG"],"998":["UZ"]},"countries":{"AC":["247","00","(?:[01589]\\d|[46])\\d{4}",[5,6]],"AD":["376","00","(?:1|6\\d)\\d{7}|[135-9]\\d{5}",[6,8,9],[["(\\d{3})(\\d{3})","$1 $2",["[135-9]"]],["(\\d{4})(\\d{4})","$1 $2",["1"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["6"]]]],"AE":["971","00","(?:[4-7]\\d|9[0-689])\\d{7}|800\\d{2,9}|[2-4679]\\d{7}",[5,6,7,8,9,10,11,12],[["(\\d{3})(\\d{2,9})","$1 $2",["60|8"]],["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["[236]|[479][2-8]"],"0$1"],["(\\d{3})(\\d)(\\d{5})","$1 $2 $3",["[479]"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["5"],"0$1"]],"0"],"AF":["93","00","[2-7]\\d{8}",[9],[["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[2-7]"],"0$1"]],"0"],"AG":["1","011","(?:268|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([457]\\d{6})$|1","268$1",0,"268"],"AI":["1","011","(?:264|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2457]\\d{6})$|1","264$1",0,"264"],"AL":["355","00","(?:700\\d\\d|900)\\d{3}|8\\d{5,7}|(?:[2-5]|6\\d)\\d{7}",[6,7,8,9],[["(\\d{3})(\\d{3,4})","$1 $2",["80|9"],"0$1"],["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["4[2-6]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[2358][2-5]|4"],"0$1"],["(\\d{3})(\\d{5})","$1 $2",["[23578]"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["6"],"0$1"]],"0"],"AM":["374","00","(?:[1-489]\\d|55|60|77)\\d{6}",[8],[["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["[89]0"],"0 $1"],["(\\d{3})(\\d{5})","$1 $2",["2|3[12]"],"(0$1)"],["(\\d{2})(\\d{6})","$1 $2",["1|47"],"(0$1)"],["(\\d{2})(\\d{6})","$1 $2",["[3-9]"],"0$1"]],"0"],"AO":["244","00","[29]\\d{8}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[29]"]]]],"AR":["54","00","(?:11|[89]\\d\\d)\\d{8}|[2368]\\d{9}",[10,11],[["(\\d{4})(\\d{2})(\\d{4})","$1 $2-$3",["2(?:2[024-9]|3[0-59]|47|6[245]|9[02-8])|3(?:3[28]|4[03-9]|5[2-46-8]|7[1-578]|8[2-9])","2(?:[23]02|6(?:[25]|4[6-8])|9(?:[02356]|4[02568]|72|8[23]))|3(?:3[28]|4(?:[04679]|3[5-8]|5[4-68]|8[2379])|5(?:[2467]|3[237]|8[2-5])|7[1-578]|8(?:[2469]|3[2578]|5[4-8]|7[36-8]|8[5-8]))|2(?:2[24-9]|3[1-59]|47)","2(?:[23]02|6(?:[25]|4(?:64|[78]))|9(?:[02356]|4(?:[0268]|5[2-6])|72|8[23]))|3(?:3[28]|4(?:[04679]|3[78]|5(?:4[46]|8)|8[2379])|5(?:[2467]|3[237]|8[23])|7[1-578]|8(?:[2469]|3[278]|5[56][46]|86[3-6]))|2(?:2[24-9]|3[1-59]|47)|38(?:[58][78]|7[378])|3(?:4[35][56]|58[45]|8(?:[38]5|54|76))[4-6]","2(?:[23]02|6(?:[25]|4(?:64|[78]))|9(?:[02356]|4(?:[0268]|5[2-6])|72|8[23]))|3(?:3[28]|4(?:[04679]|3(?:5(?:4[0-25689]|[56])|[78])|58|8[2379])|5(?:[2467]|3[237]|8(?:[23]|4(?:[45]|60)|5(?:4[0-39]|5|64)))|7[1-578]|8(?:[2469]|3[278]|54(?:4|5[13-7]|6[89])|86[3-6]))|2(?:2[24-9]|3[1-59]|47)|38(?:[58][78]|7[378])|3(?:454|85[56])[46]|3(?:4(?:36|5[56])|8(?:[38]5|76))[4-6]"],"0$1",1],["(\\d{2})(\\d{4})(\\d{4})","$1 $2-$3",["1"],"0$1",1],["(\\d{3})(\\d{3})(\\d{4})","$1-$2-$3",["[68]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2-$3",["[23]"],"0$1",1],["(\\d)(\\d{4})(\\d{2})(\\d{4})","$2 15-$3-$4",["9(?:2[2-469]|3[3-578])","9(?:2(?:2[024-9]|3[0-59]|47|6[245]|9[02-8])|3(?:3[28]|4[03-9]|5[2-46-8]|7[1-578]|8[2-9]))","9(?:2(?:[23]02|6(?:[25]|4[6-8])|9(?:[02356]|4[02568]|72|8[23]))|3(?:3[28]|4(?:[04679]|3[5-8]|5[4-68]|8[2379])|5(?:[2467]|3[237]|8[2-5])|7[1-578]|8(?:[2469]|3[2578]|5[4-8]|7[36-8]|8[5-8])))|92(?:2[24-9]|3[1-59]|47)","9(?:2(?:[23]02|6(?:[25]|4(?:64|[78]))|9(?:[02356]|4(?:[0268]|5[2-6])|72|8[23]))|3(?:3[28]|4(?:[04679]|3[78]|5(?:4[46]|8)|8[2379])|5(?:[2467]|3[237]|8[23])|7[1-578]|8(?:[2469]|3[278]|5(?:[56][46]|[78])|7[378]|8(?:6[3-6]|[78]))))|92(?:2[24-9]|3[1-59]|47)|93(?:4[35][56]|58[45]|8(?:[38]5|54|76))[4-6]","9(?:2(?:[23]02|6(?:[25]|4(?:64|[78]))|9(?:[02356]|4(?:[0268]|5[2-6])|72|8[23]))|3(?:3[28]|4(?:[04679]|3(?:5(?:4[0-25689]|[56])|[78])|5(?:4[46]|8)|8[2379])|5(?:[2467]|3[237]|8(?:[23]|4(?:[45]|60)|5(?:4[0-39]|5|64)))|7[1-578]|8(?:[2469]|3[278]|5(?:4(?:4|5[13-7]|6[89])|[56][46]|[78])|7[378]|8(?:6[3-6]|[78]))))|92(?:2[24-9]|3[1-59]|47)|93(?:4(?:36|5[56])|8(?:[38]5|76))[4-6]"],"0$1",0,"$1 $2 $3-$4"],["(\\d)(\\d{2})(\\d{4})(\\d{4})","$2 15-$3-$4",["91"],"0$1",0,"$1 $2 $3-$4"],["(\\d{3})(\\d{3})(\\d{5})","$1-$2-$3",["8"],"0$1"],["(\\d)(\\d{3})(\\d{3})(\\d{4})","$2 15-$3-$4",["9"],"0$1",0,"$1 $2 $3-$4"]],"0",0,"0?(?:(11|2(?:2(?:02?|[13]|2[13-79]|4[1-6]|5[2457]|6[124-8]|7[1-4]|8[13-6]|9[1267])|3(?:02?|1[467]|2[03-6]|3[13-8]|[49][2-6]|5[2-8]|[67])|4(?:7[3-578]|9)|6(?:[0136]|2[24-6]|4[6-8]?|5[15-8])|80|9(?:0[1-3]|[19]|2\\d|3[1-6]|4[02568]?|5[2-4]|6[2-46]|72?|8[23]?))|3(?:3(?:2[79]|6|8[2578])|4(?:0[0-24-9]|[12]|3[5-8]?|4[24-7]|5[4-68]?|6[02-9]|7[126]|8[2379]?|9[1-36-8])|5(?:1|2[1245]|3[237]?|4[1-46-9]|6[2-4]|7[1-6]|8[2-5]?)|6[24]|7(?:[069]|1[1568]|2[15]|3[145]|4[13]|5[14-8]|7[2-57]|8[126])|8(?:[01]|2[15-7]|3[2578]?|4[13-6]|5[4-8]?|6[1-357-9]|7[36-8]?|8[5-8]?|9[124])))15)?","9$1"],"AS":["1","011","(?:[58]\\d\\d|684|900)\\d{7}",[10],0,"1",0,"([267]\\d{6})$|1","684$1",0,"684"],"AT":["43","00","1\\d{3,12}|2\\d{6,12}|43(?:(?:0\\d|5[02-9])\\d{3,9}|2\\d{4,5}|[3467]\\d{4}|8\\d{4,6}|9\\d{4,7})|5\\d{4,12}|8\\d{7,12}|9\\d{8,12}|(?:[367]\\d|4[0-24-9])\\d{4,11}",[4,5,6,7,8,9,10,11,12,13],[["(\\d)(\\d{3,12})","$1 $2",["1(?:11|[2-9])"],"0$1"],["(\\d{3})(\\d{2})","$1 $2",["517"],"0$1"],["(\\d{2})(\\d{3,5})","$1 $2",["5[079]"],"0$1"],["(\\d{3})(\\d{3,10})","$1 $2",["(?:31|4)6|51|6(?:5[0-3579]|[6-9])|7(?:20|32|8)|[89]"],"0$1"],["(\\d{4})(\\d{3,9})","$1 $2",["[2-467]|5[2-6]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["5"],"0$1"],["(\\d{2})(\\d{4})(\\d{4,7})","$1 $2 $3",["5"],"0$1"]],"0"],"AU":["61","001[14-689]|14(?:1[14]|34|4[17]|[56]6|7[47]|88)0011","1(?:[0-79]\\d{7}(?:\\d(?:\\d{2})?)?|8[0-24-9]\\d{7})|[2-478]\\d{8}|1\\d{4,7}",[5,6,7,8,9,10,12],[["(\\d{2})(\\d{3,4})","$1 $2",["16"],"0$1"],["(\\d{2})(\\d{3})(\\d{2,4})","$1 $2 $3",["16"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["14|4"],"0$1"],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["[2378]"],"(0$1)"],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1(?:30|[89])"]]],"0",0,"(183[12])|0",0,0,0,[["(?:(?:(?:2(?:[0-26-9]\\d|3[0-8]|4[02-9]|5[0135-9])|7(?:[013-57-9]\\d|2[0-8]))\\d|3(?:(?:[0-3589]\\d|6[1-9]|7[0-35-9])\\d|4(?:[0-578]\\d|90)))\\d\\d|8(?:51(?:0(?:0[03-9]|[12479]\\d|3[2-9]|5[0-8]|6[1-9]|8[0-7])|1(?:[0235689]\\d|1[0-69]|4[0-589]|7[0-47-9])|2(?:0[0-79]|[18][13579]|2[14-9]|3[0-46-9]|[4-6]\\d|7[89]|9[0-4])|3\\d\\d)|(?:6[0-8]|[78]\\d)\\d{3}|9(?:[02-9]\\d{3}|1(?:(?:[0-58]\\d|6[0135-9])\\d|7(?:0[0-24-9]|[1-9]\\d)|9(?:[0-46-9]\\d|5[0-79])))))\\d{3}",[9]],["4(?:79[01]|83[0-389]|94[0-4])\\d{5}|4(?:[0-36]\\d|4[047-9]|5[0-25-9]|7[02-8]|8[0-24-9]|9[0-37-9])\\d{6}",[9]],["180(?:0\\d{3}|2)\\d{3}",[7,10]],["190[0-26]\\d{6}",[10]],0,0,0,["163\\d{2,6}",[5,6,7,8,9]],["14(?:5(?:1[0458]|[23][458])|71\\d)\\d{4}",[9]],["13(?:00\\d{6}(?:\\d{2})?|45[0-4]\\d{3})|13\\d{4}",[6,8,10,12]]],"0011"],"AW":["297","00","(?:[25-79]\\d\\d|800)\\d{4}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[25-9]"]]]],"AX":["358","00|99(?:[01469]|5(?:[14]1|3[23]|5[59]|77|88|9[09]))","2\\d{4,9}|35\\d{4,5}|(?:60\\d\\d|800)\\d{4,6}|7\\d{5,11}|(?:[14]\\d|3[0-46-9]|50)\\d{4,8}",[5,6,7,8,9,10,11,12],0,"0",0,0,0,0,"18",0,"00"],"AZ":["994","00","365\\d{6}|(?:[124579]\\d|60|88)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["90"],"0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["1[28]|2|365|46","1[28]|2|365[45]|46","1[28]|2|365(?:4|5[02])|46"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[13-9]"],"0$1"]],"0"],"BA":["387","00","6\\d{8}|(?:[35689]\\d|49|70)\\d{6}",[8,9],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["6[1-3]|[7-9]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2-$3",["[3-5]|6[56]"],"0$1"],["(\\d{2})(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3 $4",["6"],"0$1"]],"0"],"BB":["1","011","(?:246|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","246$1",0,"246"],"BD":["880","00","[1-469]\\d{9}|8[0-79]\\d{7,8}|[2-79]\\d{8}|[2-9]\\d{7}|[3-9]\\d{6}|[57-9]\\d{5}",[6,7,8,9,10],[["(\\d{2})(\\d{4,6})","$1-$2",["31[5-8]|[459]1"],"0$1"],["(\\d{3})(\\d{3,7})","$1-$2",["3(?:[67]|8[013-9])|4(?:6[168]|7|[89][18])|5(?:6[128]|9)|6(?:[15]|28|4[14])|7[2-589]|8(?:0[014-9]|[12])|9[358]|(?:3[2-5]|4[235]|5[2-578]|6[0389]|76|8[3-7]|9[24])1|(?:44|66)[01346-9]"],"0$1"],["(\\d{4})(\\d{3,6})","$1-$2",["[13-9]|2[23]"],"0$1"],["(\\d)(\\d{7,8})","$1-$2",["2"],"0$1"]],"0"],"BE":["32","00","4\\d{8}|[1-9]\\d{7}",[8,9],[["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["(?:80|9)0"],"0$1"],["(\\d)(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[239]|4[23]"],"0$1"],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[15-8]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["4"],"0$1"]],"0"],"BF":["226","00","[025-7]\\d{7}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[025-7]"]]]],"BG":["359","00","00800\\d{7}|[2-7]\\d{6,7}|[89]\\d{6,8}|2\\d{5}",[6,7,8,9,12],[["(\\d)(\\d)(\\d{2})(\\d{2})","$1 $2 $3 $4",["2"],"0$1"],["(\\d{3})(\\d{4})","$1 $2",["43[1-6]|70[1-9]"],"0$1"],["(\\d)(\\d{3})(\\d{3,4})","$1 $2 $3",["2"],"0$1"],["(\\d{2})(\\d{3})(\\d{2,3})","$1 $2 $3",["[356]|4[124-7]|7[1-9]|8[1-6]|9[1-7]"],"0$1"],["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["(?:70|8)0"],"0$1"],["(\\d{3})(\\d{3})(\\d{2})","$1 $2 $3",["43[1-7]|7"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[48]|9[08]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["9"],"0$1"]],"0"],"BH":["973","00","[136-9]\\d{7}",[8],[["(\\d{4})(\\d{4})","$1 $2",["[13679]|8[02-4679]"]]]],"BI":["257","00","(?:[267]\\d|31)\\d{6}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2367]"]]]],"BJ":["229","00","[24-689]\\d{7}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[24-689]"]]]],"BL":["590","00","590\\d{6}|(?:69|80|9\\d)\\d{7}",[9],0,"0",0,0,0,0,0,[["590(?:2[7-9]|3[3-7]|5[12]|87)\\d{4}"],["69(?:0\\d\\d|1(?:2[2-9]|3[0-5])|4(?:0[89]|1[2-6]|9\\d)|6(?:1[016-9]|5[0-4]|[67]\\d))\\d{4}"],["80[0-5]\\d{6}"],0,0,0,0,0,["9(?:(?:39[5-7]|76[018])\\d|475[0-5])\\d{4}"]]],"BM":["1","011","(?:441|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","441$1",0,"441"],"BN":["673","00","[2-578]\\d{6}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[2-578]"]]]],"BO":["591","00(?:1\\d)?","8001\\d{5}|(?:[2-467]\\d|50)\\d{6}",[8,9],[["(\\d)(\\d{7})","$1 $2",["[235]|4[46]"]],["(\\d{8})","$1",["[67]"]],["(\\d{3})(\\d{2})(\\d{4})","$1 $2 $3",["8"]]],"0",0,"0(1\\d)?"],"BQ":["599","00","(?:[34]1|7\\d)\\d{5}",[7],0,0,0,0,0,0,"[347]"],"BR":["55","00(?:1[245]|2[1-35]|31|4[13]|[56]5|99)","(?:[1-46-9]\\d\\d|5(?:[0-46-9]\\d|5[0-46-9]))\\d{8}|[1-9]\\d{9}|[3589]\\d{8}|[34]\\d{7}",[8,9,10,11],[["(\\d{4})(\\d{4})","$1-$2",["300|4(?:0[02]|37)","4(?:02|37)0|[34]00"]],["(\\d{3})(\\d{2,3})(\\d{4})","$1 $2 $3",["(?:[358]|90)0"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1 $2-$3",["(?:[14689][1-9]|2[12478]|3[1-578]|5[13-5]|7[13-579])[2-57]"],"($1)"],["(\\d{2})(\\d{5})(\\d{4})","$1 $2-$3",["[16][1-9]|[2-57-9]"],"($1)"]],"0",0,"(?:0|90)(?:(1[245]|2[1-35]|31|4[13]|[56]5|99)(\\d{10,11}))?","$2"],"BS":["1","011","(?:242|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([3-8]\\d{6})$|1","242$1",0,"242"],"BT":["975","00","[17]\\d{7}|[2-8]\\d{6}",[7,8],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["[2-68]|7[246]"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["1[67]|7"]]]],"BW":["267","00","(?:0800|(?:[37]|800)\\d)\\d{6}|(?:[2-6]\\d|90)\\d{5}",[7,8,10],[["(\\d{2})(\\d{5})","$1 $2",["90"]],["(\\d{3})(\\d{4})","$1 $2",["[24-6]|3[15-9]"]],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[37]"]],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["0"]],["(\\d{3})(\\d{4})(\\d{3})","$1 $2 $3",["8"]]]],"BY":["375","810","(?:[12]\\d|33|44|902)\\d{7}|8(?:0[0-79]\\d{5,7}|[1-7]\\d{9})|8(?:1[0-489]|[5-79]\\d)\\d{7}|8[1-79]\\d{6,7}|8[0-79]\\d{5}|8\\d{5}",[6,7,8,9,10,11],[["(\\d{3})(\\d{3})","$1 $2",["800"],"8 $1"],["(\\d{3})(\\d{2})(\\d{2,4})","$1 $2 $3",["800"],"8 $1"],["(\\d{4})(\\d{2})(\\d{3})","$1 $2-$3",["1(?:5[169]|6[3-5]|7[179])|2(?:1[35]|2[34]|3[3-5])","1(?:5[169]|6(?:3[1-3]|4|5[125])|7(?:1[3-9]|7[0-24-6]|9[2-7]))|2(?:1[35]|2[34]|3[3-5])"],"8 0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2-$3-$4",["1(?:[56]|7[467])|2[1-3]"],"8 0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2-$3-$4",["[1-4]"],"8 0$1"],["(\\d{3})(\\d{3,4})(\\d{4})","$1 $2 $3",["[89]"],"8 $1"]],"8",0,"0|80?",0,0,0,0,"8~10"],"BZ":["501","00","(?:0800\\d|[2-8])\\d{6}",[7,11],[["(\\d{3})(\\d{4})","$1-$2",["[2-8]"]],["(\\d)(\\d{3})(\\d{4})(\\d{3})","$1-$2-$3-$4",["0"]]]],"CA":["1","011","(?:[2-8]\\d|90)\\d{8}|3\\d{6}",[7,10],0,"1",0,0,0,0,0,[["(?:2(?:04|[23]6|[48]9|50|63)|3(?:06|43|54|6[578]|82)|4(?:03|1[68]|[26]8|3[178]|50|74)|5(?:06|1[49]|48|79|8[147])|6(?:04|[18]3|39|47|72)|7(?:0[59]|42|53|78|8[02])|8(?:[06]7|19|25|7[39])|90[25])[2-9]\\d{6}",[10]],["",[10]],["8(?:00|33|44|55|66|77|88)[2-9]\\d{6}",[10]],["900[2-9]\\d{6}",[10]],["52(?:3(?:[2-46-9][02-9]\\d|5(?:[02-46-9]\\d|5[0-46-9]))|4(?:[2-478][02-9]\\d|5(?:[034]\\d|2[024-9]|5[0-46-9])|6(?:0[1-9]|[2-9]\\d)|9(?:[05-9]\\d|2[0-5]|49)))\\d{4}|52[34][2-9]1[02-9]\\d{4}|(?:5(?:00|2[125-9]|33|44|66|77|88)|622)[2-9]\\d{6}",[10]],0,["310\\d{4}",[7]],0,["600[2-9]\\d{6}",[10]]]],"CC":["61","001[14-689]|14(?:1[14]|34|4[17]|[56]6|7[47]|88)0011","1(?:[0-79]\\d{8}(?:\\d{2})?|8[0-24-9]\\d{7})|[148]\\d{8}|1\\d{5,7}",[6,7,8,9,10,12],0,"0",0,"([59]\\d{7})$|0","8$1",0,0,[["8(?:51(?:0(?:02|31|60|89)|1(?:18|76)|223)|91(?:0(?:1[0-2]|29)|1(?:[28]2|50|79)|2(?:10|64)|3(?:[06]8|22)|4[29]8|62\\d|70[23]|959))\\d{3}",[9]],["4(?:79[01]|83[0-389]|94[0-4])\\d{5}|4(?:[0-36]\\d|4[047-9]|5[0-25-9]|7[02-8]|8[0-24-9]|9[0-37-9])\\d{6}",[9]],["180(?:0\\d{3}|2)\\d{3}",[7,10]],["190[0-26]\\d{6}",[10]],0,0,0,0,["14(?:5(?:1[0458]|[23][458])|71\\d)\\d{4}",[9]],["13(?:00\\d{6}(?:\\d{2})?|45[0-4]\\d{3})|13\\d{4}",[6,8,10,12]]],"0011"],"CD":["243","00","(?:(?:[189]|5\\d)\\d|2)\\d{7}|[1-68]\\d{6}",[7,8,9,10],[["(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3",["88"],"0$1"],["(\\d{2})(\\d{5})","$1 $2",["[1-6]"],"0$1"],["(\\d{2})(\\d{2})(\\d{4})","$1 $2 $3",["2"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["1"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[89]"],"0$1"],["(\\d{2})(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3 $4",["5"],"0$1"]],"0"],"CF":["236","00","(?:[27]\\d{3}|8776)\\d{4}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[278]"]]]],"CG":["242","00","222\\d{6}|(?:0\\d|80)\\d{7}",[9],[["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["8"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[02]"]]]],"CH":["41","00","8\\d{11}|[2-9]\\d{8}",[9,12],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["8[047]|90"],"0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2-79]|81"],"0$1"],["(\\d{3})(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4 $5",["8"],"0$1"]],"0"],"CI":["225","00","[02]\\d{9}",[10],[["(\\d{2})(\\d{2})(\\d)(\\d{5})","$1 $2 $3 $4",["2"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{4})","$1 $2 $3 $4",["0"]]]],"CK":["682","00","[2-578]\\d{4}",[5],[["(\\d{2})(\\d{3})","$1 $2",["[2-578]"]]]],"CL":["56","(?:0|1(?:1[0-69]|2[02-5]|5[13-58]|69|7[0167]|8[018]))0","12300\\d{6}|6\\d{9,10}|[2-9]\\d{8}",[9,10,11],[["(\\d{5})(\\d{4})","$1 $2",["219","2196"],"($1)"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["44"]],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["2[1-36]"],"($1)"],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["9[2-9]"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["3[2-5]|[47]|5[1-3578]|6[13-57]|8(?:0[1-9]|[1-9])"],"($1)"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["60|8"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["1"]],["(\\d{3})(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3 $4",["60"]]]],"CM":["237","00","[26]\\d{8}|88\\d{6,7}",[8,9],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["88"]],["(\\d)(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4 $5",["[26]|88"]]]],"CN":["86","00|1(?:[12]\\d|79)\\d\\d00","(?:(?:1[03-689]|2\\d)\\d\\d|6)\\d{8}|1\\d{10}|[126]\\d{6}(?:\\d(?:\\d{2})?)?|86\\d{5,6}|(?:[3-579]\\d|8[0-57-9])\\d{5,9}",[7,8,9,10,11,12],[["(\\d{2})(\\d{5,6})","$1 $2",["(?:10|2[0-57-9])[19]|3(?:[157]|35|49|9[1-68])|4(?:1[124-9]|2[179]|6[47-9]|7|8[23])|5(?:[1357]|2[37]|4[36]|6[1-46]|80)|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:07|1[236-8]|2[5-7]|[37]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|3|4[13]|5[1-5]|7[0-79]|9[0-35-9])|(?:4[35]|59|85)[1-9]","(?:10|2[0-57-9])(?:1[02]|9[56])|8078|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:1[124-9]|2[179]|[35][1-9]|6[47-9]|7\\d|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[1-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|3\\d|4[13]|5[1-5]|7[0-79]|9[0-35-9]))1","10(?:1(?:0|23)|9[56])|2[0-57-9](?:1(?:00|23)|9[56])|80781|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:1[124-9]|2[179]|[35][1-9]|6[47-9]|7\\d|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[1-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|3\\d|4[13]|5[1-5]|7[0-79]|9[0-35-9]))12","10(?:1(?:0|23)|9[56])|2[0-57-9](?:1(?:00|23)|9[56])|807812|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:1[124-9]|2[179]|[35][1-9]|6[47-9]|7\\d|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[1-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|3\\d|4[13]|5[1-5]|7[0-79]|9[0-35-9]))123","10(?:1(?:0|23)|9[56])|2[0-57-9](?:1(?:00|23)|9[56])|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:1[124-9]|2[179]|[35][1-9]|6[47-9]|7\\d|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:078|1[236-8]|2[5-7]|[37]\\d|5[1-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|3\\d|4[13]|5[1-5]|7[0-79]|9[0-35-9]))123"],"0$1"],["(\\d{3})(\\d{5,6})","$1 $2",["3(?:[157]|35|49|9[1-68])|4(?:[17]|2[179]|6[47-9]|8[23])|5(?:[1357]|2[37]|4[36]|6[1-46]|80)|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|[379]|4[13]|5[1-5])|(?:4[35]|59|85)[1-9]","(?:3(?:[157]\\d|35|49|9[1-68])|4(?:[17]\\d|2[179]|[35][1-9]|6[47-9]|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[1-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|[379]\\d|4[13]|5[1-5]))[19]","85[23](?:10|95)|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:[17]\\d|2[179]|[35][1-9]|6[47-9]|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[14-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|[379]\\d|4[13]|5[1-5]))(?:10|9[56])","85[23](?:100|95)|(?:3(?:[157]\\d|35|49|9[1-68])|4(?:[17]\\d|2[179]|[35][1-9]|6[47-9]|8[23])|5(?:[1357]\\d|2[37]|4[36]|6[1-46]|80|9[1-9])|6(?:3[1-5]|6[0238]|9[12])|7(?:01|[1579]\\d|2[248]|3[014-9]|4[3-6]|6[023689])|8(?:1[236-8]|2[5-7]|[37]\\d|5[14-9]|8[36-8]|9[1-8])|9(?:0[1-3689]|1[1-79]|[379]\\d|4[13]|5[1-5]))(?:100|9[56])"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["(?:4|80)0"]],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["10|2(?:[02-57-9]|1[1-9])","10|2(?:[02-57-9]|1[1-9])","10[0-79]|2(?:[02-57-9]|1[1-79])|(?:10|21)8(?:0[1-9]|[1-9])"],"0$1",1],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["3(?:[3-59]|7[02-68])|4(?:[26-8]|3[3-9]|5[2-9])|5(?:3[03-9]|[468]|7[028]|9[2-46-9])|6|7(?:[0-247]|3[04-9]|5[0-4689]|6[2368])|8(?:[1-358]|9[1-7])|9(?:[013479]|5[1-5])|(?:[34]1|55|79|87)[02-9]"],"0$1",1],["(\\d{3})(\\d{7,8})","$1 $2",["9"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["80"],"0$1",1],["(\\d{3})(\\d{4})(\\d{4})","$1 $2 $3",["[3-578]"],"0$1",1],["(\\d{3})(\\d{4})(\\d{4})","$1 $2 $3",["1[3-9]"]],["(\\d{2})(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3 $4",["[12]"],"0$1",1]],"0",0,"(1(?:[12]\\d|79)\\d\\d)|0",0,0,0,0,"00"],"CO":["57","00(?:4(?:[14]4|56)|[579])","60\\d{8}|(?:1\\d|[39])\\d{9}",[10,11],[["(\\d{3})(\\d{7})","$1 $2",["6|90"],"($1)"],["(\\d{3})(\\d{7})","$1 $2",["3[0-357]|91"]],["(\\d)(\\d{3})(\\d{7})","$1-$2-$3",["1"],"0$1",0,"$1 $2 $3"]],"0",0,"0([3579]|4(?:[14]4|56))?"],"CR":["506","00","(?:8\\d|90)\\d{8}|(?:[24-8]\\d{3}|3005)\\d{4}",[8,10],[["(\\d{4})(\\d{4})","$1 $2",["[2-7]|8[3-9]"]],["(\\d{3})(\\d{3})(\\d{4})","$1-$2-$3",["[89]"]]],0,0,"(19(?:0[0-2468]|1[09]|20|66|77|99))"],"CU":["53","119","(?:[2-7]|8\\d\\d)\\d{7}|[2-47]\\d{6}|[34]\\d{5}",[6,7,8,10],[["(\\d{2})(\\d{4,6})","$1 $2",["2[1-4]|[34]"],"(0$1)"],["(\\d)(\\d{6,7})","$1 $2",["7"],"(0$1)"],["(\\d)(\\d{7})","$1 $2",["[56]"],"0$1"],["(\\d{3})(\\d{7})","$1 $2",["8"],"0$1"]],"0"],"CV":["238","0","(?:[2-59]\\d\\d|800)\\d{4}",[7],[["(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3",["[2-589]"]]]],"CW":["599","00","(?:[34]1|60|(?:7|9\\d)\\d)\\d{5}",[7,8],[["(\\d{3})(\\d{4})","$1 $2",["[3467]"]],["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["9[4-8]"]]],0,0,0,0,0,"[69]"],"CX":["61","001[14-689]|14(?:1[14]|34|4[17]|[56]6|7[47]|88)0011","1(?:[0-79]\\d{8}(?:\\d{2})?|8[0-24-9]\\d{7})|[148]\\d{8}|1\\d{5,7}",[6,7,8,9,10,12],0,"0",0,"([59]\\d{7})$|0","8$1",0,0,[["8(?:51(?:0(?:01|30|59|88)|1(?:17|46|75)|2(?:22|35))|91(?:00[6-9]|1(?:[28]1|49|78)|2(?:09|63)|3(?:12|26|75)|4(?:56|97)|64\\d|7(?:0[01]|1[0-2])|958))\\d{3}",[9]],["4(?:79[01]|83[0-389]|94[0-4])\\d{5}|4(?:[0-36]\\d|4[047-9]|5[0-25-9]|7[02-8]|8[0-24-9]|9[0-37-9])\\d{6}",[9]],["180(?:0\\d{3}|2)\\d{3}",[7,10]],["190[0-26]\\d{6}",[10]],0,0,0,0,["14(?:5(?:1[0458]|[23][458])|71\\d)\\d{4}",[9]],["13(?:00\\d{6}(?:\\d{2})?|45[0-4]\\d{3})|13\\d{4}",[6,8,10,12]]],"0011"],"CY":["357","00","(?:[279]\\d|[58]0)\\d{6}",[8],[["(\\d{2})(\\d{6})","$1 $2",["[257-9]"]]]],"CZ":["420","00","(?:[2-578]\\d|60)\\d{7}|9\\d{8,11}",[9,10,11,12],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[2-8]|9[015-7]"]],["(\\d{2})(\\d{3})(\\d{3})(\\d{2})","$1 $2 $3 $4",["96"]],["(\\d{2})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["9"]],["(\\d{3})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["9"]]]],"DE":["49","00","[2579]\\d{5,14}|49(?:[34]0|69|8\\d)\\d\\d?|49(?:37|49|60|7[089]|9\\d)\\d{1,3}|49(?:2[024-9]|3[2-689]|7[1-7])\\d{1,8}|(?:1|[368]\\d|4[0-8])\\d{3,13}|49(?:[015]\\d|2[13]|31|[46][1-8])\\d{1,9}",[4,5,6,7,8,9,10,11,12,13,14,15],[["(\\d{2})(\\d{3,13})","$1 $2",["3[02]|40|[68]9"],"0$1"],["(\\d{3})(\\d{3,12})","$1 $2",["2(?:0[1-389]|1[124]|2[18]|3[14])|3(?:[35-9][15]|4[015])|906|(?:2[4-9]|4[2-9]|[579][1-9]|[68][1-8])1","2(?:0[1-389]|12[0-8])|3(?:[35-9][15]|4[015])|906|2(?:[13][14]|2[18])|(?:2[4-9]|4[2-9]|[579][1-9]|[68][1-8])1"],"0$1"],["(\\d{4})(\\d{2,11})","$1 $2",["[24-6]|3(?:[3569][02-46-9]|4[2-4679]|7[2-467]|8[2-46-8])|70[2-8]|8(?:0[2-9]|[1-8])|90[7-9]|[79][1-9]","[24-6]|3(?:3(?:0[1-467]|2[127-9]|3[124578]|7[1257-9]|8[1256]|9[145])|4(?:2[135]|4[13578]|9[1346])|5(?:0[14]|2[1-3589]|6[1-4]|7[13468]|8[13568])|6(?:2[1-489]|3[124-6]|6[13]|7[12579]|8[1-356]|9[135])|7(?:2[1-7]|4[145]|6[1-5]|7[1-4])|8(?:21|3[1468]|6|7[1467]|8[136])|9(?:0[12479]|2[1358]|4[134679]|6[1-9]|7[136]|8[147]|9[1468]))|70[2-8]|8(?:0[2-9]|[1-8])|90[7-9]|[79][1-9]|3[68]4[1347]|3(?:47|60)[1356]|3(?:3[46]|46|5[49])[1246]|3[4579]3[1357]"],"0$1"],["(\\d{3})(\\d{4})","$1 $2",["138"],"0$1"],["(\\d{5})(\\d{2,10})","$1 $2",["3"],"0$1"],["(\\d{3})(\\d{5,11})","$1 $2",["181"],"0$1"],["(\\d{3})(\\d)(\\d{4,10})","$1 $2 $3",["1(?:3|80)|9"],"0$1"],["(\\d{3})(\\d{7,8})","$1 $2",["1[67]"],"0$1"],["(\\d{3})(\\d{7,12})","$1 $2",["8"],"0$1"],["(\\d{5})(\\d{6})","$1 $2",["185","1850","18500"],"0$1"],["(\\d{3})(\\d{4})(\\d{4})","$1 $2 $3",["7"],"0$1"],["(\\d{4})(\\d{7})","$1 $2",["18[68]"],"0$1"],["(\\d{4})(\\d{7})","$1 $2",["15[1279]"],"0$1"],["(\\d{5})(\\d{6})","$1 $2",["15[03568]","15(?:[0568]|31)"],"0$1"],["(\\d{3})(\\d{8})","$1 $2",["18"],"0$1"],["(\\d{3})(\\d{2})(\\d{7,8})","$1 $2 $3",["1(?:6[023]|7)"],"0$1"],["(\\d{4})(\\d{2})(\\d{7})","$1 $2 $3",["15[279]"],"0$1"],["(\\d{3})(\\d{2})(\\d{8})","$1 $2 $3",["15"],"0$1"]],"0"],"DJ":["253","00","(?:2\\d|77)\\d{6}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[27]"]]]],"DK":["45","00","[2-9]\\d{7}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2-9]"]]]],"DM":["1","011","(?:[58]\\d\\d|767|900)\\d{7}",[10],0,"1",0,"([2-7]\\d{6})$|1","767$1",0,"767"],"DO":["1","011","(?:[58]\\d\\d|900)\\d{7}",[10],0,"1",0,0,0,0,"8001|8[024]9"],"DZ":["213","00","(?:[1-4]|[5-79]\\d|80)\\d{7}",[8,9],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[1-4]"],"0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["9"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[5-8]"],"0$1"]],"0"],"EC":["593","00","1\\d{9,10}|(?:[2-7]|9\\d)\\d{7}",[8,9,10,11],[["(\\d)(\\d{3})(\\d{4})","$1 $2-$3",["[2-7]"],"(0$1)",0,"$1-$2-$3"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["9"],"0$1"],["(\\d{4})(\\d{3})(\\d{3,4})","$1 $2 $3",["1"]]],"0"],"EE":["372","00","8\\d{9}|[4578]\\d{7}|(?:[3-8]\\d|90)\\d{5}",[7,8,10],[["(\\d{3})(\\d{4})","$1 $2",["[369]|4[3-8]|5(?:[0-2]|5[0-478]|6[45])|7[1-9]|88","[369]|4[3-8]|5(?:[02]|1(?:[0-8]|95)|5[0-478]|6(?:4[0-4]|5[1-589]))|7[1-9]|88"]],["(\\d{4})(\\d{3,4})","$1 $2",["[45]|8(?:00|[1-49])","[45]|8(?:00[1-9]|[1-49])"]],["(\\d{2})(\\d{2})(\\d{4})","$1 $2 $3",["7"]],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["8"]]]],"EG":["20","00","[189]\\d{8,9}|[24-6]\\d{8}|[135]\\d{7}",[8,9,10],[["(\\d)(\\d{7,8})","$1 $2",["[23]"],"0$1"],["(\\d{2})(\\d{6,7})","$1 $2",["1[35]|[4-6]|8[2468]|9[235-7]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[89]"],"0$1"],["(\\d{2})(\\d{8})","$1 $2",["1"],"0$1"]],"0"],"EH":["212","00","[5-8]\\d{8}",[9],0,"0",0,0,0,0,"528[89]"],"ER":["291","00","[178]\\d{6}",[7],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["[178]"],"0$1"]],"0"],"ES":["34","00","[5-9]\\d{8}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[89]00"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[5-9]"]]]],"ET":["251","00","(?:11|[2-579]\\d)\\d{7}",[9],[["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[1-579]"],"0$1"]],"0"],"FI":["358","00|99(?:[01469]|5(?:[14]1|3[23]|5[59]|77|88|9[09]))","[1-35689]\\d{4}|7\\d{10,11}|(?:[124-7]\\d|3[0-46-9])\\d{8}|[1-9]\\d{5,8}",[5,6,7,8,9,10,11,12],[["(\\d{5})","$1",["20[2-59]"],"0$1"],["(\\d{3})(\\d{3,7})","$1 $2",["(?:[1-3]0|[68])0|70[07-9]"],"0$1"],["(\\d{2})(\\d{4,8})","$1 $2",["[14]|2[09]|50|7[135]"],"0$1"],["(\\d{2})(\\d{6,10})","$1 $2",["7"],"0$1"],["(\\d)(\\d{4,9})","$1 $2",["(?:1[49]|[2568])[1-8]|3(?:0[1-9]|[1-9])|9"],"0$1"]],"0",0,0,0,0,"1[03-79]|[2-9]",0,"00"],"FJ":["679","0(?:0|52)","45\\d{5}|(?:0800\\d|[235-9])\\d{6}",[7,11],[["(\\d{3})(\\d{4})","$1 $2",["[235-9]|45"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["0"]]],0,0,0,0,0,0,0,"00"],"FK":["500","00","[2-7]\\d{4}",[5]],"FM":["691","00","(?:[39]\\d\\d|820)\\d{4}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[389]"]]]],"FO":["298","00","[2-9]\\d{5}",[6],[["(\\d{6})","$1",["[2-9]"]]],0,0,"(10(?:01|[12]0|88))"],"FR":["33","00","[1-9]\\d{8}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"],"0 $1"],["(\\d)(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4 $5",["[1-79]"],"0$1"]],"0"],"GA":["241","00","(?:[067]\\d|11)\\d{6}|[2-7]\\d{6}",[7,8],[["(\\d)(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2-7]"],"0$1"],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["0"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["11|[67]"],"0$1"]],0,0,"0(11\\d{6}|60\\d{6}|61\\d{6}|6[256]\\d{6}|7[467]\\d{6})","$1"],"GB":["44","00","[1-357-9]\\d{9}|[18]\\d{8}|8\\d{6}",[7,9,10],[["(\\d{3})(\\d{4})","$1 $2",["800","8001","80011","800111","8001111"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3",["845","8454","84546","845464"],"0$1"],["(\\d{3})(\\d{6})","$1 $2",["800"],"0$1"],["(\\d{5})(\\d{4,5})","$1 $2",["1(?:38|5[23]|69|76|94)","1(?:(?:38|69)7|5(?:24|39)|768|946)","1(?:3873|5(?:242|39[4-6])|(?:697|768)[347]|9467)"],"0$1"],["(\\d{4})(\\d{5,6})","$1 $2",["1(?:[2-69][02-9]|[78])"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["[25]|7(?:0|6[02-9])","[25]|7(?:0|6(?:[03-9]|2[356]))"],"0$1"],["(\\d{4})(\\d{6})","$1 $2",["7"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[1389]"],"0$1"]],"0",0,0,0,0,0,[["(?:1(?:1(?:3(?:[0-58]\\d\\d|73[0-35])|4(?:(?:[0-5]\\d|70)\\d|69[7-9])|(?:(?:5[0-26-9]|[78][0-49])\\d|6(?:[0-4]\\d|50))\\d)|(?:2(?:(?:0[024-9]|2[3-9]|3[3-79]|4[1-689]|[58][02-9]|6[0-47-9]|7[013-9]|9\\d)\\d|1(?:[0-7]\\d|8[0-3]))|(?:3(?:0\\d|1[0-8]|[25][02-9]|3[02-579]|[468][0-46-9]|7[1-35-79]|9[2-578])|4(?:0[03-9]|[137]\\d|[28][02-57-9]|4[02-69]|5[0-8]|[69][0-79])|5(?:0[1-35-9]|[16]\\d|2[024-9]|3[015689]|4[02-9]|5[03-9]|7[0-35-9]|8[0-468]|9[0-57-9])|6(?:0[034689]|1\\d|2[0-35689]|[38][013-9]|4[1-467]|5[0-69]|6[13-9]|7[0-8]|9[0-24578])|7(?:0[0246-9]|2\\d|3[0236-8]|4[03-9]|5[0-46-9]|6[013-9]|7[0-35-9]|8[024-9]|9[02-9])|8(?:0[35-9]|2[1-57-9]|3[02-578]|4[0-578]|5[124-9]|6[2-69]|7\\d|8[02-9]|9[02569])|9(?:0[02-589]|[18]\\d|2[02-689]|3[1-57-9]|4[2-9]|5[0-579]|6[2-47-9]|7[0-24578]|9[2-57]))\\d)\\d)|2(?:0[013478]|3[0189]|4[017]|8[0-46-9]|9[0-2])\\d{3})\\d{4}|1(?:2(?:0(?:46[1-4]|87[2-9])|545[1-79]|76(?:2\\d|3[1-8]|6[1-6])|9(?:7(?:2[0-4]|3[2-5])|8(?:2[2-8]|7[0-47-9]|8[3-5])))|3(?:6(?:38[2-5]|47[23])|8(?:47[04-9]|64[0157-9]))|4(?:044[1-7]|20(?:2[23]|8\\d)|6(?:0(?:30|5[2-57]|6[1-8]|7[2-8])|140)|8(?:052|87[1-3]))|5(?:2(?:4(?:3[2-79]|6\\d)|76\\d)|6(?:26[06-9]|686))|6(?:06(?:4\\d|7[4-79])|295[5-7]|35[34]\\d|47(?:24|61)|59(?:5[08]|6[67]|74)|9(?:55[0-4]|77[23]))|7(?:26(?:6[13-9]|7[0-7])|(?:442|688)\\d|50(?:2[0-3]|[3-68]2|76))|8(?:27[56]\\d|37(?:5[2-5]|8[239])|843[2-58])|9(?:0(?:0(?:6[1-8]|85)|52\\d)|3583|4(?:66[1-8]|9(?:2[01]|81))|63(?:23|3[1-4])|9561))\\d{3}",[9,10]],["7(?:457[0-57-9]|700[01]|911[028])\\d{5}|7(?:[1-3]\\d\\d|4(?:[0-46-9]\\d|5[0-689])|5(?:0[0-8]|[13-9]\\d|2[0-35-9])|7(?:0[1-9]|[1-7]\\d|8[02-9]|9[0-689])|8(?:[014-9]\\d|[23][0-8])|9(?:[024-9]\\d|1[02-9]|3[0-689]))\\d{6}",[10]],["80[08]\\d{7}|800\\d{6}|8001111"],["(?:8(?:4[2-5]|7[0-3])|9(?:[01]\\d|8[2-49]))\\d{7}|845464\\d",[7,10]],["70\\d{8}",[10]],0,["(?:3[0347]|55)\\d{8}",[10]],["76(?:464|652)\\d{5}|76(?:0[0-28]|2[356]|34|4[01347]|5[49]|6[0-369]|77|8[14]|9[139])\\d{6}",[10]],["56\\d{8}",[10]]],0," x"],"GD":["1","011","(?:473|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","473$1",0,"473"],"GE":["995","00","(?:[3-57]\\d\\d|800)\\d{6}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["70"],"0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["32"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[57]"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[348]"],"0$1"]],"0"],"GF":["594","00","[56]94\\d{6}|(?:80|9\\d)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[56]|9[47]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[89]"],"0$1"]],"0"],"GG":["44","00","(?:1481|[357-9]\\d{3})\\d{6}|8\\d{6}(?:\\d{2})?",[7,9,10],0,"0",0,"([25-9]\\d{5})$|0","1481$1",0,0,[["1481[25-9]\\d{5}",[10]],["7(?:(?:781|839)\\d|911[17])\\d{5}",[10]],["80[08]\\d{7}|800\\d{6}|8001111"],["(?:8(?:4[2-5]|7[0-3])|9(?:[01]\\d|8[0-3]))\\d{7}|845464\\d",[7,10]],["70\\d{8}",[10]],0,["(?:3[0347]|55)\\d{8}",[10]],["76(?:464|652)\\d{5}|76(?:0[0-28]|2[356]|34|4[01347]|5[49]|6[0-369]|77|8[14]|9[139])\\d{6}",[10]],["56\\d{8}",[10]]]],"GH":["233","00","(?:[235]\\d{3}|800)\\d{5}",[8,9],[["(\\d{3})(\\d{5})","$1 $2",["8"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[235]"],"0$1"]],"0"],"GI":["350","00","(?:[25]\\d|60)\\d{6}",[8],[["(\\d{3})(\\d{5})","$1 $2",["2"]]]],"GL":["299","00","(?:19|[2-689]\\d|70)\\d{4}",[6],[["(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3",["19|[2-9]"]]]],"GM":["220","00","[2-9]\\d{6}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[2-9]"]]]],"GN":["224","00","722\\d{6}|(?:3|6\\d)\\d{7}",[8,9],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["3"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[67]"]]]],"GP":["590","00","590\\d{6}|(?:69|80|9\\d)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[569]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"],"0$1"]],"0",0,0,0,0,0,[["590(?:0[1-68]|[14][0-24-9]|2[0-68]|3[1-9]|5[3-579]|[68][0-689]|7[08]|9\\d)\\d{4}"],["69(?:0\\d\\d|1(?:2[2-9]|3[0-5])|4(?:0[89]|1[2-6]|9\\d)|6(?:1[016-9]|5[0-4]|[67]\\d))\\d{4}"],["80[0-5]\\d{6}"],0,0,0,0,0,["9(?:(?:39[5-7]|76[018])\\d|475[0-5])\\d{4}"]]],"GQ":["240","00","222\\d{6}|(?:3\\d|55|[89]0)\\d{7}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[235]"]],["(\\d{3})(\\d{6})","$1 $2",["[89]"]]]],"GR":["30","00","5005000\\d{3}|8\\d{9,11}|(?:[269]\\d|70)\\d{8}",[10,11,12],[["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["21|7"]],["(\\d{4})(\\d{6})","$1 $2",["2(?:2|3[2-57-9]|4[2-469]|5[2-59]|6[2-9]|7[2-69]|8[2-49])|5"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[2689]"]],["(\\d{3})(\\d{3,4})(\\d{5})","$1 $2 $3",["8"]]]],"GT":["502","00","80\\d{6}|(?:1\\d{3}|[2-7])\\d{7}",[8,11],[["(\\d{4})(\\d{4})","$1 $2",["[2-8]"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["1"]]]],"GU":["1","011","(?:[58]\\d\\d|671|900)\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","671$1",0,"671"],"GW":["245","00","[49]\\d{8}|4\\d{6}",[7,9],[["(\\d{3})(\\d{4})","$1 $2",["40"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[49]"]]]],"GY":["592","001","(?:[2-8]\\d{3}|9008)\\d{3}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[2-9]"]]]],"HK":["852","00(?:30|5[09]|[126-9]?)","8[0-46-9]\\d{6,7}|9\\d{4,7}|(?:[2-7]|9\\d{3})\\d{7}",[5,6,7,8,9,11],[["(\\d{3})(\\d{2,5})","$1 $2",["900","9003"]],["(\\d{4})(\\d{4})","$1 $2",["[2-7]|8[1-4]|9(?:0[1-9]|[1-8])"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["8"]],["(\\d{3})(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3 $4",["9"]]],0,0,0,0,0,0,0,"00"],"HN":["504","00","8\\d{10}|[237-9]\\d{7}",[8,11],[["(\\d{4})(\\d{4})","$1-$2",["[237-9]"]]]],"HR":["385","00","(?:[24-69]\\d|3[0-79])\\d{7}|80\\d{5,7}|[1-79]\\d{7}|6\\d{5,6}",[6,7,8,9],[["(\\d{2})(\\d{2})(\\d{2,3})","$1 $2 $3",["6[01]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2,3})","$1 $2 $3",["8"],"0$1"],["(\\d)(\\d{4})(\\d{3})","$1 $2 $3",["1"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["6|7[245]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["9"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[2-57]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["8"],"0$1"]],"0"],"HT":["509","00","(?:[2-489]\\d|55)\\d{6}",[8],[["(\\d{2})(\\d{2})(\\d{4})","$1 $2 $3",["[2-589]"]]]],"HU":["36","00","[235-7]\\d{8}|[1-9]\\d{7}",[8,9],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["1"],"(06 $1)"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[27][2-9]|3[2-7]|4[24-9]|5[2-79]|6|8[2-57-9]|9[2-69]"],"(06 $1)"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[2-9]"],"06 $1"]],"06"],"ID":["62","00[89]","00[1-9]\\d{9,14}|(?:[1-36]|8\\d{5})\\d{6}|00\\d{9}|[1-9]\\d{8,10}|[2-9]\\d{7}",[7,8,9,10,11,12,13,14,15,16,17],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["15"]],["(\\d{2})(\\d{5,9})","$1 $2",["2[124]|[36]1"],"(0$1)"],["(\\d{3})(\\d{5,7})","$1 $2",["800"],"0$1"],["(\\d{3})(\\d{5,8})","$1 $2",["[2-79]"],"(0$1)"],["(\\d{3})(\\d{3,4})(\\d{3})","$1-$2-$3",["8[1-35-9]"],"0$1"],["(\\d{3})(\\d{6,8})","$1 $2",["1"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["804"],"0$1"],["(\\d{3})(\\d)(\\d{3})(\\d{3})","$1 $2 $3 $4",["80"],"0$1"],["(\\d{3})(\\d{4})(\\d{4,5})","$1-$2-$3",["8"],"0$1"]],"0"],"IE":["353","00","(?:1\\d|[2569])\\d{6,8}|4\\d{6,9}|7\\d{8}|8\\d{8,9}",[7,8,9,10],[["(\\d{2})(\\d{5})","$1 $2",["2[24-9]|47|58|6[237-9]|9[35-9]"],"(0$1)"],["(\\d{3})(\\d{5})","$1 $2",["[45]0"],"(0$1)"],["(\\d)(\\d{3,4})(\\d{4})","$1 $2 $3",["1"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[2569]|4[1-69]|7[14]"],"(0$1)"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["70"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["81"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[78]"],"0$1"],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1"]],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["4"],"(0$1)"],["(\\d{2})(\\d)(\\d{3})(\\d{4})","$1 $2 $3 $4",["8"],"0$1"]],"0"],"IL":["972","0(?:0|1[2-9])","1\\d{6}(?:\\d{3,5})?|[57]\\d{8}|[1-489]\\d{7}",[7,8,9,10,11,12],[["(\\d{4})(\\d{3})","$1-$2",["125"]],["(\\d{4})(\\d{2})(\\d{2})","$1-$2-$3",["121"]],["(\\d)(\\d{3})(\\d{4})","$1-$2-$3",["[2-489]"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1-$2-$3",["[57]"],"0$1"],["(\\d{4})(\\d{3})(\\d{3})","$1-$2-$3",["12"]],["(\\d{4})(\\d{6})","$1-$2",["159"]],["(\\d)(\\d{3})(\\d{3})(\\d{3})","$1-$2-$3-$4",["1[7-9]"]],["(\\d{3})(\\d{1,2})(\\d{3})(\\d{4})","$1-$2 $3-$4",["15"]]],"0"],"IM":["44","00","1624\\d{6}|(?:[3578]\\d|90)\\d{8}",[10],0,"0",0,"([25-8]\\d{5})$|0","1624$1",0,"74576|(?:16|7[56])24"],"IN":["91","00","(?:000800|[2-9]\\d\\d)\\d{7}|1\\d{7,12}",[8,9,10,11,12,13],[["(\\d{8})","$1",["5(?:0|2[23]|3[03]|[67]1|88)","5(?:0|2(?:21|3)|3(?:0|3[23])|616|717|888)","5(?:0|2(?:21|3)|3(?:0|3[23])|616|717|8888)"],0,1],["(\\d{4})(\\d{4,5})","$1 $2",["180","1800"],0,1],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["140"],0,1],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["11|2[02]|33|4[04]|79[1-7]|80[2-46]","11|2[02]|33|4[04]|79(?:[1-6]|7[19])|80(?:[2-4]|6[0-589])","11|2[02]|33|4[04]|79(?:[124-6]|3(?:[02-9]|1[0-24-9])|7(?:1|9[1-6]))|80(?:[2-4]|6[0-589])"],"0$1",1],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["1(?:2[0-249]|3[0-25]|4[145]|[68]|7[1257])|2(?:1[257]|3[013]|4[01]|5[0137]|6[0158]|78|8[1568])|3(?:26|4[1-3]|5[34]|6[01489]|7[02-46]|8[159])|4(?:1[36]|2[1-47]|5[12]|6[0-26-9]|7[0-24-9]|8[013-57]|9[014-7])|5(?:1[025]|22|[36][25]|4[28]|5[12]|[78]1)|6(?:12|[2-4]1|5[17]|6[13]|80)|7(?:12|3[134]|4[47]|61|88)|8(?:16|2[014]|3[126]|6[136]|7[078]|8[34]|91)|(?:43|59|75)[15]|(?:1[59]|29|67|72)[14]","1(?:2[0-24]|3[0-25]|4[145]|[59][14]|6[1-9]|7[1257]|8[1-57-9])|2(?:1[257]|3[013]|4[01]|5[0137]|6[058]|78|8[1568]|9[14])|3(?:26|4[1-3]|5[34]|6[01489]|7[02-46]|8[159])|4(?:1[36]|2[1-47]|3[15]|5[12]|6[0-26-9]|7[0-24-9]|8[013-57]|9[014-7])|5(?:1[025]|22|[36][25]|4[28]|[578]1|9[15])|674|7(?:(?:2[14]|3[34]|5[15])[2-6]|61[346]|88[0-8])|8(?:70[2-6]|84[235-7]|91[3-7])|(?:1(?:29|60|8[06])|261|552|6(?:12|[2-47]1|5[17]|6[13]|80)|7(?:12|31|4[47])|8(?:16|2[014]|3[126]|6[136]|7[78]|83))[2-7]","1(?:2[0-24]|3[0-25]|4[145]|[59][14]|6[1-9]|7[1257]|8[1-57-9])|2(?:1[257]|3[013]|4[01]|5[0137]|6[058]|78|8[1568]|9[14])|3(?:26|4[1-3]|5[34]|6[01489]|7[02-46]|8[159])|4(?:1[36]|2[1-47]|3[15]|5[12]|6[0-26-9]|7[0-24-9]|8[013-57]|9[014-7])|5(?:1[025]|22|[36][25]|4[28]|[578]1|9[15])|6(?:12(?:[2-6]|7[0-8])|74[2-7])|7(?:(?:2[14]|5[15])[2-6]|3171|61[346]|88(?:[2-7]|82))|8(?:70[2-6]|84(?:[2356]|7[19])|91(?:[3-6]|7[19]))|73[134][2-6]|(?:74[47]|8(?:16|2[014]|3[126]|6[136]|7[78]|83))(?:[2-6]|7[19])|(?:1(?:29|60|8[06])|261|552|6(?:[2-4]1|5[17]|6[13]|7(?:1|4[0189])|80)|7(?:12|88[01]))[2-7]"],"0$1",1],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1(?:[2-479]|5[0235-9])|[2-5]|6(?:1[1358]|2[2457-9]|3[2-5]|4[235-7]|5[2-689]|6[24578]|7[235689]|8[1-6])|7(?:1[013-9]|28|3[129]|4[1-35689]|5[29]|6[02-5]|70)|807","1(?:[2-479]|5[0235-9])|[2-5]|6(?:1[1358]|2(?:[2457]|84|95)|3(?:[2-4]|55)|4[235-7]|5[2-689]|6[24578]|7[235689]|8[1-6])|7(?:1(?:[013-8]|9[6-9])|28[6-8]|3(?:17|2[0-49]|9[2-57])|4(?:1[2-4]|[29][0-7]|3[0-8]|[56]|8[0-24-7])|5(?:2[1-3]|9[0-6])|6(?:0[5689]|2[5-9]|3[02-8]|4|5[0-367])|70[13-7])|807[19]","1(?:[2-479]|5(?:[0236-9]|5[013-9]))|[2-5]|6(?:2(?:84|95)|355|83)|73179|807(?:1|9[1-3])|(?:1552|6(?:1[1358]|2[2457]|3[2-4]|4[235-7]|5[2-689]|6[24578]|7[235689]|8[124-6])\\d|7(?:1(?:[013-8]\\d|9[6-9])|28[6-8]|3(?:2[0-49]|9[2-57])|4(?:1[2-4]|[29][0-7]|3[0-8]|[56]\\d|8[0-24-7])|5(?:2[1-3]|9[0-6])|6(?:0[5689]|2[5-9]|3[02-8]|4\\d|5[0-367])|70[13-7]))[2-7]"],"0$1",1],["(\\d{5})(\\d{5})","$1 $2",["[6-9]"],"0$1",1],["(\\d{4})(\\d{2,4})(\\d{4})","$1 $2 $3",["1(?:6|8[06])","1(?:6|8[06]0)"],0,1],["(\\d{4})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["18"],0,1]],"0"],"IO":["246","00","3\\d{6}",[7],[["(\\d{3})(\\d{4})","$1 $2",["3"]]]],"IQ":["964","00","(?:1|7\\d\\d)\\d{7}|[2-6]\\d{7,8}",[8,9,10],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["1"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[2-6]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["7"],"0$1"]],"0"],"IR":["98","00","[1-9]\\d{9}|(?:[1-8]\\d\\d|9)\\d{3,4}",[4,5,6,7,10],[["(\\d{4,5})","$1",["96"],"0$1"],["(\\d{2})(\\d{4,5})","$1 $2",["(?:1[137]|2[13-68]|3[1458]|4[145]|5[1468]|6[16]|7[1467]|8[13467])[12689]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["9"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["[1-8]"],"0$1"]],"0"],"IS":["354","00|1(?:0(?:01|[12]0)|100)","(?:38\\d|[4-9])\\d{6}",[7,9],[["(\\d{3})(\\d{4})","$1 $2",["[4-9]"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["3"]]],0,0,0,0,0,0,0,"00"],"IT":["39","00","0\\d{5,10}|1\\d{8,10}|3(?:[0-8]\\d{7,10}|9\\d{7,8})|(?:43|55|70)\\d{8}|8\\d{5}(?:\\d{2,4})?",[6,7,8,9,10,11,12],[["(\\d{2})(\\d{4,6})","$1 $2",["0[26]"]],["(\\d{3})(\\d{3,6})","$1 $2",["0[13-57-9][0159]|8(?:03|4[17]|9[2-5])","0[13-57-9][0159]|8(?:03|4[17]|9(?:2|3[04]|[45][0-4]))"]],["(\\d{4})(\\d{2,6})","$1 $2",["0(?:[13-579][2-46-8]|8[236-8])"]],["(\\d{4})(\\d{4})","$1 $2",["894"]],["(\\d{2})(\\d{3,4})(\\d{4})","$1 $2 $3",["0[26]|5"]],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["1(?:44|[679])|[378]|43"]],["(\\d{3})(\\d{3,4})(\\d{4})","$1 $2 $3",["0[13-57-9][0159]|14"]],["(\\d{2})(\\d{4})(\\d{5})","$1 $2 $3",["0[26]"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["0"]],["(\\d{3})(\\d{4})(\\d{4,5})","$1 $2 $3",["3"]]],0,0,0,0,0,0,[["0669[0-79]\\d{1,6}|0(?:1(?:[0159]\\d|[27][1-5]|31|4[1-4]|6[1356]|8[2-57])|2\\d\\d|3(?:[0159]\\d|2[1-4]|3[12]|[48][1-6]|6[2-59]|7[1-7])|4(?:[0159]\\d|[23][1-9]|4[245]|6[1-5]|7[1-4]|81)|5(?:[0159]\\d|2[1-5]|3[2-6]|4[1-79]|6[4-6]|7[1-578]|8[3-8])|6(?:[0-57-9]\\d|6[0-8])|7(?:[0159]\\d|2[12]|3[1-7]|4[2-46]|6[13569]|7[13-6]|8[1-59])|8(?:[0159]\\d|2[3-578]|3[1-356]|[6-8][1-5])|9(?:[0159]\\d|[238][1-5]|4[12]|6[1-8]|7[1-6]))\\d{2,7}",[6,7,8,9,10,11]],["3[2-9]\\d{7,8}|(?:31|43)\\d{8}",[9,10]],["80(?:0\\d{3}|3)\\d{3}",[6,9]],["(?:0878\\d{3}|89(?:2\\d|3[04]|4(?:[0-4]|[5-9]\\d\\d)|5[0-4]))\\d\\d|(?:1(?:44|6[346])|89(?:38|5[5-9]|9))\\d{6}",[6,8,9,10]],["1(?:78\\d|99)\\d{6}",[9,10]],["3[2-8]\\d{9,10}",[11,12]],0,0,["55\\d{8}",[10]],["84(?:[08]\\d{3}|[17])\\d{3}",[6,9]]]],"JE":["44","00","1534\\d{6}|(?:[3578]\\d|90)\\d{8}",[10],0,"0",0,"([0-24-8]\\d{5})$|0","1534$1",0,0,[["1534[0-24-8]\\d{5}"],["7(?:(?:(?:50|82)9|937)\\d|7(?:00[378]|97\\d))\\d{5}"],["80(?:07(?:35|81)|8901)\\d{4}"],["(?:8(?:4(?:4(?:4(?:05|42|69)|703)|5(?:041|800))|7(?:0002|1206))|90(?:066[59]|1810|71(?:07|55)))\\d{4}"],["701511\\d{4}"],0,["(?:3(?:0(?:07(?:35|81)|8901)|3\\d{4}|4(?:4(?:4(?:05|42|69)|703)|5(?:041|800))|7(?:0002|1206))|55\\d{4})\\d{4}"],["76(?:464|652)\\d{5}|76(?:0[0-28]|2[356]|34|4[01347]|5[49]|6[0-369]|77|8[14]|9[139])\\d{6}"],["56\\d{8}"]]],"JM":["1","011","(?:[58]\\d\\d|658|900)\\d{7}",[10],0,"1",0,0,0,0,"658|876"],"JO":["962","00","(?:(?:[2689]|7\\d)\\d|32|53)\\d{6}",[8,9],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["[2356]|87"],"(0$1)"],["(\\d{3})(\\d{5,6})","$1 $2",["[89]"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["70"],"0$1"],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["7"],"0$1"]],"0"],"JP":["81","010","00[1-9]\\d{6,14}|[257-9]\\d{9}|(?:00|[1-9]\\d\\d)\\d{6}",[8,9,10,11,12,13,14,15,16,17],[["(\\d{3})(\\d{3})(\\d{3})","$1-$2-$3",["(?:12|57|99)0"],"0$1"],["(\\d{4})(\\d)(\\d{4})","$1-$2-$3",["1(?:26|3[79]|4[56]|5[4-68]|6[3-5])|499|5(?:76|97)|746|8(?:3[89]|47|51)|9(?:80|9[16])","1(?:267|3(?:7[247]|9[278])|466|5(?:47|58|64)|6(?:3[245]|48|5[4-68]))|499[2468]|5(?:76|97)9|7468|8(?:3(?:8[7-9]|96)|477|51[2-9])|9(?:802|9(?:1[23]|69))|1(?:45|58)[67]","1(?:267|3(?:7[247]|9[278])|466|5(?:47|58|64)|6(?:3[245]|48|5[4-68]))|499[2468]|5(?:769|979[2-69])|7468|8(?:3(?:8[7-9]|96[2457-9])|477|51[2-9])|9(?:802|9(?:1[23]|69))|1(?:45|58)[67]"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1-$2-$3",["60"],"0$1"],["(\\d)(\\d{4})(\\d{4})","$1-$2-$3",["[36]|4(?:2[09]|7[01])","[36]|4(?:2(?:0|9[02-69])|7(?:0[019]|1))"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1-$2-$3",["1(?:1|5[45]|77|88|9[69])|2(?:2[1-37]|3[0-269]|4[59]|5|6[24]|7[1-358]|8[1369]|9[0-38])|4(?:[28][1-9]|3[0-57]|[45]|6[248]|7[2-579]|9[29])|5(?:2|3[0459]|4[0-369]|5[29]|8[02389]|9[0-389])|7(?:2[02-46-9]|34|[58]|6[0249]|7[57]|9[2-6])|8(?:2[124589]|3[26-9]|49|51|6|7[0-468]|8[68]|9[019])|9(?:[23][1-9]|4[15]|5[138]|6[1-3]|7[156]|8[189]|9[1-489])","1(?:1|5(?:4[018]|5[017])|77|88|9[69])|2(?:2(?:[127]|3[014-9])|3[0-269]|4[59]|5(?:[1-3]|5[0-69]|9[19])|62|7(?:[1-35]|8[0189])|8(?:[16]|3[0134]|9[0-5])|9(?:[028]|17))|4(?:2(?:[13-79]|8[014-6])|3[0-57]|[45]|6[248]|7[2-47]|8[1-9]|9[29])|5(?:2|3(?:[045]|9[0-8])|4[0-369]|5[29]|8[02389]|9[0-3])|7(?:2[02-46-9]|34|[58]|6[0249]|7[57]|9(?:[23]|4[0-59]|5[01569]|6[0167]))|8(?:2(?:[1258]|4[0-39]|9[0-2469])|3(?:[29]|60)|49|51|6(?:[0-24]|36|5[0-3589]|7[23]|9[01459])|7[0-468]|8[68])|9(?:[23][1-9]|4[15]|5[138]|6[1-3]|7[156]|8[189]|9(?:[1289]|3[34]|4[0178]))|(?:264|837)[016-9]|2(?:57|93)[015-9]|(?:25[0468]|422|838)[01]|(?:47[59]|59[89]|8(?:6[68]|9))[019]","1(?:1|5(?:4[018]|5[017])|77|88|9[69])|2(?:2[127]|3[0-269]|4[59]|5(?:[1-3]|5[0-69]|9(?:17|99))|6(?:2|4[016-9])|7(?:[1-35]|8[0189])|8(?:[16]|3[0134]|9[0-5])|9(?:[028]|17))|4(?:2(?:[13-79]|8[014-6])|3[0-57]|[45]|6[248]|7[2-47]|9[29])|5(?:2|3(?:[045]|9(?:[0-58]|6[4-9]|7[0-35689]))|4[0-369]|5[29]|8[02389]|9[0-3])|7(?:2[02-46-9]|34|[58]|6[0249]|7[57]|9(?:[23]|4[0-59]|5[01569]|6[0167]))|8(?:2(?:[1258]|4[0-39]|9[0169])|3(?:[29]|60|7(?:[017-9]|6[6-8]))|49|51|6(?:[0-24]|36[2-57-9]|5(?:[0-389]|5[23])|6(?:[01]|9[178])|7(?:2[2-468]|3[78])|9[0145])|7[0-468]|8[68])|9(?:4[15]|5[138]|7[156]|8[189]|9(?:[1289]|3(?:31|4[357])|4[0178]))|(?:8294|96)[1-3]|2(?:57|93)[015-9]|(?:223|8699)[014-9]|(?:25[0468]|422|838)[01]|(?:48|8292|9[23])[1-9]|(?:47[59]|59[89]|8(?:68|9))[019]"],"0$1"],["(\\d{3})(\\d{2})(\\d{4})","$1-$2-$3",["[14]|[289][2-9]|5[3-9]|7[2-4679]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1-$2-$3",["800"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1-$2-$3",["[257-9]"],"0$1"]],"0",0,"(000[259]\\d{6})$|(?:(?:003768)0?)|0","$1"],"KE":["254","000","(?:[17]\\d\\d|900)\\d{6}|(?:2|80)0\\d{6,7}|[4-6]\\d{6,8}",[7,8,9,10],[["(\\d{2})(\\d{5,7})","$1 $2",["[24-6]"],"0$1"],["(\\d{3})(\\d{6})","$1 $2",["[17]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["[89]"],"0$1"]],"0"],"KG":["996","00","8\\d{9}|[235-9]\\d{8}",[9,10],[["(\\d{4})(\\d{5})","$1 $2",["3(?:1[346]|[24-79])"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[235-79]|88"],"0$1"],["(\\d{3})(\\d{3})(\\d)(\\d{2,3})","$1 $2 $3 $4",["8"],"0$1"]],"0"],"KH":["855","00[14-9]","1\\d{9}|[1-9]\\d{7,8}",[8,9,10],[["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[1-9]"],"0$1"],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1"]]],"0"],"KI":["686","00","(?:[37]\\d|6[0-79])\\d{6}|(?:[2-48]\\d|50)\\d{3}",[5,8],0,"0"],"KM":["269","00","[3478]\\d{6}",[7],[["(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3",["[3478]"]]]],"KN":["1","011","(?:[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-7]\\d{6})$|1","869$1",0,"869"],"KP":["850","00|99","85\\d{6}|(?:19\\d|[2-7])\\d{7}",[8,10],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["8"],"0$1"],["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["[2-7]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["1"],"0$1"]],"0"],"KR":["82","00(?:[125689]|3(?:[46]5|91)|7(?:00|27|3|55|6[126]))","00[1-9]\\d{8,11}|(?:[12]|5\\d{3})\\d{7}|[13-6]\\d{9}|(?:[1-6]\\d|80)\\d{7}|[3-6]\\d{4,5}|(?:00|7)0\\d{8}",[5,6,8,9,10,11,12,13,14],[["(\\d{2})(\\d{3,4})","$1-$2",["(?:3[1-3]|[46][1-4]|5[1-5])1"],"0$1"],["(\\d{4})(\\d{4})","$1-$2",["1"]],["(\\d)(\\d{3,4})(\\d{4})","$1-$2-$3",["2"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1-$2-$3",["[36]0|8"],"0$1"],["(\\d{2})(\\d{3,4})(\\d{4})","$1-$2-$3",["[1346]|5[1-5]"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1-$2-$3",["[57]"],"0$1"],["(\\d{2})(\\d{5})(\\d{4})","$1-$2-$3",["5"],"0$1"]],"0",0,"0(8(?:[1-46-8]|5\\d\\d))?"],"KW":["965","00","18\\d{5}|(?:[2569]\\d|41)\\d{6}",[7,8],[["(\\d{4})(\\d{3,4})","$1 $2",["[169]|2(?:[235]|4[1-35-9])|52"]],["(\\d{3})(\\d{5})","$1 $2",["[245]"]]]],"KY":["1","011","(?:345|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","345$1",0,"345"],"KZ":["7","810","(?:33622|8\\d{8})\\d{5}|[78]\\d{9}",[10,14],0,"8",0,0,0,0,"33|7",0,"8~10"],"LA":["856","00","[23]\\d{9}|3\\d{8}|(?:[235-8]\\d|41)\\d{6}",[8,9,10],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["2[13]|3[14]|[4-8]"],"0$1"],["(\\d{2})(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3 $4",["30[0135-9]"],"0$1"],["(\\d{2})(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3 $4",["[23]"],"0$1"]],"0"],"LB":["961","00","[27-9]\\d{7}|[13-9]\\d{6}",[7,8],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["[13-69]|7(?:[2-57]|62|8[0-7]|9[04-9])|8[02-9]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[27-9]"]]],"0"],"LC":["1","011","(?:[58]\\d\\d|758|900)\\d{7}",[10],0,"1",0,"([2-8]\\d{6})$|1","758$1",0,"758"],"LI":["423","00","[68]\\d{8}|(?:[2378]\\d|90)\\d{5}",[7,9],[["(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3",["[2379]|8(?:0[09]|7)","[2379]|8(?:0(?:02|9)|7)"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["8"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["69"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["6"]]],"0",0,"(1001)|0"],"LK":["94","00","[1-9]\\d{8}",[9],[["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["7"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[1-689]"],"0$1"]],"0"],"LR":["231","00","(?:[245]\\d|33|77|88)\\d{7}|(?:2\\d|[4-6])\\d{6}",[7,8,9],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["4[67]|[56]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["2"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[2-578]"],"0$1"]],"0"],"LS":["266","00","(?:[256]\\d\\d|800)\\d{5}",[8],[["(\\d{4})(\\d{4})","$1 $2",["[2568]"]]]],"LT":["370","00","(?:[3469]\\d|52|[78]0)\\d{6}",[8],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["52[0-7]"],"(0-$1)",1],["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["[7-9]"],"0 $1",1],["(\\d{2})(\\d{6})","$1 $2",["37|4(?:[15]|6[1-8])"],"(0-$1)",1],["(\\d{3})(\\d{5})","$1 $2",["[3-6]"],"(0-$1)",1]],"0",0,"[08]"],"LU":["352","00","35[013-9]\\d{4,8}|6\\d{8}|35\\d{2,4}|(?:[2457-9]\\d|3[0-46-9])\\d{2,9}",[4,5,6,7,8,9,10,11],[["(\\d{2})(\\d{3})","$1 $2",["2(?:0[2-689]|[2-9])|[3-57]|8(?:0[2-9]|[13-9])|9(?:0[89]|[2-579])"]],["(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3",["2(?:0[2-689]|[2-9])|[3-57]|8(?:0[2-9]|[13-9])|9(?:0[89]|[2-579])"]],["(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3",["20[2-689]"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{1,2})","$1 $2 $3 $4",["2(?:[0367]|4[3-8])"]],["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["80[01]|90[015]"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3 $4",["20"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["6"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})(\\d{1,2})","$1 $2 $3 $4 $5",["2(?:[0367]|4[3-8])"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{1,5})","$1 $2 $3 $4",["[3-57]|8[13-9]|9(?:0[89]|[2-579])|(?:2|80)[2-9]"]]],0,0,"(15(?:0[06]|1[12]|[35]5|4[04]|6[26]|77|88|99)\\d)"],"LV":["371","00","(?:[268]\\d|90)\\d{6}",[8],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[269]|8[01]"]]]],"LY":["218","00","[2-9]\\d{8}",[9],[["(\\d{2})(\\d{7})","$1-$2",["[2-9]"],"0$1"]],"0"],"MA":["212","00","[5-8]\\d{8}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["5[45]"],"0$1"],["(\\d{4})(\\d{5})","$1-$2",["5(?:2[2-46-9]|3[3-9]|9)|8(?:0[89]|92)"],"0$1"],["(\\d{2})(\\d{7})","$1-$2",["8"],"0$1"],["(\\d{3})(\\d{6})","$1-$2",["[5-7]"],"0$1"]],"0",0,0,0,0,0,[["5(?:2(?:[0-25-79]\\d|3[1-578]|4[02-46-8]|8[0235-7])|3(?:[0-47]\\d|5[02-9]|6[02-8]|8[014-9]|9[3-9])|(?:4[067]|5[03])\\d)\\d{5}"],["(?:6(?:[0-79]\\d|8[0-247-9])|7(?:[0167]\\d|2[0-4]|5[01]|8[0-3]))\\d{6}"],["80[0-7]\\d{6}"],["89\\d{7}"],0,0,0,0,["(?:592(?:4[0-2]|93)|80[89]\\d\\d)\\d{4}"]]],"MC":["377","00","(?:[3489]|6\\d)\\d{7}",[8,9],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["4"],"0$1"],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[389]"]],["(\\d)(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4 $5",["6"],"0$1"]],"0"],"MD":["373","00","(?:[235-7]\\d|[89]0)\\d{6}",[8],[["(\\d{3})(\\d{5})","$1 $2",["[89]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["22|3"],"0$1"],["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["[25-7]"],"0$1"]],"0"],"ME":["382","00","(?:20|[3-79]\\d)\\d{6}|80\\d{6,7}",[8,9],[["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[2-9]"],"0$1"]],"0"],"MF":["590","00","590\\d{6}|(?:69|80|9\\d)\\d{7}",[9],0,"0",0,0,0,0,0,[["590(?:0[079]|[14]3|[27][79]|3[03-7]|5[0-268]|87)\\d{4}"],["69(?:0\\d\\d|1(?:2[2-9]|3[0-5])|4(?:0[89]|1[2-6]|9\\d)|6(?:1[016-9]|5[0-4]|[67]\\d))\\d{4}"],["80[0-5]\\d{6}"],0,0,0,0,0,["9(?:(?:39[5-7]|76[018])\\d|475[0-5])\\d{4}"]]],"MG":["261","00","[23]\\d{8}",[9],[["(\\d{2})(\\d{2})(\\d{3})(\\d{2})","$1 $2 $3 $4",["[23]"],"0$1"]],"0",0,"([24-9]\\d{6})$|0","20$1"],"MH":["692","011","329\\d{4}|(?:[256]\\d|45)\\d{5}",[7],[["(\\d{3})(\\d{4})","$1-$2",["[2-6]"]]],"1"],"MK":["389","00","[2-578]\\d{7}",[8],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["2|34[47]|4(?:[37]7|5[47]|64)"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[347]"],"0$1"],["(\\d{3})(\\d)(\\d{2})(\\d{2})","$1 $2 $3 $4",["[58]"],"0$1"]],"0"],"ML":["223","00","[24-9]\\d{7}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[24-9]"]]]],"MM":["95","00","1\\d{5,7}|95\\d{6}|(?:[4-7]|9[0-46-9])\\d{6,8}|(?:2|8\\d)\\d{5,8}",[6,7,8,9,10],[["(\\d)(\\d{2})(\\d{3})","$1 $2 $3",["16|2"],"0$1"],["(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3",["[45]|6(?:0[23]|[1-689]|7[235-7])|7(?:[0-4]|5[2-7])|8[1-6]"],"0$1"],["(\\d)(\\d{3})(\\d{3,4})","$1 $2 $3",["[12]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[4-7]|8[1-35]"],"0$1"],["(\\d)(\\d{3})(\\d{4,6})","$1 $2 $3",["9(?:2[0-4]|[35-9]|4[137-9])"],"0$1"],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["2"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["8"],"0$1"],["(\\d)(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["92"],"0$1"],["(\\d)(\\d{5})(\\d{4})","$1 $2 $3",["9"],"0$1"]],"0"],"MN":["976","001","[12]\\d{7,9}|[5-9]\\d{7}",[8,9,10],[["(\\d{2})(\\d{2})(\\d{4})","$1 $2 $3",["[12]1"],"0$1"],["(\\d{4})(\\d{4})","$1 $2",["[5-9]"]],["(\\d{3})(\\d{5,6})","$1 $2",["[12]2[1-3]"],"0$1"],["(\\d{4})(\\d{5,6})","$1 $2",["[12](?:27|3[2-8]|4[2-68]|5[1-4689])","[12](?:27|3[2-8]|4[2-68]|5[1-4689])[0-3]"],"0$1"],["(\\d{5})(\\d{4,5})","$1 $2",["[12]"],"0$1"]],"0"],"MO":["853","00","0800\\d{3}|(?:28|[68]\\d)\\d{6}",[7,8],[["(\\d{4})(\\d{3})","$1 $2",["0"]],["(\\d{4})(\\d{4})","$1 $2",["[268]"]]]],"MP":["1","011","[58]\\d{9}|(?:67|90)0\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","670$1",0,"670"],"MQ":["596","00","596\\d{6}|(?:69|80|9\\d)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[569]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"],"0$1"]],"0"],"MR":["222","00","(?:[2-4]\\d\\d|800)\\d{5}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2-48]"]]]],"MS":["1","011","(?:[58]\\d\\d|664|900)\\d{7}",[10],0,"1",0,"([34]\\d{6})$|1","664$1",0,"664"],"MT":["356","00","3550\\d{4}|(?:[2579]\\d\\d|800)\\d{5}",[8],[["(\\d{4})(\\d{4})","$1 $2",["[2357-9]"]]]],"MU":["230","0(?:0|[24-7]0|3[03])","(?:[57]|8\\d\\d)\\d{7}|[2-468]\\d{6}",[7,8,10],[["(\\d{3})(\\d{4})","$1 $2",["[2-46]|8[013]"]],["(\\d{4})(\\d{4})","$1 $2",["[57]"]],["(\\d{5})(\\d{5})","$1 $2",["8"]]],0,0,0,0,0,0,0,"020"],"MV":["960","0(?:0|19)","(?:800|9[0-57-9]\\d)\\d{7}|[34679]\\d{6}",[7,10],[["(\\d{3})(\\d{4})","$1-$2",["[34679]"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[89]"]]],0,0,0,0,0,0,0,"00"],"MW":["265","00","(?:[1289]\\d|31|77)\\d{7}|1\\d{6}",[7,9],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["1[2-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["2"],"0$1"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[137-9]"],"0$1"]],"0"],"MX":["52","0[09]","[2-9]\\d{9}",[10],[["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["33|5[56]|81"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[2-9]"]]],0,0,0,0,0,0,0,"00"],"MY":["60","00","1\\d{8,9}|(?:3\\d|[4-9])\\d{7}",[8,9,10],[["(\\d)(\\d{3})(\\d{4})","$1-$2 $3",["[4-79]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1-$2 $3",["1(?:[02469]|[378][1-9]|53)|8","1(?:[02469]|[37][1-9]|53|8(?:[1-46-9]|5[7-9]))|8"],"0$1"],["(\\d)(\\d{4})(\\d{4})","$1-$2 $3",["3"],"0$1"],["(\\d)(\\d{3})(\\d{2})(\\d{4})","$1-$2-$3-$4",["1(?:[367]|80)"]],["(\\d{3})(\\d{3})(\\d{4})","$1-$2 $3",["15"],"0$1"],["(\\d{2})(\\d{4})(\\d{4})","$1-$2 $3",["1"],"0$1"]],"0"],"MZ":["258","00","(?:2|8\\d)\\d{7}",[8,9],[["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["2|8[2-79]"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["8"]]]],"NA":["264","00","[68]\\d{7,8}",[8,9],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["88"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["6"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["87"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["8"],"0$1"]],"0"],"NC":["687","00","(?:050|[2-57-9]\\d\\d)\\d{3}",[6],[["(\\d{2})(\\d{2})(\\d{2})","$1.$2.$3",["[02-57-9]"]]]],"NE":["227","00","[027-9]\\d{7}",[8],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["08"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[089]|2[013]|7[0467]"]]]],"NF":["672","00","[13]\\d{5}",[6],[["(\\d{2})(\\d{4})","$1 $2",["1[0-3]"]],["(\\d)(\\d{5})","$1 $2",["[13]"]]],0,0,"([0-258]\\d{4})$","3$1"],"NG":["234","009","38\\d{6}|[78]\\d{9,13}|(?:20|9\\d)\\d{8}",[8,10,11,12,13,14],[["(\\d{2})(\\d{3})(\\d{2,3})","$1 $2 $3",["3"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["[7-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["20[129]"],"0$1"],["(\\d{4})(\\d{2})(\\d{4})","$1 $2 $3",["2"],"0$1"],["(\\d{3})(\\d{4})(\\d{4,5})","$1 $2 $3",["[78]"],"0$1"],["(\\d{3})(\\d{5})(\\d{5,6})","$1 $2 $3",["[78]"],"0$1"]],"0"],"NI":["505","00","(?:1800|[25-8]\\d{3})\\d{4}",[8],[["(\\d{4})(\\d{4})","$1 $2",["[125-8]"]]]],"NL":["31","00","(?:[124-7]\\d\\d|3(?:[02-9]\\d|1[0-8]))\\d{6}|8\\d{6,9}|9\\d{6,10}|1\\d{4,5}",[5,6,7,8,9,10,11],[["(\\d{3})(\\d{4,7})","$1 $2",["[89]0"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["66"],"0$1"],["(\\d)(\\d{8})","$1 $2",["6"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["1[16-8]|2[259]|3[124]|4[17-9]|5[124679]"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[1-578]|91"],"0$1"],["(\\d{3})(\\d{3})(\\d{5})","$1 $2 $3",["9"],"0$1"]],"0"],"NO":["47","00","(?:0|[2-9]\\d{3})\\d{4}",[5,8],[["(\\d{3})(\\d{2})(\\d{3})","$1 $2 $3",["8"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2-79]"]]],0,0,0,0,0,"[02-689]|7[0-8]"],"NP":["977","00","(?:1\\d|9)\\d{9}|[1-9]\\d{7}",[8,10,11],[["(\\d)(\\d{7})","$1-$2",["1[2-6]"],"0$1"],["(\\d{2})(\\d{6})","$1-$2",["1[01]|[2-8]|9(?:[1-59]|[67][2-6])"],"0$1"],["(\\d{3})(\\d{7})","$1-$2",["9"]]],"0"],"NR":["674","00","(?:444|(?:55|8\\d)\\d|666)\\d{4}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[4-68]"]]]],"NU":["683","00","(?:[4-7]|888\\d)\\d{3}",[4,7],[["(\\d{3})(\\d{4})","$1 $2",["8"]]]],"NZ":["64","0(?:0|161)","[1289]\\d{9}|50\\d{5}(?:\\d{2,3})?|[27-9]\\d{7,8}|(?:[34]\\d|6[0-35-9])\\d{6}|8\\d{4,6}",[5,6,7,8,9,10],[["(\\d{2})(\\d{3,8})","$1 $2",["8[1-79]"],"0$1"],["(\\d{3})(\\d{2})(\\d{2,3})","$1 $2 $3",["50[036-8]|8|90","50(?:[0367]|88)|8|90"],"0$1"],["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["24|[346]|7[2-57-9]|9[2-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["2(?:10|74)|[589]"],"0$1"],["(\\d{2})(\\d{3,4})(\\d{4})","$1 $2 $3",["1|2[028]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,5})","$1 $2 $3",["2(?:[169]|7[0-35-9])|7"],"0$1"]],"0",0,0,0,0,0,0,"00"],"OM":["968","00","(?:1505|[279]\\d{3}|500)\\d{4}|800\\d{5,6}",[7,8,9],[["(\\d{3})(\\d{4,6})","$1 $2",["[58]"]],["(\\d{2})(\\d{6})","$1 $2",["2"]],["(\\d{4})(\\d{4})","$1 $2",["[179]"]]]],"PA":["507","00","(?:00800|8\\d{3})\\d{6}|[68]\\d{7}|[1-57-9]\\d{6}",[7,8,10,11],[["(\\d{3})(\\d{4})","$1-$2",["[1-57-9]"]],["(\\d{4})(\\d{4})","$1-$2",["[68]"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["8"]]]],"PE":["51","00|19(?:1[124]|77|90)00","(?:[14-8]|9\\d)\\d{7}",[8,9],[["(\\d{3})(\\d{5})","$1 $2",["80"],"(0$1)"],["(\\d)(\\d{7})","$1 $2",["1"],"(0$1)"],["(\\d{2})(\\d{6})","$1 $2",["[4-8]"],"(0$1)"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["9"]]],"0",0,0,0,0,0,0,"00"," Anexo "],"PF":["689","00","4\\d{5}(?:\\d{2})?|8\\d{7,8}",[6,8,9],[["(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3",["44"]],["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["4|8[7-9]"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"]]]],"PG":["675","00|140[1-3]","(?:180|[78]\\d{3})\\d{4}|(?:[2-589]\\d|64)\\d{5}",[7,8],[["(\\d{3})(\\d{4})","$1 $2",["18|[2-69]|85"]],["(\\d{4})(\\d{4})","$1 $2",["[78]"]]],0,0,0,0,0,0,0,"00"],"PH":["63","00","(?:[2-7]|9\\d)\\d{8}|2\\d{5}|(?:1800|8)\\d{7,9}",[6,8,9,10,11,12,13],[["(\\d)(\\d{5})","$1 $2",["2"],"(0$1)"],["(\\d{4})(\\d{4,6})","$1 $2",["3(?:23|39|46)|4(?:2[3-6]|[35]9|4[26]|76)|544|88[245]|(?:52|64|86)2","3(?:230|397|461)|4(?:2(?:35|[46]4|51)|396|4(?:22|63)|59[347]|76[15])|5(?:221|446)|642[23]|8(?:622|8(?:[24]2|5[13]))"],"(0$1)"],["(\\d{5})(\\d{4})","$1 $2",["346|4(?:27|9[35])|883","3469|4(?:279|9(?:30|56))|8834"],"(0$1)"],["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["2"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[3-7]|8[2-8]"],"(0$1)"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["[89]"],"0$1"],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["1"]],["(\\d{4})(\\d{1,2})(\\d{3})(\\d{4})","$1 $2 $3 $4",["1"]]],"0"],"PK":["92","00","122\\d{6}|[24-8]\\d{10,11}|9(?:[013-9]\\d{8,10}|2(?:[01]\\d\\d|2(?:[06-8]\\d|1[01]))\\d{7})|(?:[2-8]\\d{3}|92(?:[0-7]\\d|8[1-9]))\\d{6}|[24-9]\\d{8}|[89]\\d{7}",[8,9,10,11,12],[["(\\d{3})(\\d{3})(\\d{2,7})","$1 $2 $3",["[89]0"],"0$1"],["(\\d{4})(\\d{5})","$1 $2",["1"]],["(\\d{3})(\\d{6,7})","$1 $2",["2(?:3[2358]|4[2-4]|9[2-8])|45[3479]|54[2-467]|60[468]|72[236]|8(?:2[2-689]|3[23578]|4[3478]|5[2356])|9(?:2[2-8]|3[27-9]|4[2-6]|6[3569]|9[25-8])","9(?:2[3-8]|98)|(?:2(?:3[2358]|4[2-4]|9[2-8])|45[3479]|54[2-467]|60[468]|72[236]|8(?:2[2-689]|3[23578]|4[3478]|5[2356])|9(?:22|3[27-9]|4[2-6]|6[3569]|9[25-7]))[2-9]"],"(0$1)"],["(\\d{2})(\\d{7,8})","$1 $2",["(?:2[125]|4[0-246-9]|5[1-35-7]|6[1-8]|7[14]|8[16]|91)[2-9]"],"(0$1)"],["(\\d{5})(\\d{5})","$1 $2",["58"],"(0$1)"],["(\\d{3})(\\d{7})","$1 $2",["3"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["2[125]|4[0-246-9]|5[1-35-7]|6[1-8]|7[14]|8[16]|91"],"(0$1)"],["(\\d{3})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["[24-9]"],"(0$1)"]],"0"],"PL":["48","00","(?:6|8\\d\\d)\\d{7}|[1-9]\\d{6}(?:\\d{2})?|[26]\\d{5}",[6,7,8,9,10],[["(\\d{5})","$1",["19"]],["(\\d{3})(\\d{3})","$1 $2",["11|20|64"]],["(\\d{2})(\\d{2})(\\d{3})","$1 $2 $3",["(?:1[2-8]|2[2-69]|3[2-4]|4[1-468]|5[24-689]|6[1-3578]|7[14-7]|8[1-79]|9[145])1","(?:1[2-8]|2[2-69]|3[2-4]|4[1-468]|5[24-689]|6[1-3578]|7[14-7]|8[1-79]|9[145])19"]],["(\\d{3})(\\d{2})(\\d{2,3})","$1 $2 $3",["64"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["21|39|45|5[0137]|6[0469]|7[02389]|8(?:0[14]|8)"]],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["1[2-8]|[2-7]|8[1-79]|9[145]"]],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["8"]]]],"PM":["508","00","[45]\\d{5}|(?:708|80\\d)\\d{6}",[6,9],[["(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3",["[45]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["7"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"],"0$1"]],"0"],"PR":["1","011","(?:[589]\\d\\d|787)\\d{7}",[10],0,"1",0,0,0,0,"787|939"],"PS":["970","00","[2489]2\\d{6}|(?:1\\d|5)\\d{8}",[8,9,10],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["[2489]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["5"],"0$1"],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1"]]],"0"],"PT":["351","00","1693\\d{5}|(?:[26-9]\\d|30)\\d{7}",[9],[["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["2[12]"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["16|[236-9]"]]]],"PW":["680","01[12]","(?:[24-8]\\d\\d|345|900)\\d{4}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[2-9]"]]]],"PY":["595","00","59\\d{4,6}|9\\d{5,10}|(?:[2-46-8]\\d|5[0-8])\\d{4,7}",[6,7,8,9,10,11],[["(\\d{3})(\\d{3,6})","$1 $2",["[2-9]0"],"0$1"],["(\\d{2})(\\d{5})","$1 $2",["[26]1|3[289]|4[1246-8]|7[1-3]|8[1-36]"],"(0$1)"],["(\\d{3})(\\d{4,5})","$1 $2",["2[279]|3[13-5]|4[359]|5|6(?:[34]|7[1-46-8])|7[46-8]|85"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["2[14-68]|3[26-9]|4[1246-8]|6(?:1|75)|7[1-35]|8[1-36]"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["87"]],["(\\d{3})(\\d{6})","$1 $2",["9(?:[5-79]|8[1-7])"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[2-8]"],"0$1"],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["9"]]],"0"],"QA":["974","00","800\\d{4}|(?:2|800)\\d{6}|(?:0080|[3-7])\\d{7}",[7,8,9,11],[["(\\d{3})(\\d{4})","$1 $2",["2[16]|8"]],["(\\d{4})(\\d{4})","$1 $2",["[3-7]"]]]],"RE":["262","00","(?:26|[689]\\d)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[2689]"],"0$1"]],"0",0,0,0,0,0,[["26(?:2\\d\\d|3(?:0\\d|1[0-6]))\\d{4}"],["69(?:2\\d\\d|3(?:[06][0-6]|1[013]|2[0-2]|3[0-39]|4\\d|5[0-5]|7[0-37]|8[0-8]|9[0-479]))\\d{4}"],["80\\d{7}"],["89[1-37-9]\\d{6}"],0,0,0,0,["9(?:399[0-3]|479[0-5]|76(?:2[278]|3[0-37]))\\d{4}"],["8(?:1[019]|2[0156]|84|90)\\d{6}"]]],"RO":["40","00","(?:[236-8]\\d|90)\\d{7}|[23]\\d{5}",[6,9],[["(\\d{3})(\\d{3})","$1 $2",["2[3-6]","2[3-6]\\d9"],"0$1"],["(\\d{2})(\\d{4})","$1 $2",["219|31"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[23]1"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[236-9]"],"0$1"]],"0",0,0,0,0,0,0,0," int "],"RS":["381","00","38[02-9]\\d{6,9}|6\\d{7,9}|90\\d{4,8}|38\\d{5,6}|(?:7\\d\\d|800)\\d{3,9}|(?:[12]\\d|3[0-79])\\d{5,10}",[6,7,8,9,10,11,12],[["(\\d{3})(\\d{3,9})","$1 $2",["(?:2[389]|39)0|[7-9]"],"0$1"],["(\\d{2})(\\d{5,10})","$1 $2",["[1-36]"],"0$1"]],"0"],"RU":["7","810","8\\d{13}|[347-9]\\d{9}",[10,14],[["(\\d{4})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["7(?:1[0-8]|2[1-9])","7(?:1(?:[0-356]2|4[29]|7|8[27])|2(?:1[23]|[2-9]2))","7(?:1(?:[0-356]2|4[29]|7|8[27])|2(?:13[03-69]|62[013-9]))|72[1-57-9]2"],"8 ($1)",1],["(\\d{5})(\\d)(\\d{2})(\\d{2})","$1 $2 $3 $4",["7(?:1[0-68]|2[1-9])","7(?:1(?:[06][3-6]|[18]|2[35]|[3-5][3-5])|2(?:[13][3-5]|[24-689]|7[457]))","7(?:1(?:0(?:[356]|4[023])|[18]|2(?:3[013-9]|5)|3[45]|43[013-79]|5(?:3[1-8]|4[1-7]|5)|6(?:3[0-35-9]|[4-6]))|2(?:1(?:3[178]|[45])|[24-689]|3[35]|7[457]))|7(?:14|23)4[0-8]|71(?:33|45)[1-79]"],"8 ($1)",1],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["7"],"8 ($1)",1],["(\\d{3})(\\d{3})(\\d{2})(\\d{2})","$1 $2-$3-$4",["[349]|8(?:[02-7]|1[1-8])"],"8 ($1)",1],["(\\d{4})(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3 $4",["8"],"8 ($1)"]],"8",0,0,0,0,"3[04-689]|[489]",0,"8~10"],"RW":["250","00","(?:06|[27]\\d\\d|[89]00)\\d{6}",[8,9],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["0"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["2"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[7-9]"],"0$1"]],"0"],"SA":["966","00","92\\d{7}|(?:[15]|8\\d)\\d{8}",[9,10],[["(\\d{4})(\\d{5})","$1 $2",["9"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["1"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["5"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["81"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["8"]]],"0"],"SB":["677","0[01]","[6-9]\\d{6}|[1-6]\\d{4}",[5,7],[["(\\d{2})(\\d{5})","$1 $2",["6[89]|7|8[4-9]|9(?:[1-8]|9[0-8])"]]]],"SC":["248","010|0[0-2]","(?:[2489]\\d|64)\\d{5}",[7],[["(\\d)(\\d{3})(\\d{3})","$1 $2 $3",["[246]|9[57]"]]],0,0,0,0,0,0,0,"00"],"SD":["249","00","[19]\\d{8}",[9],[["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[19]"],"0$1"]],"0"],"SE":["46","00","(?:[26]\\d\\d|9)\\d{9}|[1-9]\\d{8}|[1-689]\\d{7}|[1-4689]\\d{6}|2\\d{5}",[6,7,8,9,10,12],[["(\\d{2})(\\d{2,3})(\\d{2})","$1-$2 $3",["20"],"0$1",0,"$1 $2 $3"],["(\\d{3})(\\d{4})","$1-$2",["9(?:00|39|44|9)"],"0$1",0,"$1 $2"],["(\\d{2})(\\d{3})(\\d{2})","$1-$2 $3",["[12][136]|3[356]|4[0246]|6[03]|90[1-9]"],"0$1",0,"$1 $2 $3"],["(\\d)(\\d{2,3})(\\d{2})(\\d{2})","$1-$2 $3 $4",["8"],"0$1",0,"$1 $2 $3 $4"],["(\\d{3})(\\d{2,3})(\\d{2})","$1-$2 $3",["1[2457]|2(?:[247-9]|5[0138])|3[0247-9]|4[1357-9]|5[0-35-9]|6(?:[125689]|4[02-57]|7[0-2])|9(?:[125-8]|3[02-5]|4[0-3])"],"0$1",0,"$1 $2 $3"],["(\\d{3})(\\d{2,3})(\\d{3})","$1-$2 $3",["9(?:00|39|44)"],"0$1",0,"$1 $2 $3"],["(\\d{2})(\\d{2,3})(\\d{2})(\\d{2})","$1-$2 $3 $4",["1[13689]|2[0136]|3[1356]|4[0246]|54|6[03]|90[1-9]"],"0$1",0,"$1 $2 $3 $4"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1-$2 $3 $4",["10|7"],"0$1",0,"$1 $2 $3 $4"],["(\\d)(\\d{3})(\\d{3})(\\d{2})","$1-$2 $3 $4",["8"],"0$1",0,"$1 $2 $3 $4"],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1-$2 $3 $4",["[13-5]|2(?:[247-9]|5[0138])|6(?:[124-689]|7[0-2])|9(?:[125-8]|3[02-5]|4[0-3])"],"0$1",0,"$1 $2 $3 $4"],["(\\d{3})(\\d{2})(\\d{2})(\\d{3})","$1-$2 $3 $4",["9"],"0$1",0,"$1 $2 $3 $4"],["(\\d{3})(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1-$2 $3 $4 $5",["[26]"],"0$1",0,"$1 $2 $3 $4 $5"]],"0"],"SG":["65","0[0-3]\\d","(?:(?:1\\d|8)\\d\\d|7000)\\d{7}|[3689]\\d{7}",[8,10,11],[["(\\d{4})(\\d{4})","$1 $2",["[369]|8(?:0[1-9]|[1-9])"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["8"]],["(\\d{4})(\\d{4})(\\d{3})","$1 $2 $3",["7"]],["(\\d{4})(\\d{3})(\\d{4})","$1 $2 $3",["1"]]]],"SH":["290","00","(?:[256]\\d|8)\\d{3}",[4,5],0,0,0,0,0,0,"[256]"],"SI":["386","00|10(?:22|66|88|99)","[1-7]\\d{7}|8\\d{4,7}|90\\d{4,6}",[5,6,7,8],[["(\\d{2})(\\d{3,6})","$1 $2",["8[09]|9"],"0$1"],["(\\d{3})(\\d{5})","$1 $2",["59|8"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[37][01]|4[0139]|51|6"],"0$1"],["(\\d)(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[1-57]"],"(0$1)"]],"0",0,0,0,0,0,0,"00"],"SJ":["47","00","0\\d{4}|(?:[489]\\d|79)\\d{6}",[5,8],0,0,0,0,0,0,"79"],"SK":["421","00","[2-689]\\d{8}|[2-59]\\d{6}|[2-5]\\d{5}",[6,7,9],[["(\\d)(\\d{2})(\\d{3,4})","$1 $2 $3",["21"],"0$1"],["(\\d{2})(\\d{2})(\\d{2,3})","$1 $2 $3",["[3-5][1-8]1","[3-5][1-8]1[67]"],"0$1"],["(\\d)(\\d{3})(\\d{3})(\\d{2})","$1/$2 $3 $4",["2"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[689]"],"0$1"],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1/$2 $3 $4",["[3-5]"],"0$1"]],"0"],"SL":["232","00","(?:[237-9]\\d|66)\\d{6}",[8],[["(\\d{2})(\\d{6})","$1 $2",["[236-9]"],"(0$1)"]],"0"],"SM":["378","00","(?:0549|[5-7]\\d)\\d{6}",[8,10],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[5-7]"]],["(\\d{4})(\\d{6})","$1 $2",["0"]]],0,0,"([89]\\d{5})$","0549$1"],"SN":["221","00","(?:[378]\\d|93)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"]],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[379]"]]]],"SO":["252","00","[346-9]\\d{8}|[12679]\\d{7}|[1-5]\\d{6}|[1348]\\d{5}",[6,7,8,9],[["(\\d{2})(\\d{4})","$1 $2",["8[125]"]],["(\\d{6})","$1",["[134]"]],["(\\d)(\\d{6})","$1 $2",["[15]|2[0-79]|3[0-46-8]|4[0-7]"]],["(\\d)(\\d{7})","$1 $2",["(?:2|90)4|[67]"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[348]|64|79|90"]],["(\\d{2})(\\d{5,7})","$1 $2",["1|28|6[0-35-9]|77|9[2-9]"]]],"0"],"SR":["597","00","(?:[2-5]|68|[78]\\d)\\d{5}",[6,7],[["(\\d{2})(\\d{2})(\\d{2})","$1-$2-$3",["56"]],["(\\d{3})(\\d{3})","$1-$2",["[2-5]"]],["(\\d{3})(\\d{4})","$1-$2",["[6-8]"]]]],"SS":["211","00","[19]\\d{8}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[19]"],"0$1"]],"0"],"ST":["239","00","(?:22|9\\d)\\d{5}",[7],[["(\\d{3})(\\d{4})","$1 $2",["[29]"]]]],"SV":["503","00","[267]\\d{7}|(?:80\\d|900)\\d{4}(?:\\d{4})?",[7,8,11],[["(\\d{3})(\\d{4})","$1 $2",["[89]"]],["(\\d{4})(\\d{4})","$1 $2",["[267]"]],["(\\d{3})(\\d{4})(\\d{4})","$1 $2 $3",["[89]"]]]],"SX":["1","011","7215\\d{6}|(?:[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"(5\\d{6})$|1","721$1",0,"721"],"SY":["963","00","[1-39]\\d{8}|[1-5]\\d{7}",[8,9],[["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[1-5]"],"0$1",1],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["9"],"0$1",1]],"0"],"SZ":["268","00","0800\\d{4}|(?:[237]\\d|900)\\d{6}",[8,9],[["(\\d{4})(\\d{4})","$1 $2",["[0237]"]],["(\\d{5})(\\d{4})","$1 $2",["9"]]]],"TA":["290","00","8\\d{3}",[4],0,0,0,0,0,0,"8"],"TC":["1","011","(?:[58]\\d\\d|649|900)\\d{7}",[10],0,"1",0,"([2-479]\\d{6})$|1","649$1",0,"649"],"TD":["235","00|16","(?:22|[689]\\d|77)\\d{6}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[26-9]"]]],0,0,0,0,0,0,0,"00"],"TG":["228","00","[279]\\d{7}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[279]"]]]],"TH":["66","00[1-9]","(?:001800|[2-57]|[689]\\d)\\d{7}|1\\d{7,9}",[8,9,10,13],[["(\\d)(\\d{3})(\\d{4})","$1 $2 $3",["2"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[13-9]"],"0$1"],["(\\d{4})(\\d{3})(\\d{3})","$1 $2 $3",["1"]]],"0"],"TJ":["992","810","[0-57-9]\\d{8}",[9],[["(\\d{6})(\\d)(\\d{2})","$1 $2 $3",["331","3317"]],["(\\d{3})(\\d{2})(\\d{4})","$1 $2 $3",["44[02-479]|[34]7"]],["(\\d{4})(\\d)(\\d{4})","$1 $2 $3",["3(?:[1245]|3[12])"]],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[0-57-9]"]]],0,0,0,0,0,0,0,"8~10"],"TK":["690","00","[2-47]\\d{3,6}",[4,5,6,7]],"TL":["670","00","7\\d{7}|(?:[2-47]\\d|[89]0)\\d{5}",[7,8],[["(\\d{3})(\\d{4})","$1 $2",["[2-489]|70"]],["(\\d{4})(\\d{4})","$1 $2",["7"]]]],"TM":["993","810","(?:[1-6]\\d|71)\\d{6}",[8],[["(\\d{2})(\\d{2})(\\d{2})(\\d{2})","$1 $2-$3-$4",["12"],"(8 $1)"],["(\\d{3})(\\d)(\\d{2})(\\d{2})","$1 $2-$3-$4",["[1-5]"],"(8 $1)"],["(\\d{2})(\\d{6})","$1 $2",["[67]"],"8 $1"]],"8",0,0,0,0,0,0,"8~10"],"TN":["216","00","[2-57-9]\\d{7}",[8],[["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[2-57-9]"]]]],"TO":["676","00","(?:0800|(?:[5-8]\\d\\d|999)\\d)\\d{3}|[2-8]\\d{4}",[5,7],[["(\\d{2})(\\d{3})","$1-$2",["[2-4]|50|6[09]|7[0-24-69]|8[05]"]],["(\\d{4})(\\d{3})","$1 $2",["0"]],["(\\d{3})(\\d{4})","$1 $2",["[5-9]"]]]],"TR":["90","00","4\\d{6}|8\\d{11,12}|(?:[2-58]\\d\\d|900)\\d{7}",[7,10,12,13],[["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["512|8[01589]|90"],"0$1",1],["(\\d{3})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["5(?:[0-59]|61)","5(?:[0-59]|61[06])","5(?:[0-59]|61[06]1)"],"0$1",1],["(\\d{3})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[24][1-8]|3[1-9]"],"(0$1)",1],["(\\d{3})(\\d{3})(\\d{6,7})","$1 $2 $3",["80"],"0$1",1]],"0"],"TT":["1","011","(?:[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-46-8]\\d{6})$|1","868$1",0,"868"],"TV":["688","00","(?:2|7\\d\\d|90)\\d{4}",[5,6,7],[["(\\d{2})(\\d{3})","$1 $2",["2"]],["(\\d{2})(\\d{4})","$1 $2",["90"]],["(\\d{2})(\\d{5})","$1 $2",["7"]]]],"TW":["886","0(?:0[25-79]|19)","[2-689]\\d{8}|7\\d{9,10}|[2-8]\\d{7}|2\\d{6}",[7,8,9,10,11],[["(\\d{2})(\\d)(\\d{4})","$1 $2 $3",["202"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["[258]0"],"0$1"],["(\\d)(\\d{3,4})(\\d{4})","$1 $2 $3",["[23568]|4(?:0[02-48]|[1-47-9])|7[1-9]","[23568]|4(?:0[2-48]|[1-47-9])|(?:400|7)[1-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[49]"],"0$1"],["(\\d{2})(\\d{4})(\\d{4,5})","$1 $2 $3",["7"],"0$1"]],"0",0,0,0,0,0,0,0,"#"],"TZ":["255","00[056]","(?:[25-8]\\d|41|90)\\d{7}",[9],[["(\\d{3})(\\d{2})(\\d{4})","$1 $2 $3",["[89]"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[24]"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["5"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[67]"],"0$1"]],"0"],"UA":["380","00","[89]\\d{9}|[3-9]\\d{8}",[9,10],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["6[12][29]|(?:3[1-8]|4[136-8]|5[12457]|6[49])2|(?:56|65)[24]","6[12][29]|(?:35|4[1378]|5[12457]|6[49])2|(?:56|65)[24]|(?:3[1-46-8]|46)2[013-9]"],"0$1"],["(\\d{4})(\\d{5})","$1 $2",["3[1-8]|4(?:[1367]|[45][6-9]|8[4-6])|5(?:[1-5]|6[0135689]|7[4-6])|6(?:[12][3-7]|[459])","3[1-8]|4(?:[1367]|[45][6-9]|8[4-6])|5(?:[1-5]|6(?:[015689]|3[02389])|7[4-6])|6(?:[12][3-7]|[459])"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[3-7]|89|9[1-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["[89]"],"0$1"]],"0",0,0,0,0,0,0,"0~0"],"UG":["256","00[057]","800\\d{6}|(?:[29]0|[347]\\d)\\d{7}",[9],[["(\\d{4})(\\d{5})","$1 $2",["202","2024"],"0$1"],["(\\d{3})(\\d{6})","$1 $2",["[27-9]|4(?:6[45]|[7-9])"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["[34]"],"0$1"]],"0"],"US":["1","011","[2-9]\\d{9}|3\\d{6}",[10],[["(\\d{3})(\\d{4})","$1-$2",["310"],0,1],["(\\d{3})(\\d{3})(\\d{4})","($1) $2-$3",["[2-9]"],0,1,"$1-$2-$3"]],"1",0,0,0,0,0,[["(?:3052(?:0[0-8]|[1-9]\\d)|5056(?:[0-35-9]\\d|4[468])|7302[0-4]\\d)\\d{4}|(?:305[3-9]|472[24]|505[2-57-9]|7306|983[2-47-9])\\d{6}|(?:2(?:0[1-35-9]|1[02-9]|2[03-57-9]|3[1459]|4[08]|5[1-46]|6[0279]|7[0269]|8[13])|3(?:0[1-47-9]|1[02-9]|2[013569]|3[0-24679]|4[167]|5[0-2]|6[01349]|8[056])|4(?:0[124-9]|1[02-579]|2[3-5]|3[0245]|4[023578]|58|6[349]|7[0589]|8[04])|5(?:0[1-47-9]|1[0235-8]|20|3[0149]|4[01]|5[179]|6[1-47]|7[0-5]|8[0256])|6(?:0[1-35-9]|1[024-9]|2[03689]|3[016]|4[0156]|5[01679]|6[0-279]|78|8[0-29])|7(?:0[1-46-8]|1[2-9]|2[04-8]|3[1247]|4[037]|5[47]|6[02359]|7[0-59]|8[156])|8(?:0[1-68]|1[02-8]|2[068]|3[0-2589]|4[03578]|5[046-9]|6[02-5]|7[028])|9(?:0[1346-9]|1[02-9]|2[0589]|3[0146-8]|4[01357-9]|5[12469]|7[0-389]|8[04-69]))[2-9]\\d{6}"],[""],["8(?:00|33|44|55|66|77|88)[2-9]\\d{6}"],["900[2-9]\\d{6}"],["52(?:3(?:[2-46-9][02-9]\\d|5(?:[02-46-9]\\d|5[0-46-9]))|4(?:[2-478][02-9]\\d|5(?:[034]\\d|2[024-9]|5[0-46-9])|6(?:0[1-9]|[2-9]\\d)|9(?:[05-9]\\d|2[0-5]|49)))\\d{4}|52[34][2-9]1[02-9]\\d{4}|5(?:00|2[125-9]|33|44|66|77|88)[2-9]\\d{6}"],0,0,0,["305209\\d{4}"]]],"UY":["598","0(?:0|1[3-9]\\d)","0004\\d{2,9}|[1249]\\d{7}|(?:[49]\\d|80)\\d{5}",[6,7,8,9,10,11,12,13],[["(\\d{3})(\\d{3,4})","$1 $2",["0"]],["(\\d{3})(\\d{4})","$1 $2",["[49]0|8"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["9"],"0$1"],["(\\d{4})(\\d{4})","$1 $2",["[124]"]],["(\\d{3})(\\d{3})(\\d{2,4})","$1 $2 $3",["0"]],["(\\d{3})(\\d{3})(\\d{3})(\\d{2,4})","$1 $2 $3 $4",["0"]]],"0",0,0,0,0,0,0,"00"," int. "],"UZ":["998","00","(?:20|33|[5-79]\\d|88)\\d{7}",[9],[["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["[235-9]"]]]],"VA":["39","00","0\\d{5,10}|3[0-8]\\d{7,10}|55\\d{8}|8\\d{5}(?:\\d{2,4})?|(?:1\\d|39)\\d{7,8}",[6,7,8,9,10,11,12],0,0,0,0,0,0,"06698"],"VC":["1","011","(?:[58]\\d\\d|784|900)\\d{7}",[10],0,"1",0,"([2-7]\\d{6})$|1","784$1",0,"784"],"VE":["58","00","[68]00\\d{7}|(?:[24]\\d|[59]0)\\d{8}",[10],[["(\\d{3})(\\d{7})","$1-$2",["[24-689]"],"0$1"]],"0"],"VG":["1","011","(?:284|[58]\\d\\d|900)\\d{7}",[10],0,"1",0,"([2-578]\\d{6})$|1","284$1",0,"284"],"VI":["1","011","[58]\\d{9}|(?:34|90)0\\d{7}",[10],0,"1",0,"([2-9]\\d{6})$|1","340$1",0,"340"],"VN":["84","00","[12]\\d{9}|[135-9]\\d{8}|[16]\\d{7}|[16-8]\\d{6}",[7,8,9,10],[["(\\d{2})(\\d{5})","$1 $2",["80"],"0$1",1],["(\\d{4})(\\d{4,6})","$1 $2",["1"],0,1],["(\\d{2})(\\d{3})(\\d{2})(\\d{2})","$1 $2 $3 $4",["6"],"0$1",1],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[357-9]"],"0$1",1],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["2[48]"],"0$1",1],["(\\d{3})(\\d{4})(\\d{3})","$1 $2 $3",["2"],"0$1",1]],"0"],"VU":["678","00","[57-9]\\d{6}|(?:[238]\\d|48)\\d{3}",[5,7],[["(\\d{3})(\\d{4})","$1 $2",["[57-9]"]]]],"WF":["681","00","(?:40|72)\\d{4}|8\\d{5}(?:\\d{3})?",[6,9],[["(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3",["[478]"]],["(\\d{3})(\\d{2})(\\d{2})(\\d{2})","$1 $2 $3 $4",["8"]]]],"WS":["685","0","(?:[2-6]|8\\d{5})\\d{4}|[78]\\d{6}|[68]\\d{5}",[5,6,7,10],[["(\\d{5})","$1",["[2-5]|6[1-9]"]],["(\\d{3})(\\d{3,7})","$1 $2",["[68]"]],["(\\d{2})(\\d{5})","$1 $2",["7"]]]],"XK":["383","00","2\\d{7,8}|3\\d{7,11}|(?:4\\d\\d|[89]00)\\d{5}",[8,9,10,11,12],[["(\\d{3})(\\d{5})","$1 $2",["[89]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3})","$1 $2 $3",["[2-4]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["2|39"],"0$1"],["(\\d{2})(\\d{7,10})","$1 $2",["3"],"0$1"]],"0"],"YE":["967","00","(?:1|7\\d)\\d{7}|[1-7]\\d{6}",[7,8,9],[["(\\d)(\\d{3})(\\d{3,4})","$1 $2 $3",["[1-6]|7(?:[24-6]|8[0-7])"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["7"],"0$1"]],"0"],"YT":["262","00","(?:80|9\\d)\\d{7}|(?:26|63)9\\d{6}",[9],0,"0",0,0,0,0,0,[["269(?:0[0-467]|15|5[0-4]|6\\d|[78]0)\\d{4}"],["639(?:0[0-79]|1[019]|[267]\\d|3[09]|40|5[05-9]|9[04-79])\\d{4}"],["80\\d{7}"],0,0,0,0,0,["9(?:(?:39|47)8[01]|769\\d)\\d{4}"]]],"ZA":["27","00","[1-79]\\d{8}|8\\d{4,9}",[5,6,7,8,9,10],[["(\\d{2})(\\d{3,4})","$1 $2",["8[1-4]"],"0$1"],["(\\d{2})(\\d{3})(\\d{2,3})","$1 $2 $3",["8[1-4]"],"0$1"],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["860"],"0$1"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["[1-9]"],"0$1"],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["8"],"0$1"]],"0"],"ZM":["260","00","800\\d{6}|(?:21|63|[79]\\d)\\d{7}",[9],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[28]"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["[79]"],"0$1"]],"0"],"ZW":["263","00","2(?:[0-57-9]\\d{6,8}|6[0-24-9]\\d{6,7})|[38]\\d{9}|[35-8]\\d{8}|[3-6]\\d{7}|[1-689]\\d{6}|[1-3569]\\d{5}|[1356]\\d{4}",[5,6,7,8,9,10],[["(\\d{3})(\\d{3,5})","$1 $2",["2(?:0[45]|2[278]|[49]8)|3(?:[09]8|17)|6(?:[29]8|37|75)|[23][78]|(?:33|5[15]|6[68])[78]"],"0$1"],["(\\d)(\\d{3})(\\d{2,4})","$1 $2 $3",["[49]"],"0$1"],["(\\d{3})(\\d{4})","$1 $2",["80"],"0$1"],["(\\d{2})(\\d{7})","$1 $2",["24|8[13-59]|(?:2[05-79]|39|5[45]|6[15-8])2","2(?:02[014]|4|[56]20|[79]2)|392|5(?:42|525)|6(?:[16-8]21|52[013])|8[13-59]"],"(0$1)"],["(\\d{2})(\\d{3})(\\d{4})","$1 $2 $3",["7"],"0$1"],["(\\d{3})(\\d{3})(\\d{3,4})","$1 $2 $3",["2(?:1[39]|2[0157]|[378]|[56][14])|3(?:12|29)","2(?:1[39]|2[0157]|[378]|[56][14])|3(?:123|29)"],"0$1"],["(\\d{4})(\\d{6})","$1 $2",["8"],"0$1"],["(\\d{2})(\\d{3,5})","$1 $2",["1|2(?:0[0-36-9]|12|29|[56])|3(?:1[0-689]|[24-6])|5(?:[0236-9]|1[2-4])|6(?:[013-59]|7[0-46-9])|(?:33|55|6[68])[0-69]|(?:29|3[09]|62)[0-79]"],"0$1"],["(\\d{2})(\\d{3})(\\d{3,4})","$1 $2 $3",["29[013-9]|39|54"],"0$1"],["(\\d{4})(\\d{3,5})","$1 $2",["(?:25|54)8","258|5483"],"0$1"]],"0"]},"nonGeographic":{"800":["800",0,"(?:00|[1-9]\\d)\\d{6}",[8],[["(\\d{4})(\\d{4})","$1 $2",["\\d"]]],0,0,0,0,0,0,[0,0,["(?:00|[1-9]\\d)\\d{6}"]]],"808":["808",0,"[1-9]\\d{7}",[8],[["(\\d{4})(\\d{4})","$1 $2",["[1-9]"]]],0,0,0,0,0,0,[0,0,0,0,0,0,0,0,0,["[1-9]\\d{7}"]]],"870":["870",0,"7\\d{11}|[35-7]\\d{8}",[9,12],[["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["[35-7]"]]],0,0,0,0,0,0,[0,["(?:[356]|774[45])\\d{8}|7[6-8]\\d{7}"]]],"878":["878",0,"10\\d{10}",[12],[["(\\d{2})(\\d{5})(\\d{5})","$1 $2 $3",["1"]]],0,0,0,0,0,0,[0,0,0,0,0,0,0,0,["10\\d{10}"]]],"881":["881",0,"6\\d{9}|[0-36-9]\\d{8}",[9,10],[["(\\d)(\\d{3})(\\d{5})","$1 $2 $3",["[0-37-9]"]],["(\\d)(\\d{3})(\\d{5,6})","$1 $2 $3",["6"]]],0,0,0,0,0,0,[0,["6\\d{9}|[0-36-9]\\d{8}"]]],"882":["882",0,"[13]\\d{6}(?:\\d{2,5})?|[19]\\d{7}|(?:[25]\\d\\d|4)\\d{7}(?:\\d{2})?",[7,8,9,10,11,12],[["(\\d{2})(\\d{5})","$1 $2",["16|342"]],["(\\d{2})(\\d{6})","$1 $2",["49"]],["(\\d{2})(\\d{2})(\\d{4})","$1 $2 $3",["1[36]|9"]],["(\\d{2})(\\d{4})(\\d{3})","$1 $2 $3",["3[23]"]],["(\\d{2})(\\d{3,4})(\\d{4})","$1 $2 $3",["16"]],["(\\d{2})(\\d{4})(\\d{4})","$1 $2 $3",["10|23|3(?:[15]|4[57])|4|51"]],["(\\d{3})(\\d{4})(\\d{4})","$1 $2 $3",["34"]],["(\\d{2})(\\d{4,5})(\\d{5})","$1 $2 $3",["[1-35]"]]],0,0,0,0,0,0,[0,["342\\d{4}|(?:337|49)\\d{6}|(?:3(?:2|47|7\\d{3})|50\\d{3})\\d{7}",[7,8,9,10,12]],0,0,0,["348[57]\\d{7}",[11]],0,0,["1(?:3(?:0[0347]|[13][0139]|2[035]|4[013568]|6[0459]|7[06]|8[15-8]|9[0689])\\d{4}|6\\d{5,10})|(?:345\\d|9[89])\\d{6}|(?:10|2(?:3|85\\d)|3(?:[15]|[69]\\d\\d)|4[15-8]|51)\\d{8}"]]],"883":["883",0,"(?:[1-4]\\d|51)\\d{6,10}",[8,9,10,11,12],[["(\\d{3})(\\d{3})(\\d{2,8})","$1 $2 $3",["[14]|2[24-689]|3[02-689]|51[24-9]"]],["(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3",["510"]],["(\\d{3})(\\d{3})(\\d{4})","$1 $2 $3",["21"]],["(\\d{4})(\\d{4})(\\d{4})","$1 $2 $3",["51[13]"]],["(\\d{3})(\\d{3})(\\d{3})(\\d{3})","$1 $2 $3 $4",["[235]"]]],0,0,0,0,0,0,[0,0,0,0,0,0,0,0,["(?:2(?:00\\d\\d|10)|(?:370[1-9]|51\\d0)\\d)\\d{7}|51(?:00\\d{5}|[24-9]0\\d{4,7})|(?:1[0-79]|2[24-689]|3[02-689]|4[0-4])0\\d{5,9}"]]],"888":["888",0,"\\d{11}",[11],[["(\\d{3})(\\d{3})(\\d{5})","$1 $2 $3"]],0,0,0,0,0,0,[0,0,0,0,0,0,["\\d{11}"]]],"979":["979",0,"[1359]\\d{8}",[9],[["(\\d)(\\d{4})(\\d{4})","$1 $2 $3",["[1359]"]]],0,0,0,0,0,0,[0,0,0,["[1359]\\d{8}"]]]}});
 
 /***/ }),
 
@@ -155644,14 +157933,14 @@ function CountrySelectWithIcon(_ref3) {
     value: value,
     options: options,
     className: classnames__WEBPACK_IMPORTED_MODULE_1__('PhoneInputCountrySelect', className)
-  })), unicodeFlags && value && /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement("div", {
+  })), selectedOption && (unicodeFlags && value ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement("div", {
     className: "PhoneInputCountryIconUnicode"
-  }, (0,country_flag_icons_unicode__WEBPACK_IMPORTED_MODULE_3__["default"])(value)), !(unicodeFlags && value) && /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(Icon, {
+  }, (0,country_flag_icons_unicode__WEBPACK_IMPORTED_MODULE_3__["default"])(value)) : /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(Icon, {
     "aria-hidden": true,
     country: value,
-    label: selectedOption && selectedOption.label,
+    label: selectedOption.label,
     aspectRatio: unicodeFlags ? 1 : undefined
-  }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(Arrow, null));
+  })), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(Arrow, null));
 }
 CountrySelectWithIcon.propTypes = {
   // Country flag component.
@@ -155669,10 +157958,19 @@ function DefaultArrowComponent() {
 function getSelectedOption(options, value) {
   for (var _iterator = _createForOfIteratorHelperLoose(options), _step; !(_step = _iterator()).done;) {
     var option = _step.value;
-    if (!option.divider && option.value === value) {
-      return option;
+    if (!option.divider) {
+      if (isSameOptionValue(option.value, value)) {
+        return option;
+      }
     }
   }
+}
+function isSameOptionValue(value1, value2) {
+  // `undefined` is identical to `null`: both mean "no country selected".
+  if (value1 === undefined || value1 === null) {
+    return value2 === undefined || value2 === null;
+  }
+  return value1 === value2;
 }
 //# sourceMappingURL=CountrySelect.js.map
 
@@ -155760,7 +158058,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var libphonenumber_js_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! libphonenumber-js/core */ "./node_modules/libphonenumber-js/es6/formatIncompletePhoneNumber.js");
 /* harmony import */ var _helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./helpers/inputValuePrefix.js */ "./node_modules/react-phone-number-input/modules/helpers/inputValuePrefix.js");
 /* harmony import */ var _useInputKeyDownHandler_js__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./useInputKeyDownHandler.js */ "./node_modules/react-phone-number-input/modules/useInputKeyDownHandler.js");
-var _excluded = ["value", "onChange", "onKeyDown", "country", "international", "withCountryCallingCode", "metadata", "inputComponent"];
+var _excluded = ["value", "onChange", "onKeyDown", "country", "inputFormat", "metadata", "inputComponent", "international", "withCountryCallingCode"];
 function _extends() { _extends = Object.assign ? Object.assign.bind() : function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; return _extends.apply(this, arguments); }
 function _objectWithoutProperties(source, excluded) { if (source == null) return {}; var target = _objectWithoutPropertiesLoose(source, excluded); var key, i; if (Object.getOwnPropertySymbols) { var sourceSymbolKeys = Object.getOwnPropertySymbols(source); for (i = 0; i < sourceSymbolKeys.length; i++) { key = sourceSymbolKeys[i]; if (excluded.indexOf(key) >= 0) continue; if (!Object.prototype.propertyIsEnumerable.call(source, key)) continue; target[key] = source[key]; } } return target; }
 function _objectWithoutPropertiesLoose(source, excluded) { if (source == null) return {}; var target = {}; var sourceKeys = Object.keys(source); var key, i; for (i = 0; i < sourceKeys.length; i++) { key = sourceKeys[i]; if (excluded.indexOf(key) >= 0) continue; target[key] = source[key]; } return target; }
@@ -155786,17 +158084,17 @@ function createInput(defaultMetadata) {
       onChange = _ref.onChange,
       onKeyDown = _ref.onKeyDown,
       country = _ref.country,
-      international = _ref.international,
-      withCountryCallingCode = _ref.withCountryCallingCode,
+      inputFormat = _ref.inputFormat,
       _ref$metadata = _ref.metadata,
       metadata = _ref$metadata === void 0 ? defaultMetadata : _ref$metadata,
       _ref$inputComponent = _ref.inputComponent,
       Input = _ref$inputComponent === void 0 ? 'input' : _ref$inputComponent,
+      international = _ref.international,
+      withCountryCallingCode = _ref.withCountryCallingCode,
       rest = _objectWithoutProperties(_ref, _excluded);
-    var prefix = (0,_helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_1__.getInputValuePrefix)({
+    var prefix = (0,_helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_1__.getPrefixForFormattingValueAsPhoneNumber)({
+      inputFormat: inputFormat,
       country: country,
-      international: international,
-      withCountryCallingCode: withCountryCallingCode,
       metadata: metadata
     });
     var _onChange = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(function (event) {
@@ -155827,7 +158125,7 @@ function createInput(defaultMetadata) {
     }, [prefix, value, onChange, country, metadata]);
     var _onKeyDown = (0,_useInputKeyDownHandler_js__WEBPACK_IMPORTED_MODULE_3__["default"])({
       onKeyDown: onKeyDown,
-      international: international
+      inputFormat: inputFormat
     });
     return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(Input, _extends({}, rest, {
       ref: ref,
@@ -155863,28 +158161,15 @@ function createInput(defaultMetadata) {
      * If no `country` is passed then `value`
      * is formatted as an international phone number.
      * (e.g. `+7 800 555 35 35`)
-     * Perhaps the `country` property should have been called `defaultCountry`
-     * because if `value` is an international number then `country` is ignored.
+     * This property should've been called `defaultCountry`
+     * because it only applies when the user inputs a phone number in a national format
+     * and is completely ignored when the user inputs a phone number in an international format.
      */
     country: prop_types__WEBPACK_IMPORTED_MODULE_4__.string,
     /**
-     * If `country` property is passed along with `international={true}` property
-     * then the phone number will be input in "international" format for that `country`
-     * (without "country calling code").
-     * For example, if `country="US"` property is passed to "without country select" input
-     * then the phone number will be input in the "national" format for `US` (`(213) 373-4253`).
-     * But if both `country="US"` and `international={true}` properties are passed then
-     * the phone number will be input in the "international" format for `US` (`213 373 4253`)
-     * (without "country calling code" `+1`).
+     * The format that the input field value is being input/output in.
      */
-    international: prop_types__WEBPACK_IMPORTED_MODULE_4__.bool,
-    /**
-     * If `country` and `international` properties are set,
-     * then by default it won't include "country calling code" in the input field.
-     * To change that, pass `withCountryCallingCode` property,
-     * and it will include "country calling code" in the input field.
-     */
-    withCountryCallingCode: prop_types__WEBPACK_IMPORTED_MODULE_4__.bool,
+    inputFormat: prop_types__WEBPACK_IMPORTED_MODULE_4__.oneOf(['INTERNATIONAL', 'NATIONAL_PART_OF_INTERNATIONAL', 'NATIONAL', 'INTERNATIONAL_OR_NATIONAL']).isRequired,
     /**
      * `libphonenumber-js` metadata.
      */
@@ -155898,7 +158183,7 @@ function createInput(defaultMetadata) {
 }
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (createInput());
 function format(prefix, value, country, metadata) {
-  return (0,_helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_1__.removeInputValuePrefix)((0,libphonenumber_js_core__WEBPACK_IMPORTED_MODULE_5__["default"])(prefix + value, country, metadata), prefix);
+  return (0,_helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_1__.removePrefixFromFormattedPhoneNumber)((0,libphonenumber_js_core__WEBPACK_IMPORTED_MODULE_5__["default"])(prefix + value, country, metadata), prefix);
 }
 //# sourceMappingURL=InputBasic.js.map
 
@@ -155923,7 +158208,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./helpers/inputValuePrefix.js */ "./node_modules/react-phone-number-input/modules/helpers/inputValuePrefix.js");
 /* harmony import */ var _helpers_parsePhoneNumberCharacter_js__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ./helpers/parsePhoneNumberCharacter.js */ "./node_modules/react-phone-number-input/modules/helpers/parsePhoneNumberCharacter.js");
 /* harmony import */ var _useInputKeyDownHandler_js__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./useInputKeyDownHandler.js */ "./node_modules/react-phone-number-input/modules/useInputKeyDownHandler.js");
-var _excluded = ["onKeyDown", "country", "international", "withCountryCallingCode", "metadata"];
+var _excluded = ["onKeyDown", "country", "inputFormat", "metadata", "international", "withCountryCallingCode"];
 function _extends() { _extends = Object.assign ? Object.assign.bind() : function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; return _extends.apply(this, arguments); }
 function _objectWithoutProperties(source, excluded) { if (source == null) return {}; var target = _objectWithoutPropertiesLoose(source, excluded); var key, i; if (Object.getOwnPropertySymbols) { var sourceSymbolKeys = Object.getOwnPropertySymbols(source); for (i = 0; i < sourceSymbolKeys.length; i++) { key = sourceSymbolKeys[i]; if (excluded.indexOf(key) >= 0) continue; if (!Object.prototype.propertyIsEnumerable.call(source, key)) continue; target[key] = source[key]; } } return target; }
 function _objectWithoutPropertiesLoose(source, excluded) { if (source == null) return {}; var target = {}; var sourceKeys = Object.keys(source); var key, i; for (i = 0; i < sourceKeys.length; i++) { key = sourceKeys[i]; if (excluded.indexOf(key) >= 0) continue; target[key] = source[key]; } return target; }
@@ -155945,28 +158230,29 @@ function createInput(defaultMetadata) {
   function InputSmart(_ref, ref) {
     var onKeyDown = _ref.onKeyDown,
       country = _ref.country,
-      international = _ref.international,
-      withCountryCallingCode = _ref.withCountryCallingCode,
+      inputFormat = _ref.inputFormat,
       _ref$metadata = _ref.metadata,
       metadata = _ref$metadata === void 0 ? defaultMetadata : _ref$metadata,
+      international = _ref.international,
+      withCountryCallingCode = _ref.withCountryCallingCode,
       rest = _objectWithoutProperties(_ref, _excluded);
     var format = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(function (value) {
       // "As you type" formatter.
       var formatter = new libphonenumber_js_core__WEBPACK_IMPORTED_MODULE_1__["default"](country, metadata);
-      var prefix = (0,_helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_2__.getInputValuePrefix)({
+      var prefix = (0,_helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_2__.getPrefixForFormattingValueAsPhoneNumber)({
+        inputFormat: inputFormat,
         country: country,
-        international: international,
-        withCountryCallingCode: withCountryCallingCode,
         metadata: metadata
       });
+
       // Format the number.
       var text = formatter.input(prefix + value);
       var template = formatter.getTemplate();
       if (prefix) {
-        text = (0,_helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_2__.removeInputValuePrefix)(text, prefix);
+        text = (0,_helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_2__.removePrefixFromFormattedPhoneNumber)(text, prefix);
         // `AsYouType.getTemplate()` can be `undefined`.
         if (template) {
-          template = (0,_helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_2__.removeInputValuePrefix)(template, prefix);
+          template = (0,_helpers_inputValuePrefix_js__WEBPACK_IMPORTED_MODULE_2__.removePrefixFromFormattedPhoneNumber)(template, prefix);
         }
       }
       return {
@@ -155976,7 +158262,7 @@ function createInput(defaultMetadata) {
     }, [country, metadata]);
     var _onKeyDown = (0,_useInputKeyDownHandler_js__WEBPACK_IMPORTED_MODULE_3__["default"])({
       onKeyDown: onKeyDown,
-      international: international
+      inputFormat: inputFormat
     });
     return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(input_format_react__WEBPACK_IMPORTED_MODULE_4__["default"], _extends({}, rest, {
       ref: ref,
@@ -156012,28 +158298,15 @@ function createInput(defaultMetadata) {
      * If no `country` is passed then `value`
      * is formatted as an international phone number.
      * (e.g. `+7 800 555 35 35`)
-     * Perhaps the `country` property should have been called `defaultCountry`
-     * because if `value` is an international number then `country` is ignored.
+     * This property should've been called `defaultCountry`
+     * because it only applies when the user inputs a phone number in a national format
+     * and is completely ignored when the user inputs a phone number in an international format.
      */
     country: prop_types__WEBPACK_IMPORTED_MODULE_6__.string,
     /**
-     * If `country` property is passed along with `international={true}` property
-     * then the phone number will be input in "international" format for that `country`
-     * (without "country calling code").
-     * For example, if `country="US"` property is passed to "without country select" input
-     * then the phone number will be input in the "national" format for `US` (`(213) 373-4253`).
-     * But if both `country="US"` and `international={true}` properties are passed then
-     * the phone number will be input in the "international" format for `US` (`213 373 4253`)
-     * (without "country calling code" `+1`).
+     * The format that the input field value is being input/output in.
      */
-    international: prop_types__WEBPACK_IMPORTED_MODULE_6__.bool,
-    /**
-     * If `country` and `international` properties are set,
-     * then by default it won't include "country calling code" in the input field.
-     * To change that, pass `withCountryCallingCode` property,
-     * and it will include "country calling code" in the input field.
-     */
-    withCountryCallingCode: prop_types__WEBPACK_IMPORTED_MODULE_6__.bool,
+    inputFormat: prop_types__WEBPACK_IMPORTED_MODULE_6__.oneOf(['INTERNATIONAL', 'NATIONAL_PART_OF_INTERNATIONAL', 'NATIONAL', 'INTERNATIONAL_OR_NATIONAL']).isRequired,
     /**
      * `libphonenumber-js` metadata.
      */
@@ -156645,6 +158918,7 @@ var PhoneNumberInput_ = /*#__PURE__*/function (_React$PureComponent) {
         type: "tel",
         autoComplete: autoComplete
       }, numberInputProps, rest, {
+        inputFormat: international === true ? 'INTERNATIONAL' : international === false ? 'NATIONAL' : 'INTERNATIONAL_OR_NATIONAL',
         international: international ? true : undefined,
         withCountryCallingCode: international ? true : undefined,
         name: name,
@@ -156970,7 +159244,8 @@ PhoneNumberInput.propTypes = {
   /**
    * Set to `true` to force "international" phone number format.
    * Set to `false` to force "national" phone number format.
-   * By default it's `undefined` meaning that it doesn't enforce any phone number format.
+   * By default it's `undefined` meaning that it doesn't enforce any phone number format:
+   * the user can input their phone number in either "national" or "international" format.
    */
   international: prop_types__WEBPACK_IMPORTED_MODULE_11__.bool,
   /**
@@ -157598,19 +159873,18 @@ function valuesAreEqual(value1, value2) {
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   getInputValuePrefix: () => (/* binding */ getInputValuePrefix),
-/* harmony export */   removeInputValuePrefix: () => (/* binding */ removeInputValuePrefix)
+/* harmony export */   getPrefixForFormattingValueAsPhoneNumber: () => (/* binding */ getPrefixForFormattingValueAsPhoneNumber),
+/* harmony export */   removePrefixFromFormattedPhoneNumber: () => (/* binding */ removePrefixFromFormattedPhoneNumber)
 /* harmony export */ });
 /* harmony import */ var libphonenumber_js_core__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! libphonenumber-js/core */ "./node_modules/libphonenumber-js/es6/metadata.js");
 
-function getInputValuePrefix(_ref) {
-  var country = _ref.country,
-    international = _ref.international,
-    withCountryCallingCode = _ref.withCountryCallingCode,
+function getPrefixForFormattingValueAsPhoneNumber(_ref) {
+  var inputFormat = _ref.inputFormat,
+    country = _ref.country,
     metadata = _ref.metadata;
-  return country && international && !withCountryCallingCode ? "+".concat((0,libphonenumber_js_core__WEBPACK_IMPORTED_MODULE_0__.getCountryCallingCode)(country, metadata)) : '';
+  return inputFormat === 'NATIONAL_PART_OF_INTERNATIONAL' ? "+".concat((0,libphonenumber_js_core__WEBPACK_IMPORTED_MODULE_0__.getCountryCallingCode)(country, metadata)) : '';
 }
-function removeInputValuePrefix(value, prefix) {
+function removePrefixFromFormattedPhoneNumber(value, prefix) {
   if (prefix) {
     value = value.slice(prefix.length);
     if (value[0] === ' ') {
@@ -158706,15 +160980,18 @@ __webpack_require__.r(__webpack_exports__);
 // https://github.com/catamphetamine/react-phone-number-input/issues/442
 function useInputKeyDownHandler(_ref) {
   var onKeyDown = _ref.onKeyDown,
-    international = _ref.international;
+    inputFormat = _ref.inputFormat;
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(function (event) {
-    if (event.keyCode === BACKSPACE_KEY_CODE && international) {
+    // Usability:
+    // Don't allow the user to erase a leading "+" character when "international" input mode is forced.
+    // That indicates to the user that they can't possibly enter the phone number in a non-international format.
+    if (event.keyCode === BACKSPACE_KEY_CODE && inputFormat === 'INTERNATIONAL') {
       // It checks `event.target` here for being an `<input/>` element
       // because "keydown" events may bubble from arbitrary child elements
       // so there's no guarantee that `event.target` represents an `<input/>` element.
       // Also, since `inputComponent` is not neceesarily an `<input/>`, this check is required too.
       if (event.target instanceof HTMLInputElement) {
-        if (getCaretPosition(event.target) === AFTER_LEADING_PLUS_CARET_POSITION) {
+        if (getCaretPosition(event.target) === LEADING_PLUS.length) {
           event.preventDefault();
           return;
         }
@@ -158723,16 +161000,16 @@ function useInputKeyDownHandler(_ref) {
     if (onKeyDown) {
       onKeyDown(event);
     }
-  }, [onKeyDown, international]);
+  }, [onKeyDown, inputFormat]);
 }
-var BACKSPACE_KEY_CODE = 8;
 
 // Gets the caret position in an `<input/>` field.
 // The caret position starts with `0` which means "before the first character".
 function getCaretPosition(element) {
   return element.selectionStart;
 }
-var AFTER_LEADING_PLUS_CARET_POSITION = '+'.length;
+var BACKSPACE_KEY_CODE = 8;
+var LEADING_PLUS = '+';
 //# sourceMappingURL=useInputKeyDownHandler.js.map
 
 /***/ }),

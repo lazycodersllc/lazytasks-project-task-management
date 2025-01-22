@@ -71,7 +71,7 @@ class Lazytask_Lazy_Task {
 		if ( defined( 'LAZYTASK_VERSION' ) ) {
 			$this->version = LAZYTASK_VERSION;
 		} else {
-			$this->version = '1.0.4';
+			$this->version = '1.0.8';
 		}
 		$this->plugin_name = 'lazytasks-project-task-management';
 

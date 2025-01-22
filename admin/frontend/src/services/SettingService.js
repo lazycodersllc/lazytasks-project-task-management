@@ -27,7 +27,7 @@ export const Lazytask_updateSetting = async (data) => {
         },
         data,
     })
-console.log(response.data)
+
     return response.data;
 }
 

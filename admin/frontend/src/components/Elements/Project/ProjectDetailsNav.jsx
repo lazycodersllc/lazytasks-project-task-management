@@ -6,7 +6,7 @@ import {
     Button,
     Dialog,
     Flex,
-    Group, List,
+    Group, List, Pill,
     Popover,
     ScrollArea,
     Text,
@@ -184,14 +184,19 @@ const ProjectDetailsNav = () => {
                         </Button>
                     </NavLink>
                     <NavLink to="" className="nav-link" activeClassName="active-link">
-                        <Button size="sm" color={"#EBF1F4"} styles={{label: { color: "#c2c2c2" } }} disabled>
-                            Gantt chart
-                        </Button>
+                        <Tooltip className="!py-0 !text-[10px] !z-30" label="Coming soon" opened position="top" offset={-8} color={"#ED7D31"} size="xs">
+                            <Button className="!text-sm" size="sm" color={"#EBF1F4"} styles={{label: { color: "#c2c2c2" } }} disabled>
+                                Gantt chart
+                            </Button>
+                        </Tooltip>
+
                     </NavLink>
                     <NavLink to="" className="nav-link" activeClassName="active-link">
-                        <Button size="sm" color={"#EBF1F4"} styles={{label: { color: "#c2c2c2" } }} disabled>
-                            Swimlane
-                        </Button>
+                        <Tooltip className="!py-0 !text-[10px] !z-30" label="Coming soon" opened position="top" offset={-8} color={"#ED7D31"} size="xs">
+                            <Button className="!text-sm" size="sm" color={"#EBF1F4"} styles={{label: { color: "#c2c2c2" } }} disabled>
+                                Swimlane
+                            </Button>
+                        </Tooltip>
                     </NavLink>
                 </div>
 

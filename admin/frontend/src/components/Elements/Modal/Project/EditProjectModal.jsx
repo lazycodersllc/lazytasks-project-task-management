@@ -10,6 +10,7 @@ import {editProject} from "../../../Settings/store/projectSlice";
 import UserAvatarSingle from "../../../ui/UserAvatarSingle";
 import {fetchTasksByProject} from "../../../Settings/store/taskSlice";
 import {modals} from "@mantine/modals";
+import {showNotification} from "@mantine/notifications";
 const EditProjectModal = ({ projectData }) =>  {
     const dispatch = useDispatch();
     const {loggedUserId} = useSelector((state) => state.auth.user)
@@ -24,7 +25,31 @@ const EditProjectModal = ({ projectData }) =>  {
         if(id === undefined || input === undefined || fieldName === undefined){
             return;
         }
-        dispatch(editProject({id: id, data: {[fieldName]: input, 'updated_by': loggedUserId}}))
+        dispatch(editProject({id: id, data: {[fieldName]: input, 'updated_by': loggedUserId}})).then((response) => {
+                if(response.payload && response.payload.status && response.payload.status === 200){
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'Project',
+                        message: response.payload && response.payload.message && response.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'green',
+                    });
+                }
+                if (response.payload && response.payload.status && response.payload.status !== 200) {
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'Project',
+                        message: response.payload && response.payload.message && response.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'red',
+                    });
+                }
+            }
+        );
         setEditedName(input)
     }
 
@@ -63,7 +88,31 @@ const EditProjectModal = ({ projectData }) =>  {
             // Remove the member's ID from the addedMembers array
             setAddedMembers((prevMembers) => prevMembers.filter((memberId) => parseInt(memberId) !== parseInt(id)));
 
-            dispatch(editProject({id: projectData.id, data: {'members': updatedCurrentMembers, 'deleted_member_id': id, 'updated_by': loggedUserId}}))
+            dispatch(editProject({id: projectData.id, data: {'members': updatedCurrentMembers, 'deleted_member_id': id, 'updated_by': loggedUserId}})).then((response) => {
+                    if(response.payload && response.payload.status && response.payload.status === 200){
+                        showNotification({
+                            id: 'load-data',
+                            loading: true,
+                            title: 'Project',
+                            message: 'Member removed successfully',
+                            autoClose: 2000,
+                            disallowClose: true,
+                            color: 'green',
+                        });
+                    }
+                    if (response.payload && response.payload.status && response.payload.status !== 200) {
+                        showNotification({
+                            id: 'load-data',
+                            loading: true,
+                            title: 'Project',
+                            message: response.payload && response.payload.message && response.payload.message,
+                            autoClose: 2000,
+                            disallowClose: true,
+                            color: 'red',
+                        });
+                    }
+                }
+            );
         }
     };
 
@@ -105,7 +154,31 @@ const EditProjectModal = ({ projectData }) =>  {
             });
             setAddedMembers((prevMembers) => [...prevMembers, clickedMember.id]);
 
-            dispatch(editProject({id: projectData.id, data: {'members': updatedMembers, 'updated_by': loggedUserId}}))
+            dispatch(editProject({id: projectData.id, data: {'members': updatedMembers, 'updated_by': loggedUserId}})).then((response) => {
+                    if(response.payload && response.payload.status && response.payload.status === 200){
+                        showNotification({
+                            id: 'load-data',
+                            loading: true,
+                            title: 'Project',
+                            message: 'Member added successfully',
+                            autoClose: 2000,
+                            disallowClose: true,
+                            color: 'green',
+                        });
+                    }
+                    if (response.payload && response.payload.status && response.payload.status !== 200) {
+                        showNotification({
+                            id: 'load-data',
+                            loading: true,
+                            title: 'Project',
+                            message: response.payload && response.payload.message && response.payload.message,
+                            autoClose: 2000,
+                            disallowClose: true,
+                            color: 'red',
+                        });
+                    }
+                }
+            );
 
         }
     };

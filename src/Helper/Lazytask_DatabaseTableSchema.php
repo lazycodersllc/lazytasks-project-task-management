@@ -32,6 +32,7 @@ class Lazytask_DatabaseTableSchema {
 		self::tbl_notification_template();
 		self::tbl_notification();
 		self::tbl_notification_history();
+		self::tbl_my_zen();
 	}
 
 	private static function tbl_companies(){
@@ -789,6 +790,28 @@ class Lazytask_DatabaseTableSchema {
 		require_once (ABSPATH. 'wp-admin/includes/upgrade.php');
 		dbDelta($table_generate_query);
 
+		$column_name = "mobile_notification_title";  // Replace with your actual column name
+		$column_definition = "VARCHAR(255)";  // Column definition, adjust as needed
+
+		// SQL query to check if the column exists
+		$column_exists = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = %s 
+            AND TABLE_NAME = %s 
+            AND COLUMN_NAME = %s",
+				DB_NAME, $table_name, $column_name
+			)
+		);
+
+		// If the column does not exist, add it
+		if (empty($column_exists)) {
+			$alter_sql = "ALTER TABLE $table_name ADD $column_name $column_definition";
+			$wpdb->query($alter_sql);
+
+		}
+
 		//default template data
 		$defaultTemplates = [
 			[
@@ -1131,6 +1154,37 @@ System Notification'
 		  PRIMARY KEY (`id`)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 	";
+		require_once (ABSPATH. 'wp-admin/includes/upgrade.php');
+		dbDelta($table_generate_query);
+	}
+
+	private static function tbl_my_zen() {
+		global $wpdb;
+		$table_name = LAZYTASK_TABLE_PREFIX . 'my_zen_tasks';
+
+		$table_generate_query = "
+	        CREATE TABLE IF NOT EXISTS `". $table_name ."` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `company_id` bigint unsigned DEFAULT NULL,
+  `project_id` bigint unsigned DEFAULT NULL,
+  `task_id` bigint unsigned DEFAULT NULL,
+  `created_by` bigint unsigned DEFAULT NULL,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `slug` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `description` longtext COLLATE utf8mb4_unicode_ci,
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
+  `start_date_time` timestamp NULL DEFAULT NULL,
+  `end_date_time` timestamp NULL DEFAULT NULL,
+  `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT',
+  `via` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'task',
+  `sort_order` int NOT NULL DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+";
 		require_once (ABSPATH. 'wp-admin/includes/upgrade.php');
 		dbDelta($table_generate_query);
 	}

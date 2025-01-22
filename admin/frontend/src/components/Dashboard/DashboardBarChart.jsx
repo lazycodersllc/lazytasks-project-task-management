@@ -17,8 +17,8 @@ import {BarChart} from "@mantine/charts";
 const DashboardBarChart = ({slug, header}) => {
     const {userProjects} = useSelector((state) => state.settings.myTask);
     return (
-        <Card withBorder shadow="sm" radius="md">
-            <Card.Section withBorder inheritPadding py="xs" className="bg-[#EBF1F4]">
+        <Card withBorder radius="sm">
+            <Card.Section withBorder inheritPadding py="xs" className="bg-[#FDFDFD]">
                 <Group>
                     {/*<IconGripVertical size="20" />*/}
                     <Title order={6}>Project Summery Chart</Title>
@@ -27,16 +27,17 @@ const DashboardBarChart = ({slug, header}) => {
 
             <Card.Section px="xs" pt="xs">
                 <BarChart
-                    h={250}
+                    h={252}
                     data={userProjects}
                     dataKey="name"
                     type="stacked"
                     withLegend
                     legendProps={{ verticalAlign: 'bottom', height: 50 }}
+                    fillOpacity={1}
                     series={[
                         // { name: 'TOTAL', color: 'violet.6' },
-                        { name: 'ACTIVE', color: 'yellow.6' },
-                        { name: 'COMPLETED', color: 'green.6' },
+                        { name: 'ACTIVE', color: '#ED7D31' },
+                        { name: 'COMPLETED', color: '#39758D' },
                     ]}
                 />
             </Card.Section>

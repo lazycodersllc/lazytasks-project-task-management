@@ -17,11 +17,11 @@ const InlineEditForm = ({ editHandler, value }) => {
             console.log(values)
 
         }
-        // document.activeElement.blur();
     };
     const handlerOnBlur = (values) => {
         if(form.isDirty('input')){
             editHandler(values);
+            console.log(values)
         }
     };
 

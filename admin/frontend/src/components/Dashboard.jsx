@@ -1,5 +1,5 @@
 import React, {Fragment, useEffect} from 'react';
-import {Button, Container, Grid, ScrollArea, Title} from '@mantine/core';
+import {Button, Container, Grid, ScrollArea, Tabs, Title} from '@mantine/core';
 import Header from './Header';
 import {useDispatch, useSelector} from "react-redux";
 import {loggedInUserToken, onSignInSuccess, setToken} from "../store/auth/sessionSlice";
@@ -11,6 +11,7 @@ import QuickTaskList from "./Dashboard/QuickTaskList";
 import TaskList from "./Dashboard/TaskList";
 import DashboardBarChart from "./Dashboard/DashboardBarChart";
 import ProjectSummery from "./Dashboard/ProjectSummery";
+import TaskListTabs from "./Dashboard/TaskListTabs";
 
 const Dashboard = () => {
 
@@ -38,7 +39,7 @@ const Dashboard = () => {
                             {/*<h3 className="text-2xl font-semibold text-red-500 mb-4">Dashboard Content</h3>*/}
                             <Title order={4}>Dashboard</Title>
                         </div>
-                        <ScrollArea scrollbars="y" className="w-full h-[calc(100vh-180px)] px-2" scrollbarSize={4}>
+                        <ScrollArea scrollbars="y" className="w-full h-[calc(100vh-200px)] px-2" scrollbarSize={4}>
                             <Grid className="mb-5" columns={12}>
                                 <Grid.Col span={3}>
                                     <QuickTaskList/>
@@ -51,14 +52,8 @@ const Dashboard = () => {
                                 </Grid.Col>
                             </Grid>
                             <Grid columns={12}>
-                                <Grid.Col span={4}>
-                                    <TaskList slug='today' header='Today'/>
-                                </Grid.Col>
-                                <Grid.Col span={4}>
-                                    <TaskList slug='nextSevenDays' header='Next 7 Days'/>
-                                </Grid.Col>
-                                <Grid.Col span={4}>
-                                    <TaskList slug='upcoming' header='Upcoming'/>
+                                <Grid.Col span={6}>
+                                    <TaskListTabs />
                                 </Grid.Col>
                             </Grid>
                         </ScrollArea>

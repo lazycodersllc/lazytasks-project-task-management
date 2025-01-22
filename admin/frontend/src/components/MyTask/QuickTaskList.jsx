@@ -6,6 +6,7 @@ import dayjs from "dayjs";
 import {IconArrowRight, IconDeviceFloppy} from "@tabler/icons-react";
 import {useDisclosure} from "@mantine/hooks";
 import AddTaskFromQuickTaskDrawer from "../QuickTask/AddTaskFromQuickTaskDrawer";
+import {showNotification} from "@mantine/notifications";
 
 const QuickTaskList = () => {
 
@@ -36,7 +37,19 @@ const QuickTaskList = () => {
                 name: newQuickTask,
                 user_id:loggedUserId
             }
-            dispatch(createQuickTask(submitData))
+            dispatch(createQuickTask(submitData)).then((res) => {
+                if(res.payload && res.payload.status && res.payload.status === 200){
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'Quick Task',
+                        message: res.payload && res.payload.message && res.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'green',
+                    });
+                }
+            });
             setNewQuickTask('');
         }
     };
@@ -55,11 +68,11 @@ const QuickTaskList = () => {
           {/*<h3> Quick Task</h3>*/}
           <Title className="mb-2 pb-2 border-b" order={6}> Quick Task</Title>
 
-        <div className="px-0 my-2">
+        <div className="px-0 pb-2 mt-2 mb-0 border-b">
             <TextInput
-                radius="xl"
+                radius="sm"
                 size="sm"
-                placeholder="Enter task title"
+                placeholder="Add task"
                 onKeyDown={handleKeyDown}
                 onChange={handleInputChange}
                 value={newQuickTask}
@@ -72,9 +85,9 @@ const QuickTaskList = () => {
             />
 
         </div>
-        <ScrollArea className="h-[calc(100vh-270px)] pb-[2px]" scrollbarSize={4}>
+        <ScrollArea className="h-[calc(100vh-300px)] pb-[2px]" scrollbarSize={4}>
             {tasks && tasks.length > 0 && tasks.map((task, index) => (
-                <div className="border rounded-md my-3">
+                <div className="border rounded my-3">
                   <div onDoubleClickCapture={()=>{handleEditTaskDrawerOpen(task)}} className="content px-2 py-2 cursor-pointer">
                       <Text fz="sm">{task.name}</Text>
                       <span className="text-xs text-blue-600">{dayjs(task.created_at).format('MMM D, YYYY')}</span>

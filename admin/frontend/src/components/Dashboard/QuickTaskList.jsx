@@ -10,7 +10,7 @@ import {
     TextInput,
     Title,
     Text,
-    useMantineTheme, Card, Group
+    Card, Group, Divider
 } from '@mantine/core';
 import { useSelector, useDispatch } from 'react-redux';
 import {createQuickTask} from "../Settings/store/quickTaskSlice";
@@ -19,6 +19,7 @@ import {IconDeviceFloppy, IconEdit} from "@tabler/icons-react";
 import {Link} from "react-router-dom";
 import {useDisclosure} from "@mantine/hooks";
 import AddTaskFromQuickTaskDrawer from "../QuickTask/AddTaskFromQuickTaskDrawer";
+import {showNotification} from "@mantine/notifications";
 
 const QuickTaskList = () => {
 
@@ -49,12 +50,23 @@ const QuickTaskList = () => {
                 name: newQuickTask,
                 user_id:loggedUserId
             }
-            dispatch(createQuickTask(submitData))
+            dispatch(createQuickTask(submitData)).then((res) => {
+                if(res.payload && res.payload.status && res.payload.status === 200){
+                    showNotification({
+                        id: 'load-data',
+                        loading: true,
+                        title: 'Quick Task',
+                        message: res.payload && res.payload.message && res.payload.message,
+                        autoClose: 2000,
+                        disallowClose: true,
+                        color: 'green',
+                    });
+                }
+            });
             setNewQuickTask('');
         }
     };
 
-    const theme = useMantineTheme();
 
     const [selectedTask, setSelectedTask] = useState(null);
 
@@ -67,20 +79,19 @@ const QuickTaskList = () => {
 
   return (
       <>
-          <Card withBorder shadow="sm" radius="md">
-              <Card.Section withBorder inheritPadding py="xs" className="bg-[#EBF1F4]">
+          <Card withBorder radius="sm">
+              <Card.Section withBorder inheritPadding py="xs" className="bg-[#FDFDFD]">
                   <Group>
                       {/*<IconGripVertical size="20" />*/}
                       {/*<IconCalendar size={20} />*/}
                       <Title order={6}>Quick Task</Title>
                   </Group>
               </Card.Section>
-
-              <Card.Section mt="xs" px="xs">
+              <Card.Section withBorder inheritPadding className="bg-[#FDFDFD] py-1.5 mb-1">
                   <TextInput
-                      radius="xl"
+                      radius="sm"
                       size="sm"
-                      placeholder="Enter task title"
+                      placeholder="Add task"
                       onKeyDown={handleKeyDown}
                       onChange={handleInputChange}
                       value={newQuickTask}
@@ -93,10 +104,11 @@ const QuickTaskList = () => {
                   />
               </Card.Section>
               <Card.Section px="xs" pb="xs">
-                  <ScrollArea className="relative h-[202px] pb-[3px]" scrollbarSize={4}>
+                  <ScrollArea className="relative h-[200px] pb-[35px]" scrollbarSize={4}>
                       <div className="">
                           {tasks && tasks.length > 0 && tasks.map((task, index) => (
-                              <div className="border-b">
+                              //odd and even calculated index value
+                              <div className={`${index % 2 === 0?'bg-[#f8f9fa]':''}`}>
                                   <div onDoubleClickCapture={()=>{handleEditTaskDrawerOpen(task)}} className="content px-2 py-2 cursor-pointer">
                                       <Text fz="sm">{task.name}</Text>
                                   </div>
@@ -105,8 +117,8 @@ const QuickTaskList = () => {
                           }
 
                       </div>
-                      {tasks && tasks.length > 0 &&
-                          <div className="absolute bottom-2 right-0 bg-white">
+                      {tasks && tasks.length > 4 &&
+                          <div className="absolute bottom-0 right-1 bg-white">
                               <Link to={`/my-task`}>
                                   <Button color="#ED7D31" radius="xl" size="compact-xs">
                                       More...

@@ -4,6 +4,7 @@ namespace Lazytask\Notification\includes;
 
 use Lazytask\Controller\Lazytask_NotificationController;
 use Lazytask\Helper\Lazytask_DatabaseTableSchema;
+use Lazytask\Notification\services\Firebase;
 use Lazytask\Notification\services\SmsGateWay;
 
 class Integrations {
@@ -144,8 +145,17 @@ class Integrations {
 									$message = $this->contentPlaceholderReplace($content, $placeholders);
 									$from = 'PMS';
 									$this->sendSMS($to, $message, $from);
-								}elseif ($channel == 'web-app') {
-									// send web app notification
+								}elseif ($channel == 'mobile') {
+									$title = isset($notificationTemplate['mobile_notification_title']) && $notificationTemplate['mobile_notification_title'] !='' ? $notificationTemplate['mobile_notification_title'] : 'Notification';
+									$firebase = new Firebase();
+									$to = get_user_meta($userId, 'lazytask_fcm_token', true);
+									if($to && $to != '' && $content != '') {
+										$message = [
+											'title' => $title,
+											'body' => $this->contentPlaceholderReplace($content, $placeholders),
+										];
+										$firebase->send($to, $message);
+									}
 
 								}
 

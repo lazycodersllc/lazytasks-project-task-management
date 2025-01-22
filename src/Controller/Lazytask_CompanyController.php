@@ -146,9 +146,16 @@ final class Lazytask_CompanyController {
 		}
 		$data = $this->getCompanyById($company_id, $request);
 		if($data){
-			return new WP_REST_Response(['status'=>200, 'message'=>'Company updated successfully', 'data'=>$data], 200);
+			return new WP_REST_Response([
+				'status'=>200,
+				'message'=>__('Workspace created successfully', 'lazytasks-project-task-management'),
+				'data'=>$data
+			], 200);
 		}
-		return new WP_REST_Response(['status'=>404, 'message'=>'Company not found', 'data'=>null], 404);
+		return new WP_REST_Response([
+			'status'=>404,
+			'message'=>__('Workspace not found', 'lazytasks-project-task-management'),
+		],404);
 
 	}
 
@@ -161,7 +168,11 @@ final class Lazytask_CompanyController {
 		$id = $request->get_param('id');
 
 		if(!$id){
-			return array('status'=> 500, 'message' => 'Company ID is required', 'data'=>[]);
+			return new WP_REST_Response([
+				'status'=> 500,
+				'message' => __('Workspace id is required', 'lazytasks-project-task-management'),
+				'data'=>[]
+			], 500);
 		}
 		$prevCompany = $this->getCompanyById($id);
 
@@ -226,76 +237,78 @@ final class Lazytask_CompanyController {
 			}
 
 		}
-		if(sizeof($members)>0){
-			$loggedInUserId = isset($requestData['updated_by']) && $requestData['updated_by']!='' ? $requestData['updated_by'] : null;
-			$loggedInUser = get_user_by('ID', $loggedInUserId);
-			$userController = new Lazytask_UserController();
-
-			$companyMembersTableName = LAZYTASK_TABLE_PREFIX . 'companies_users';
-
-			$db->delete($companyMembersTableName, array('company_id' => $id));
-			// Then, insert the new members
-		 $uniqueMembers = array_unique( array_column( $members, 'id' ) );
-			foreach ( $uniqueMembers as $member ) {
-				$db->insert(
-					$companyMembersTableName,
-					array(
-						"company_id" => $id,
-						"user_id" => (int)$member,
-						"created_at" => $updated_at,
-						"updated_at" => $updated_at,
-						)
-				);
-				if(!in_array($member, $prevCompanyMembersId)){
-
-					$memberName = $members[array_search($member, array_column($members, 'id'))]['name'];
-
-
-					$roles = $userController->getRolesByUser((int)$member);
-
-					$userHasRoles = isset($roles['roles']) && sizeof($roles['roles'])>0 ? array_unique($roles['roles']) : [];
-					$rolesName = sizeof($userHasRoles) > 0 ? implode(', ', array_column($userHasRoles, 'name')) : '';
-
-					$referenceInfo = ['id'=>$id, 'name'=>$prevCompany['name'], 'type'=>'company'];
-					$placeholdersArray = ['member_name' => $memberName, 'company_name'=>$prevCompany['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name:'', 'member_roles'=>$rolesName];
-
-					do_action('lazytask_workspace_assigned_member', $referenceInfo, ['web-app', 'email'], [$member], $placeholdersArray);
-				}
-			}
-
-			foreach ($prevCompanyMembersId as $member) {
-				if(!in_array($member, $uniqueMembers)){
-					$memberName = $prevCompanyMembers[array_search($member, array_column($prevCompanyMembers, 'id'))]['name'];
-					$roles = $userController->getRolesByUser((int)$member);
-
-					$userHasRoles = isset($roles['roles']) && sizeof($roles['roles'])>0 ? array_unique($roles['roles']) : [];
-					$rolesName = sizeof($userHasRoles) > 0 ? implode(', ', array_column($userHasRoles, 'name')) : '';
-
-					$referenceInfo = ['id'=>$id, 'name'=>$prevCompany['name'], 'type'=>'company'];
-					$placeholdersArray = ['member_name' => $memberName, 'company_name'=>$prevCompany['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name:'', 'member_roles'=>$rolesName];
-
-					do_action('lazytask_workspace_removed_member', $referenceInfo, ['web-app', 'email'], [$member], $placeholdersArray);
-				}
-			}
-		}else{
-			if($prevCompanyMembersId && sizeof($prevCompanyMembersId)===1){
+		if(isset($requestData['members'])){
+			if(sizeof($members)>0){
 				$loggedInUserId = isset($requestData['updated_by']) && $requestData['updated_by']!='' ? $requestData['updated_by'] : null;
 				$loggedInUser = get_user_by('ID', $loggedInUserId);
-				// If no members were provided, delete all the members of the company
-				$companyMembersTableName = LAZYTASK_TABLE_PREFIX . 'companies_users';
-				$db->delete($companyMembersTableName, array('company_id' => $id));
 				$userController = new Lazytask_UserController();
+
+				$companyMembersTableName = LAZYTASK_TABLE_PREFIX . 'companies_users';
+
+				$db->delete($companyMembersTableName, array('company_id' => $id));
+				// Then, insert the new members
+				$uniqueMembers = array_unique( array_column( $members, 'id' ) );
+				foreach ( $uniqueMembers as $member ) {
+					$db->insert(
+						$companyMembersTableName,
+						array(
+							"company_id" => $id,
+							"user_id" => (int)$member,
+							"created_at" => $updated_at,
+							"updated_at" => $updated_at,
+						)
+					);
+					if(!in_array($member, $prevCompanyMembersId)){
+
+						$memberName = $members[array_search($member, array_column($members, 'id'))]['name'];
+
+
+						$roles = $userController->getRolesByUser((int)$member);
+
+						$userHasRoles = isset($roles['roles']) && sizeof($roles['roles'])>0 ? array_unique($roles['roles']) : [];
+						$rolesName = sizeof($userHasRoles) > 0 ? implode(', ', array_column($userHasRoles, 'name')) : '';
+
+						$referenceInfo = ['id'=>$id, 'name'=>$prevCompany['name'], 'type'=>'company'];
+						$placeholdersArray = ['member_name' => $memberName, 'company_name'=>$prevCompany['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name:'', 'member_roles'=>$rolesName];
+
+						do_action('lazytask_workspace_assigned_member', $referenceInfo, ['web-app', 'email'], [$member], $placeholdersArray);
+					}
+				}
+
 				foreach ($prevCompanyMembersId as $member) {
-					$memberName = $prevCompanyMembers[array_search($member, array_column($prevCompanyMembers, 'id'))]['name'];
-					$roles = $userController->getRolesByUser((int)$member);
+					if(!in_array($member, $uniqueMembers)){
+						$memberName = $prevCompanyMembers[array_search($member, array_column($prevCompanyMembers, 'id'))]['name'];
+						$roles = $userController->getRolesByUser((int)$member);
 
-					$userHasRoles = isset($roles['roles']) && sizeof($roles['roles'])>0 ? array_unique($roles['roles']) : [];
-					$rolesName = sizeof($userHasRoles) > 0 ? implode(', ', array_column($userHasRoles, 'name')) : '';
+						$userHasRoles = isset($roles['roles']) && sizeof($roles['roles'])>0 ? array_unique($roles['roles']) : [];
+						$rolesName = sizeof($userHasRoles) > 0 ? implode(', ', array_column($userHasRoles, 'name')) : '';
 
-					$referenceInfo = ['id'=>$id, 'name'=>$prevCompany['name'], 'type'=>'company'];
-					$placeholdersArray = ['member_name' => $memberName, 'company_name'=>$prevCompany['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name:'', 'member_roles'=>$rolesName];
+						$referenceInfo = ['id'=>$id, 'name'=>$prevCompany['name'], 'type'=>'company'];
+						$placeholdersArray = ['member_name' => $memberName, 'company_name'=>$prevCompany['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name:'', 'member_roles'=>$rolesName];
 
-					do_action('lazytask_workspace_removed_member', $referenceInfo, ['web-app', 'email'], [$member], $placeholdersArray);
+						do_action('lazytask_workspace_removed_member', $referenceInfo, ['web-app', 'email'], [$member], $placeholdersArray);
+					}
+				}
+			}else{
+				if($prevCompanyMembersId && sizeof($prevCompanyMembersId)===1){
+					$loggedInUserId = isset($requestData['updated_by']) && $requestData['updated_by']!='' ? $requestData['updated_by'] : null;
+					$loggedInUser = get_user_by('ID', $loggedInUserId);
+					// If no members were provided, delete all the members of the company
+					$companyMembersTableName = LAZYTASK_TABLE_PREFIX . 'companies_users';
+					$db->delete($companyMembersTableName, array('company_id' => $id));
+					$userController = new Lazytask_UserController();
+					foreach ($prevCompanyMembersId as $member) {
+						$memberName = $prevCompanyMembers[array_search($member, array_column($prevCompanyMembers, 'id'))]['name'];
+						$roles = $userController->getRolesByUser((int)$member);
+
+						$userHasRoles = isset($roles['roles']) && sizeof($roles['roles'])>0 ? array_unique($roles['roles']) : [];
+						$rolesName = sizeof($userHasRoles) > 0 ? implode(', ', array_column($userHasRoles, 'name')) : '';
+
+						$referenceInfo = ['id'=>$id, 'name'=>$prevCompany['name'], 'type'=>'company'];
+						$placeholdersArray = ['member_name' => $memberName, 'company_name'=>$prevCompany['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name:'', 'member_roles'=>$rolesName];
+
+						do_action('lazytask_workspace_removed_member', $referenceInfo, ['web-app', 'email'], [$member], $placeholdersArray);
+					}
 				}
 			}
 		}
@@ -303,9 +316,17 @@ final class Lazytask_CompanyController {
 		// Return the updated company and its members
 		$data = $this->getCompanyById($id, $request);
 		if($data){
-			return new WP_REST_Response(['status'=>200, 'message'=>'Company updated successfully', 'data'=>$data], 200);
+			return new WP_REST_Response([
+				'status'=>200,
+				'message' => __('Workspace updated successfully', 'lazytasks-project-task-management'),
+				'data'=>$data
+			], 200);
 		}
-		return new WP_REST_Response(['status'=>404, 'message'=>'Company not found', 'data'=>null], 404);
+		return new WP_REST_Response([
+			'status'=>404,
+			'message' => __('Workspace not found', 'lazytasks-project-task-management'),
+			'data'=>null
+		], 404);
 	}
 
 	public function show(WP_REST_Request $request){
@@ -467,7 +488,7 @@ final class Lazytask_CompanyController {
 
 		$sql = "SELECT projects.id, projects.name, projects.slug, projects.code, projects.status, projects.company_id FROM `{$projectsTable}` as projects
 			JOIN `{$companyTable}` as company  ON projects.company_id = company.id 
-		WHERE company.id IN ($ids)";
+		WHERE projects.deleted_at IS NULL and company.id IN ($ids)";
 
 		$query = call_user_func_array(array($wpdb, 'prepare'), array_merge(array($sql), $companiesId));
 

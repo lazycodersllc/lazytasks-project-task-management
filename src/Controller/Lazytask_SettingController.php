@@ -27,7 +27,10 @@ final class Lazytask_SettingController {
 		if (!is_array($settings)) {
 			return new WP_Error('invalid_settings', $settings, ['status' => 400]);
 		}
+		$oldSettings = get_option('lazytask_settings', []);
+		$oldCoreSettings = json_decode($oldSettings['core_setting'], true);
 		if(isset($settings['type']) && $settings['type'] !=''){
+
 			if( $settings['type'] =='general') {
 				//wp_handle_upload site_logo
 
@@ -42,8 +45,10 @@ final class Lazytask_SettingController {
 					if ( $movefile && !isset( $movefile['error'] ) ) {
 						$settings['core_setting']['site_logo'] = $movefile['url'];
 					} else {
-						$settings['core_setting']['site_logo'] = '';
+						$settings['core_setting']['site_logo'] = isset($oldCoreSettings['site_logo']) ? $oldCoreSettings['site_logo'] : '';
 					}
+				}else{
+					$settings['core_setting']['site_logo'] = isset($oldCoreSettings['site_logo']) ? $oldCoreSettings['site_logo'] : '';
 				}
 
 				$settings['core_setting'] = json_encode($settings['core_setting']);
@@ -53,6 +58,8 @@ final class Lazytask_SettingController {
 				$settings['smtp_configuration'] = json_encode($settings['smtp_configuration']);
 			}elseif($settings['type'] =='sms' ) {
 				$settings['sms_configuration'] = json_encode($settings['sms_configuration']);
+			}elseif($settings['type'] =='firebase' ) {
+				$settings['firebase_configuration'] = json_encode($settings['firebase_configuration']);
 			}
 		}
 

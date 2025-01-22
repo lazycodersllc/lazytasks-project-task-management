@@ -222,7 +222,7 @@ final class Lazytask_ProjectController {
 		$prevProject = $this->getProjectById($id);
 
 		$prevProjectMembers = $prevProject['members'];
-		$prevProjectMembersId = sizeof($prevProjectMembers) > 0 ? array_column($prevProjectMembers, 'id'):[];
+		$prevProjectMembersId = $prevProjectMembers && sizeof($prevProjectMembers) > 0 ? array_column($prevProjectMembers, 'id'):[];
 
 
 		$submittedData = [];
@@ -291,42 +291,6 @@ final class Lazytask_ProjectController {
 					do_action('lazytask_project_assigned_member', $referenceInfo, ['web-app', 'email'], [$member], $placeholdersArray);
 				}
 			}
-
-			// Then, remove the members that are not in the new list
-			foreach ($prevProjectMembersId as $member) {
-				if(!in_array($member, $uniqueMembers)){
-					$memberName = $prevProjectMembers[array_search($member, array_column($prevProjectMembers, 'id'))]['name'];
-					$roles = $userController->getRolesByUser((int)$member);
-
-					$userHasRoles = isset($roles['roles']) && sizeof($roles['roles'])>0 ? array_unique($roles['roles']) : [];
-					$rolesName = sizeof($userHasRoles) > 0 ? implode(', ', array_column($userHasRoles, 'name')) : '';
-
-					$referenceInfo = ['id'=>$id, 'name'=>$prevProject['name'], 'type'=>'project'];
-					$placeholdersArray = ['member_name' => $memberName, 'project_name'=>$prevProject['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name:'', 'member_roles'=>$rolesName];
-
-					do_action('lazytask_project_removed_member', $referenceInfo, ['web-app', 'email'], [$member], $placeholdersArray);
-				}
-			}
-		}else{
-			if($prevProjectMembersId && sizeof($prevProjectMembersId)==1){
-				$userController = new Lazytask_UserController();
-				$loggedInUserId = isset($requestData['updated_by']) && $requestData['updated_by']!="" ? $requestData['updated_by'] : null;
-				$loggedInUser = get_user_by('ID', $loggedInUserId);
-				$projectMembersTable = LAZYTASK_TABLE_PREFIX.'projects_users';
-				$db->delete($projectMembersTable, array('project_id' => $id));
-				foreach ($prevProjectMembersId as $member) {
-					$memberName = $prevProjectMembers[array_search($member, array_column($prevProjectMembers, 'id'))]['name'];
-					$roles = $userController->getRolesByUser((int)$member);
-
-					$userHasRoles = isset($roles['roles']) && sizeof($roles['roles'])>0 ? array_unique($roles['roles']) : [];
-					$rolesName = sizeof($userHasRoles) > 0 ? implode(', ', array_column($userHasRoles, 'name')) : '';
-
-					$referenceInfo = ['id'=>$id, 'name'=>$prevProject['name'], 'type'=>'project'];
-					$placeholdersArray = ['member_name' => $memberName, 'project_name'=>$prevProject['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name:'', 'member_roles'=>$rolesName];
-
-					do_action('lazytask_project_removed_member', $referenceInfo, ['web-app', 'email'], [$member], $placeholdersArray);
-				}
-			}
 		}
 		$ids=[];
 		if(isset($requestData['deleted_member_id']) && $requestData['deleted_member_id']!=""){
@@ -355,6 +319,25 @@ final class Lazytask_ProjectController {
 
 			}
 
+			$userController = new Lazytask_UserController();
+			$loggedInUserId = isset($requestData['updated_by']) && $requestData['updated_by']!="" ? $requestData['updated_by'] : null;
+			$memberId= $requestData['deleted_member_id'];
+			$member = get_user_by('ID', $memberId);
+			$loggedInUser = get_user_by('ID', $loggedInUserId);
+			$projectMembersTable = LAZYTASK_TABLE_PREFIX.'projects_users';
+			$db->delete($projectMembersTable, array('project_id' => $id, 'user_id'=>$requestData['deleted_member_id']));
+
+			$memberName = $member ? $member->display_name:null;
+			$roles = $userController->getRolesByUser((int)$member->ID);
+
+			$userHasRoles = isset($roles['roles']) && sizeof($roles['roles'])>0 ? array_unique($roles['roles']) : [];
+			$rolesName = sizeof($userHasRoles) > 0 ? implode(', ', array_column($userHasRoles, 'name')) : '';
+
+			$referenceInfo = ['id'=>$id, 'name'=>$prevProject['name'], 'type'=>'project'];
+			$placeholdersArray = ['member_name' => $memberName, 'project_name'=>$prevProject['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name:'', 'member_roles'=>$rolesName];
+
+			do_action('lazytask_project_removed_member', $referenceInfo, ['web-app', 'email'], [$member], $placeholdersArray);
+
 		}
 
 		if(sizeof($properties)>0){
@@ -375,7 +358,7 @@ final class Lazytask_ProjectController {
 		// Return the updated project
 		$data =  $this->getProjectById($id);
 		if($data){
-			return new WP_REST_Response(['status'=>200, 'message'=>'Project updated successfully', 'data'=>$data, 'ids'=>$ids], 200);
+			return new WP_REST_Response(['status'=>200, 'message'=>'Project updated successfully', 'data'=>$data, 'ids'=>$ids, 'requestData'=>$requestData], 200);
 		}
 		return new WP_REST_Response(['status'=>404, 'message'=>'Project not found', 'data'=>[]], 404);
 	}
@@ -393,6 +376,21 @@ final class Lazytask_ProjectController {
 		$db->query('START TRANSACTION');
 		$deletedBy = isset($requestData['deleted_by']) && $requestData['deleted_by']!="" ? $requestData['deleted_by'] : null;
 
+		//members and tasks check
+		$projectMembers = $this->getProjectMembers($id);
+
+		if($projectMembers && sizeof($projectMembers) > 0 && isset($projectMembers[$id]) && sizeof($projectMembers[$id])>0){
+			$db->query('ROLLBACK');
+				return new WP_REST_Response(['status'=>404, 'message'=>'Project has members','data'=>null]);
+		}
+
+		$projectTasks = $this->getNoOfTasksByProject($id);
+		$totalTasks = $projectTasks && isset($projectTasks[$id]) ? (int)$projectTasks[$id]:0;
+		if($totalTasks>0){
+			$db->query('ROLLBACK');
+				return new WP_REST_Response(['status'=>404, 'message'=>'Project has tasks', 'data'=>null]);
+		}
+
 		$projectUpdated = $db->update(
 			self::TABLE_PROJECTS,
 			array(
@@ -406,7 +404,7 @@ final class Lazytask_ProjectController {
 		if (!$projectUpdated) {
 			// Rollback the transaction
 			$db->query('ROLLBACK');
-			return new WP_Error('db_update_error', 'Could not update project in the database.', array('status' => 500));
+			return new WP_REST_Response(['status'=>404, 'message'=>'Project not found', 'data'=>null], 404);
 		}
 
 		$properties['attributes'] = [
@@ -553,7 +551,10 @@ final class Lazytask_ProjectController {
 
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
-		if($projectsId == '' || sizeof($projectsId) == 0){
+		if($projectsId == ''){
+			return [];
+		}
+		if(is_array($projectsId) && sizeof($projectsId) == 0){
 			return [];
 		}
 		$tableTask = LAZYTASK_TABLE_PREFIX . 'tasks';
@@ -711,7 +712,7 @@ final class Lazytask_ProjectController {
 				FROM `{$projectsTable}` as projects
 				JOIN `{$companyTable}` as company  ON projects.company_id = company.id 
 				JOIN `{$projectMembersTable}` as projectMembers  ON projects.id = projectMembers.project_id 
-				WHERE projectMembers.user_id = %d AND projects.company_id IN ($ids) group by projects.id";
+				WHERE projects.deleted_at IS NULL and projectMembers.user_id = %d AND projects.company_id IN ($ids) group by projects.id";
 		//call_user_func_array with user id
 		$query = call_user_func_array(array($wpdb, 'prepare'), array_merge(array($sql, $userId), $companiesId));
 		$results = $db->get_results($query, ARRAY_A);

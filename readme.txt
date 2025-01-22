@@ -4,7 +4,7 @@ Donate link: https://lazycoders.co
 Tags: Project management, bug tracking, swimlane, calendar, collaboration
 Requires at least: 3.0.1
 Tested up to: 6.6
-Stable tag: 1.0.4
+Stable tag: 1.0.8
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
@@ -90,6 +90,11 @@ Plan your projects precisely using our Gantt chart feature, allowing you to see 
 6. **Dashboard**
 
 == Changelog ==
+
+= 1.0.8 - 2025-01-22 =
+* New: Implemented enhanced API response messages.
+* Upgrade: Updated the API route namespace.
+* Upgrade: Modified the dashboard design for improved usability.
 
 = 1.0.4 - 2024-09-26 =
 * New: Workspace, project, section, task, and sub-task can now be deleted

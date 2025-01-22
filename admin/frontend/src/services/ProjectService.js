@@ -21,7 +21,6 @@ export const addProject = async (data) => {
             method: 'post',
             data,
         })
-        console.log(response.data)
         return response.data;
     } catch (error) {
         return error.message;

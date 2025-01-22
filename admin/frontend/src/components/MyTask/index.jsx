@@ -37,7 +37,7 @@ const MyTask = () => {
                 <Container size="full">
                     <div className="settings-page-card bg-white rounded-xl p-6 pt-3 my-5 mb-0">
                         <div className='mt-2 mb-3'>
-                            <Title order={4}>My Task</Title>
+                            <Title order={4}>My Tasks</Title>
                         </div>
                         <Grid columns={12}>
                             <Grid.Col span={9}>

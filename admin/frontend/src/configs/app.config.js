@@ -5,7 +5,7 @@ const appConfig = {
     tourPath: '/',
     locale: 'en',
     enableMock: false,
-    liveApiUrl: `${appLocalizer?.apiUrl}/pms/api/v1`,
+    liveApiUrl: `${appLocalizer?.apiUrl}/lazytasks/api/v1`,
     liveSiteUrl: `${appLocalizer?.homeUrl}`,
     localApiUrl: 'http://localhost:9000',
 }

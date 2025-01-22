@@ -30,6 +30,7 @@ import WorkspaceLists from '../Elements/Workspace/WorkspaceLists';
 import {useSelector} from "react-redux";
 import useAuth from "../../utils/useAuth";
 import {hasPermission} from "../ui/permissions";
+import my_zen from '../../img/my-zen-black.svg';
 
 const dashboardMainMenuData = [
     {
@@ -37,13 +38,13 @@ const dashboardMainMenuData = [
       url: '#/dashboard',
       icon: (<IconHome stroke={1.25} size={24} color={`#202020`} /> ),
     },
-    {
+    /*{
       label: 'My Zen',
-      url: '',
-      icon: (<IconCalendarEvent stroke={1.25} size={24} color={`#202020`} /> )
-    },
+      url: '#/my-zen',
+      icon: (<Avatar  src={my_zen} stroke={1.25} size={24} color={`#202020`} /> )
+    },*/
     {
-      label: 'My Task',
+      label: 'My Tasks',
       url: '#/my-task',
       icon: (<IconClipboardCopy stroke={1.25} size={24} color={`#202020`} /> ),
     },
@@ -87,16 +88,16 @@ export function HeaderTabs() {
 
   return (
     <div className={`relative ${classes.header}`}>
-     
+
 
       <Container className="py-1" size="full">
-        <Group justify="space-between">
-            {/* <MantineLogo size={28} /> */} 
+        <Group className={` h-[78px]`} justify="space-between">
+            {/* <MantineLogo size={28} /> */}
             <div className='flex space-x-4'>
               {dashboardMainMenuData.map((menuItem) => (
                 <DashboardMenu {...menuItem} />
               ))}
-            </div> 
+            </div>
 
                   <div className='flex items-center gap-4'>
                       {/* <ButtonMenu /> */}
@@ -104,7 +105,7 @@ export function HeaderTabs() {
                           {/*for preminum*/}
 
                       </div>
-                      <Button className={`font-semibold`} onClick={open} variant="filled"
+                      <Button size="lg" className={`font-semibold`} onClick={open} variant="filled"
                               color="#ED7D31">Workspace</Button>
 
                       <Burger opened={opened} onClick={toggle} hiddenFrom="xs" size="sm"/>

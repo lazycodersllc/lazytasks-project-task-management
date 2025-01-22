@@ -5,7 +5,7 @@ import {ScrollArea} from "@mantine/core";
 const ProjectDetailsBoard = () => {
 
   return (
-      <ScrollArea className="h-[calc(100vh-240px)] pb-[2px]" scrollbarSize={8}>
+      <ScrollArea className="h-[calc(100vh-270px)] pb-[2px]" scrollbarSize={8}>
       <div className="relative w-full pt-2">
           <TaskBoard/>
       </div>

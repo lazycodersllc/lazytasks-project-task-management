@@ -57,17 +57,11 @@ function useAuth() {
                             )
                         )
                         navigate(appConfig.authenticatedEntryPath)
-                        return {
-                            status: 'success',
-                            message: 'Login successful',
-                        }
+                        return resp
                     }
                 }
                 navigate(appConfig.unAuthenticatedEntryPath)
-                return {
-                    status: 'error',
-                    message: 'Something went wrong',
-                }
+                return resp;
             }
         } catch (errors) {
             return {

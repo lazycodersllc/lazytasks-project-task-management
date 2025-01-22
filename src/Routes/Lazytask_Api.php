@@ -3,6 +3,7 @@
 namespace Lazytask\Routes;
 
 use Lazytask\Controller\Lazytask_CompanyController;
+use Lazytask\Controller\Lazytask_MyZenTaskController;
 use Lazytask\Controller\Lazytask_NotificationController;
 use Lazytask\Controller\Lazytask_ProjectController;
 use Lazytask\Controller\Lazytask_SettingController;
@@ -12,7 +13,7 @@ use Lazytask\Controller\Lazytask_UserController;
 use WP_REST_Server;
 
 class Lazytask_Api {
-	CONST ROUTE_NAMESPACE = 'pms/api/v1';
+	CONST ROUTE_NAMESPACE = 'lazytasks/api/v1';
 	public function register_routes(){
 
 		register_rest_route(
@@ -953,6 +954,24 @@ class Lazytask_Api {
 
 		register_rest_route(
 			self::ROUTE_NAMESPACE,
+			'/notifications',
+			array(
+				'methods' => WP_REST_Server::READABLE,
+				'callback' => array(new Lazytask_NotificationController(), 'getNotificationHistoryByUserId'),
+				'permission_callback' => '__return_true',
+				'args' => array(
+					'user_id' => array(
+						'required' => true,
+						'validate_callback' => function($param, $request, $key){
+							return $param;
+						}
+					)
+				)
+			)
+		);
+
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
 			'/notification-action-list',
 			array(
 				'methods' => WP_REST_Server::READABLE,
@@ -1107,6 +1126,46 @@ class Lazytask_Api {
 				$userController = new Lazytask_UserController();
 				return $userController->permission_check($request, ['superadmin']);
 			},
+		]);
+
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
+			'/my-zen', [
+			'methods' => WP_REST_Server::READABLE,
+			'callback' => [new Lazytask_MyZenTaskController(), 'getAllMyZenTasks'],
+			'permission_callback' => '__return_true',
+		]);
+
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
+			'/my-zen/create', [
+			'methods' => WP_REST_Server::CREATABLE,
+			'callback' => [new Lazytask_MyZenTaskController(), 'create'],
+			'permission_callback' => '__return_true',
+			'args' => array(
+				'name' => array(
+					'required' => true,
+					'validate_callback' => function($param, $request, $key){
+						return $param;
+					}
+				)
+			)
+		]);
+
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
+			'/my-zen/edit/(?P<id>\d+)', [
+			'methods' => WP_REST_Server::EDITABLE,
+			'callback' => [new Lazytask_MyZenTaskController(), 'update'],
+			'permission_callback' => '__return_true',
+			'args' => array(
+				'id' => array(
+					'required' => true,
+					'validate_callback' => function($param, $request, $key){
+						return $param;
+					}
+				)
+			)
 		]);
 
 	}

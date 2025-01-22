@@ -19,6 +19,7 @@ import EditTemplateModal from "./EditTemplateModal";
 import {fetchNotificationTemplate, removeNotificationTemplate} from "../store/notificationTemplateSlice";
 import {modals} from "@mantine/modals";
 import CreateTemplateModal from "./CreateTemplateModal";
+import {showNotification} from "@mantine/notifications";
 
 const TemplateListContent = () => {
     const dispatch = useDispatch();
@@ -97,7 +98,20 @@ const TemplateListContent = () => {
         },
         onConfirm: () => {
             if(templateId && templateId!=='undefined'){
-                dispatch(removeNotificationTemplate(templateId));
+                dispatch(removeNotificationTemplate(templateId)).then((response) => {
+                        if (response.payload && response.payload.status && response.payload.status === 200) {
+                            showNotification({
+                                id: 'load-data',
+                                loading: true,
+                                title: 'Notification Template',
+                                message: response.payload && response.payload.message && response.payload.message,
+                                autoClose: 2000,
+                                disallowClose: true,
+                                color: 'green',
+                            });
+                        }
+                    }
+                );
             }
         },
     });

@@ -25,8 +25,8 @@ const ProjectSummery = () => {
         </Table.Tr>
     ));
     return (
-        <Card withBorder shadow="sm" radius="md">
-            <Card.Section withBorder inheritPadding py="xs" className="bg-[#EBF1F4]">
+        <Card withBorder radius="sm">
+            <Card.Section withBorder inheritPadding py="xs" className="bg-[#FDFDFD] mb-2">
                 <Group>
                     {/*<IconGripVertical size="20" />*/}
                     <Title order={6}>Project Summery</Title>
@@ -34,10 +34,10 @@ const ProjectSummery = () => {
             </Card.Section>
 
             <Card.Section px="xs" pb="xs">
-                <ScrollArea className="relative h-[250px] pb-[2px]" scrollbarSize={4}>
-                    <Table>
+                <ScrollArea className="relative h-[245px] pb-[2px]" scrollbarSize={4}>
+                    <Table striped withRowBorders={false}>
                         <Table.Thead>
-                            <Table.Tr>
+                            <Table.Tr className={`!bg-[#39758D] text-white`}>
                                 <Table.Th>Name</Table.Th>
                                 <Table.Th>Active</Table.Th>
                                 <Table.Th title="Completed">
