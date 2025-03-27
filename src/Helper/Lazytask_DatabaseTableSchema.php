@@ -33,6 +33,7 @@ class Lazytask_DatabaseTableSchema {
 		self::tbl_notification();
 		self::tbl_notification_history();
 		self::tbl_my_zen();
+		self::replace_wp_capabilities_to_lazytasks_role();
 	}
 
 	private static function tbl_companies(){
@@ -570,7 +571,7 @@ class Lazytask_DatabaseTableSchema {
 						)
 					);
 					$arraySerialize = serialize($roles);
-					add_user_meta($adminUser->ID, 'll_roles', $arraySerialize, true);
+					add_user_meta($adminUser->ID, 'lazytasks_capabilities', $arraySerialize, true);
 				}
 			}
 		}
@@ -828,7 +829,7 @@ Please find your username and password below.
 Username: [USERNAME]
 Password: [PASSWORD]
 
-Please click here to join: https://tasks.pul-group.com/lazy-task/
+Please click here to join: '.site_url('/lazytasks/').'
 
 We recommend you change your password once logged in.
 
@@ -1188,6 +1189,16 @@ System Notification'
 		require_once (ABSPATH. 'wp-admin/includes/upgrade.php');
 		dbDelta($table_generate_query);
 	}
+
+	private static function replace_wp_capabilities_to_lazytasks_role(){
+		global $wpdb;
+		$db = self::get_global_wp_db($wpdb);
+		$table_name = $wpdb->prefix . 'usermeta';
+
+		$db->query("UPDATE $table_name SET meta_value =  REPLACE(`meta_value`, 'll_pms', 'lazytasks_role') WHERE meta_key = 'wp_capabilities'");
+		$db->query("UPDATE $table_name SET meta_key ='lazytasks_capabilities' WHERE meta_key = 'll_roles'");
+	}
+
 
 	public static function get_global_wp_db( $wpdb = NULL ) {
 		static $db;

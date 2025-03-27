@@ -1,4 +1,4 @@
-import React, {Fragment, useState} from 'react';
+import React, {Fragment, useEffect, useState} from 'react';
 import TaskName from './TaskName';
 import TaskAssignTo from './TaskAssignTo';
 import TaskFollower from './TaskFollower';
@@ -10,14 +10,18 @@ import EditTaskDrawer from "../EditTaskDrawer";
 import {useDisclosure} from "@mantine/hooks";
 import {useSelector} from "react-redux";
 import {hasPermission} from "../../../../ui/permissions";
-import {Accordion, Box, Pill} from "@mantine/core";
+import {Accordion, Box, Grid, Pill} from "@mantine/core";
 import {Draggable, Droppable} from "react-beautiful-dnd";
 import SubtaskContent from "./SubtaskContent";
 
-const MainTask = ({ addSubtask, task, view }) => {
+const MainTask = ({ addSubtask, taskData, view }) => {
     const {loggedInUser} = useSelector((state) => state.auth.session)
     const { childColumns } = useSelector((state) => state.settings.task);
     const [taskEditDrawerOpen, { open: openTaskEditDrawer, close: closeTaskEditDrawer }] = useDisclosure(false);
+
+    const [ task, setTask ] = useState(taskData);
+
+    useEffect(() => { setTask( taskData ); }, [taskData]);
 
     const handleEditTaskDrawerOpen = () => {
         openTaskEditDrawer();
@@ -151,46 +155,50 @@ const MainTask = ({ addSubtask, task, view }) => {
       ) : (
           <div onDoubleClickCapture={() => {
               handleEditTaskDrawerOpen()
-          }} className="flex single-task-content main-task items-center w-full">
-              <div className="task-name w-[30%] pr-2 items-center">
-                  <div className="flex gap-2 items-center w-full">
+          }} className="single-task-content main-task w-full">
+
+              <Grid columns={24}>
+                  <Grid.Col className={`flex items-center w-full !py-0`} span={7}>
                       <div
                           className="w-full"
                           onClick={(e) => e.stopPropagation()}>
                           <TaskName task={task && task} taskId={task.id} nameOfTask={task.name}/>
                       </div>
+                  </Grid.Col>
+                  <Grid.Col className={`assign-to flex items-center w-full !py-0`} span={2.5}>
+                      <div onClick={(e) => e.stopPropagation()}>
+                          <TaskAssignTo taskId={task.id} assigned={task.assigned_to} assignedMember={(props) => {
+                              console.log('')
+                          }}/>
+                      </div>
+                  </Grid.Col>
+                  <Grid.Col className={`following flex items-center justify-center !py-0`} span={2.5}>
+                      <div onClick={(e) => e.stopPropagation()} >
+                          <TaskFollower taskId={task.id} followers={task.members} editHandler={(props) => {
+                              console.log('')
+                          }}/>
+                      </div>
+                  </Grid.Col>
+                  <Grid.Col className={`due-date flex items-center w-full !py-0`} span={2.5}>
+                      <div className={`w-full`} onClick={(e) => e.stopPropagation()} >
+                          <div className={`w-full flex items-start justify-center`}>
+                              <TaskDueDate taskId={task.id} dueDate={task.end_date}/>
+                          </div>
+                      </div>
+                  </Grid.Col>
+                  <Grid.Col className={`priority flex items-center w-full !py-0`} span={2.5}>
+                      <div className="pl-1 w-full flex justify-center" onClick={(e) => e.stopPropagation()}>
+                          <TaskPriority taskId={task.id} priority={task.priority}/>
+                      </div>
+                  </Grid.Col>
+                  <Grid.Col className={`tags flex items-center w-full !py-0 !pl-10`} span={7}>
+                      <div className={`w-full flex items-center`} onClick={(e) => e.stopPropagation()}>
+                          <TaskTag taskId={task.id} taskTags={task.tags} />
+                      </div>
+                  </Grid.Col>
 
-              </div>
-          </div>
-            <div className="assign-to w-[10%]">
-                <div onClick={(e) => e.stopPropagation()}>
-                    <TaskAssignTo taskId={task.id} assigned={task.assigned_to} assignedMember={(props) => {
-                        console.log('')
-                    }}/>
-                </div>
-            </div>
-            <div className="following w-[12%]">
-              <div className={`pl-[3px]`} onClick={(e) => e.stopPropagation()} >
-                  <TaskFollower taskId={task.id} followers={task.members} editHandler={(props) => {
-                      console.log('')
-                  }}/>
-              </div>
-          </div>
-          <div className="due-date w-[10%]">
-              <div className={`pl-[5px]`} onClick={(e) => e.stopPropagation()} >
-                  <TaskDueDate taskId={task.id} dueDate={task.end_date}/>
-              </div>
-          </div>
-          <div className="priority w-[10%]">
-              <div className="pl-1" onClick={(e) => e.stopPropagation()}>
-                  <TaskPriority taskId={task.id} priority={task.priority}/>
-              </div>
-          </div>
-          <div className="tags w-[28%]">
-              <div onClick={(e) => e.stopPropagation()}>
-                  <TaskTag taskId={task.id} taskTags={task.tags} />
-              </div>
-          </div>
+              </Grid>
+
         </div>
       )}
 

@@ -1,6 +1,6 @@
-import {Avatar, Button, Select, Text, Textarea, Timeline} from '@mantine/core';
+import {Avatar, Button, Flex, Select, Text, Textarea, Timeline} from '@mantine/core';
 import { IconChevronDown, IconPointFilled } from '@tabler/icons-react';
-import React, { useState } from 'react';
+import React, {Fragment, useState} from 'react';
 import { useDisclosure } from '@mantine/hooks';
 import {useDispatch, useSelector} from "react-redux";
 import dayjs from 'dayjs'
@@ -50,30 +50,34 @@ const TaskActivity = ({task, selectedValue}) => {
   };
 
   return (
-    <>
-      <Timeline>
-        {task.logActivities && task.logActivities.length > 0 ? (
-            task.logActivities && task.logActivities.length > 0 && task.logActivities.map((activity, index) => (
-                    /*<Timeline.Item bullet={<IconGitBranch size={12} />} title="New branch">
-                      <Text c="dimmed" size="sm">You&apos;ve created new branch <Text variant="link" component="span" inherit>fix-notifications</Text> from master</Text>
-                      <Text size="xs" mt={4}>2 hours ago</Text>
-                    </Timeline.Item>*/
-                <Timeline.Item
-                    key={activity.id + index} title={activity.user_name && activity.user_name}
-                    /*media={activity.user &&
-                        <UsersAvatarGroup avatarProps={{size: 35}}
-                                          users={[activity.causer]}/>}*/
-                >
-                  <Text size="xs" mt={4}>{activity.created_at ? dayjs(activity.created_at).format(dateTimeFormat) : ''}</Text>
+      <Fragment>
+        <Timeline>
+          {task.logActivities && task.logActivities.length > 0 ? (
+              task.logActivities && task.logActivities.length > 0 && task.logActivities.map((activity, index) => (
 
-                  <ActivityLogs activity={activity}/>
-                </Timeline.Item>
-            ))
-        ) : (
-            <Timeline.Item>No Activities</Timeline.Item>
-        )}
-      </Timeline>
-    </>
+                  <Timeline.Item
+                      key={activity.id + index} title={
+                    <Flex
+                        gap="xs"
+                        justify="flex-start"
+                        align="center"
+                        direction="row"
+                    >
+                      <Avatar size={32} src={activity.avatar} alt={activity.user_name} />
+                      <Text fw={500} fz={14} c="#202020">{activity.user_name}</Text>
+                      <Text fw={400} fz={12} c="#39758D"><IconPointFilled size={14} /></Text>
+                      <Text fw={400} fz={12} c={`#39758D`}>{activity.created_at ? dayjs(activity.created_at).format(dateTimeFormat) : ''}</Text>
+                    </Flex>
+                  }
+                  >
+                    <ActivityLogs activity={activity}/>
+                  </Timeline.Item>
+              ))
+          ) : (
+              <Timeline.Item>No Activities</Timeline.Item>
+          )}
+        </Timeline>
+      </Fragment>
   );
 };
 

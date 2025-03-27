@@ -5,31 +5,57 @@ import ProjectDetailsNav from './ProjectDetailsNav';
 import ProjectDetailsList from './ProjectDetailsList';
 import ProjectDetailsBorad from './ProjectDetailsBorad';
 import {useLocation, useParams} from 'react-router-dom';
-import {useDispatch} from "react-redux";
-import {fetchTasksByProject} from "../../Settings/store/taskSlice";
+import {useDispatch, useSelector} from "react-redux";
+import {fetchTasksByProject, updateIsLoading} from "../../Settings/store/taskSlice";
 import {fetchAllTags} from "../../Settings/store/tagSlice";
 import ProjectDetailsCalendar from "./ProjectDetailsCalendar";
+import {fetchTasksByUser, updateColumns} from "../../Settings/store/myTaskSlice";
 const ProjectDetails = () => { 
     const location = useLocation();
     const dispatch = useDispatch();
     const {id}= useParams();
 
+    const { isLoading } = useSelector((state) => state.settings.task);
+
     useEffect(() => {
-        dispatch(fetchTasksByProject({id:id}))
+        dispatch(fetchTasksByProject({id:id})).then((response) => {
+
+            if (response.payload.state === 200){
+                dispatch(updateIsLoading( false ))
+            }
+        });
         dispatch(fetchAllTags())
     }, [dispatch]);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                if ( isLoading === true ) {
+                    await dispatch(fetchTasksByProject({id:id})).then((response) => {
+
+                        if (response.payload.state === 200){
+                            dispatch(updateIsLoading( false ))
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error("Unexpected error:", err);
+            } finally {
+                dispatch(updateIsLoading( false ))
+            }
+        };
+        fetchData();
+    }, [ isLoading ]);
 
     const listPagePathName = `/project/task/list/${id}`;
     const boardPagePathName = `/project/task/board/${id}`;
     const calendarPagePathName = `/project/task/calendar/${id}`;
 
-    const [visible, setVisible] = useState(false);
-
     useEffect(() => {
-        setVisible(true);
+        dispatch(updateIsLoading( true ))
 
         setTimeout(() => {
-            setVisible(false);
+            dispatch(updateIsLoading( false ))
         }, 1000);
     }, [location.pathname]);
 
@@ -40,11 +66,6 @@ const ProjectDetails = () => {
                 <Container size="full">
                     <div className="settings-page-card bg-white rounded-xl p-6 pt-3 my-5 mb-0">
                         <ProjectDetailsNav />
-                        <LoadingOverlay
-                            visible={visible}
-                            zIndex={1000}
-                            overlayProps={{ radius: 'sm', blur: 4 }}
-                        />
                         {location.pathname === listPagePathName && <ProjectDetailsList />}
                         {location.pathname === boardPagePathName && <ProjectDetailsBorad />}
                         {location.pathname === calendarPagePathName && <ProjectDetailsCalendar />}

@@ -1,9 +1,11 @@
-import { Avatar, Button, Select, Text, Textarea } from '@mantine/core';
-import { IconChevronDown, IconPointFilled } from '@tabler/icons-react';
+import {ActionIcon, Avatar, Button, Select, Text, Textarea, Title} from '@mantine/core';
+import {IconChevronDown, IconPointFilled, IconTrash, IconTrashX} from '@tabler/icons-react';
 import React, {useEffect, useState} from 'react';
 import { useDisclosure } from '@mantine/hooks';
 import {useDispatch, useSelector} from "react-redux";
-import {createComment} from "../../Settings/store/taskSlice";
+import {createComment, deleteComment} from "../../Settings/store/taskSlice";
+import {modals} from "@mantine/modals";
+import {hasPermission} from "../../ui/permissions";
 // import {createComment} from "../../../Settings/store/taskSlice";
 
 const TaskComment = ({task, selectedValue}) => {
@@ -43,10 +45,43 @@ const TaskComment = ({task, selectedValue}) => {
       content: commentText,
       created_at: formatTimestamp(timestamp)
     };
-    dispatch(createComment(newComment));
-    setComments([newComment, ...comments]);
+    dispatch(createComment(newComment)).then((response) => {
+      if(response.payload && response.payload.data){
+        setComments([response.payload.data, ...comments]);
+      }
+    });
     setCommentText(''); // Clear textarea
   };
+
+  useEffect(() => {
+    setComments(task && task.comments ? task.comments : []);
+  } , [selectedValue, task.comments]);
+
+  const commentDeleteHandler = (commentId) => modals.openConfirmModal({
+    title: (
+        <Title order={5}>Are you sure this comment delete?</Title>
+    ),
+    size: 'sm',
+    radius: 'md',
+    withCloseButton: false,
+    children: (
+        <Text size="sm">
+          This action is so important that you are required to confirm it with a modal. Please click
+          one of these buttons to proceed.
+        </Text>
+    ),
+    labels: { confirm: 'Confirm', cancel: 'Cancel' },
+    onCancel: () => console.log('Cancel'),
+    onConfirm: () => {
+      if(commentId && commentId!=='undefined'){
+        dispatch(deleteComment({id: commentId, data: {'deleted_by': loggedUserId}})).then((response) => {
+          if(response.payload && response.payload.data){
+            setComments(comments.filter(comment => comment.id !== response.payload.data.id));
+          }
+        });
+      }
+    },
+  });
 
   return (
     <>
@@ -54,10 +89,15 @@ const TaskComment = ({task, selectedValue}) => {
         {selectedValue==='Only Comments' && comments && comments.length>0 && comments.map((comment, index) => (
             <div key={index} className="single-comment mb-4">
               <div className="sc-head flex items-center gap-2">
-                {/*<Avatar size={32} src={comment.avatarSrc} alt={comment.user_name} />*/}
+                <Avatar size={32} src={comment.avatar} alt={comment.user_name} />
                 <Text fw={500} fz={14} c="#202020">{comment.user_name}</Text>
                 <Text fw={400} fz={12} c="#39758D"><IconPointFilled size={14} /></Text>
                 <Text fw={400} fz={12} c="#39758D">{comment.created_at}</Text>
+                { ( hasPermission(loggedInUser && loggedInUser.llc_permissions, [ 'superadmin', 'admin', 'director' ] ) || parseInt( loggedUserId ) === parseInt(comment.user_id) ) &&
+                    <ActionIcon onClick={()=>commentDeleteHandler(comment && comment.id)} variant="transparent" aria-label="Delete">
+                      <IconTrash size={16} stroke={1} color="var(--mantine-color-red-filled)"/>
+                    </ActionIcon>
+                }
               </div>
               <div className="comment-body pl-[40px]">
                 <Text fw={400} fz={14} c="#4D4D4D">{comment.content}</Text>

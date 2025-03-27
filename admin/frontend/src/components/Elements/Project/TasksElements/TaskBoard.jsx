@@ -279,7 +279,7 @@ const TaskBoard = () => {
         {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-add']) &&
           <div style={{minHeight:'335px', maxHeight: '800px'}} className={`w-[280px] rounded-md border border-dashed border-1 border-[#ED7D31] text-center ${ ordered && ordered.length > 3 ? 'flex-1':''}`}>
             <button
-                className="px-4 py-2 w-full h-full coursor-pointer"
+                className="px-4 py-1 w-full h-full coursor-pointer"
                 onClick={handleAddSection}
             >
               <span className="text-lg font-bold text-[#ED7D31]"> + Add Section</span>

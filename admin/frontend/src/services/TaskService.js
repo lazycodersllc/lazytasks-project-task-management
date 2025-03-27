@@ -163,6 +163,19 @@ export async function addProjectPriority( data ) {
     }
 }
 
+export async function removeProjectPriority( data ) {
+    try {
+        const response = await ApiService.fetchData({
+            url: '/priorities/delete',
+            method: 'get',
+            params: data
+        })
+        return response.data;
+    } catch (error) {
+        return error.message;
+    }
+}
+
 export async function addComments( data ) {
     try {
         const response = await ApiService.fetchData({
@@ -206,6 +219,23 @@ export async function addAttachments( data ) {
         return error.message;
     }
 }
+export async function attachmentsUpload( data ) {
+    try {
+        const response = await ApiService.fetchData({
+            url: '/attachments/upload',
+            method: 'post',
+            headers: {
+                "Accept": "application/json, text/plain, */*",
+                'Content-type': 'multipart/form-data',
+                'Access-Control-Allow-Origin': '*',
+            },
+            data,
+        })
+        return response.data;
+    } catch (error) {
+        return error.message;
+    }
+}
 
 export async function removeAttachments( id, data ) {
     try {
@@ -214,7 +244,18 @@ export async function removeAttachments( id, data ) {
             method: 'get',
             params: data
         })
-        console.log(response.data)
+        return response.data;
+    } catch (error) {
+        return error.message;
+    }
+}
+
+export async function wpRemoveAttachments( id, data ) {
+    try {
+        const response = await ApiService.fetchData({
+            url: `/attachments/remove/${id}`,
+            method: 'get',
+        })
         return response.data;
     } catch (error) {
         return error.message;

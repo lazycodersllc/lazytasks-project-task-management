@@ -8,13 +8,12 @@ import TaskPriority from "./Task/TaskPriority";
 import TaskTag from "./Task/TaskTag";
 import TaskFollower from "./Task/TaskFollower";
 import {useDisclosure} from "@mantine/hooks";
-import EditMyTaskDrawer from "./EditMyTaskDrawer";
 import MyTaskRow from "./MyTaskRow";
 import {useSelector} from "react-redux";
 
 const MyTaskListContent = ({ contents }) => {
   // const sectionTasks = contents;
-  const [tasks, setTasks] = useState([]);
+      const [tasks, setTasks] = useState([]);
     const {userTaskChildColumns} = useSelector((state) => state.settings.myTask);
   useEffect(() => {
     if (Array.isArray(contents)) {
@@ -33,7 +32,7 @@ const MyTaskListContent = ({ contents }) => {
           {tasks && tasks.length>0 && tasks.map((task, taskIndex) => (
               <div
                   key={taskIndex}
-                  className='relative w-full items-center py-1.5'
+                  className='relative w-full items-center py-1.5 border-b border-[#dee2e6]'
               >
 
                   <MyTaskRow task={task} />

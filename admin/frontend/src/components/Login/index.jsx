@@ -52,13 +52,13 @@ const Login = () => {
                     <div className="h-screen lm-profile-form flex items-center justify-center">
                         <Box m={4} p={32} radius="lg" bg="white" shadow="sm" style={{ maxWidth: '550px' }} className=" w-[416px]">
                             <Image
-                             style={{ width: '70%', marginLeft: 'auto', marginRight: 'auto' }}
+                             style={{ width: '75%', marginLeft: 'auto', marginRight: 'auto', padding:'5px' }}
                             radius="md"
                                 src={logo}
                                 alt="Random unsplash image"
                             />
                             <div className="items-center text-center mb-4 mt-4">
-                                <Title className="text-center" order={2}>Login</Title>
+                                <Title className="text-center" order={3}>Log in</Title>
                             </div>
                             <form onSubmit={form.onSubmit(handleSubmit)}>
 
@@ -81,7 +81,7 @@ const Login = () => {
 
                                 <PasswordInput
                                     size="md"
-                                    mb={16}
+                                    mb={12}
                                     {...form.getInputProps('password')}
                                     radius="sm"
                                     placeholder="Password"
@@ -96,10 +96,10 @@ const Login = () => {
                                 />
 
 
-                                <div className="mb-4 text-center">
+                                <div className="mb-3 text-right">
                                     <Link to="/forget-password"
-                                          className="text-orange-500 font-semibold text-base leading-normal text-center mt-24 mb-24 focus:shadow-none">
-                                        Forget Password
+                                          className="text-orange-500 font-semibold text-sm leading-normal text-center mt-24 mb-24 focus:shadow-none">
+                                        Forgot Password?
                                     </Link>
                                 </div>
                                 <Button
@@ -110,7 +110,7 @@ const Login = () => {
                                     size="md"
                                     style={{width: '100%'}}
                                 >
-                                    Login
+                                    Log in
                                 </Button>
                             </form>
                         </Box>

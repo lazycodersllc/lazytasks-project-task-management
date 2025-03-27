@@ -44,7 +44,7 @@ BaseService.interceptors.response.use(
 
             case 401: {
                 // store.dispatch(onSignOutSuccess())
-                // window.location = `${appLocalizer?.homeUrl}/lazy-task/#/dashboard`;
+                // window.location = `${appLocalizer?.homeUrl}/lazytasks/#/dashboard`;
                 return Promise.reject(error)
             }
 
@@ -52,7 +52,7 @@ BaseService.interceptors.response.use(
             case 403: {
                 if(response.data.message ==='Expired token' || response.data.message === 'Token has expired'){
                     store.dispatch(onSignOutSuccess())
-                    window.location = `${appLocalizer?.homeUrl}/lazy-task/#/lazy-login`;
+                    window.location = `${appLocalizer?.homeUrl}/lazytasks/#/lazy-login`;
                     return Promise.reject(error)
                     }
                 console.log(error)
@@ -62,7 +62,7 @@ BaseService.interceptors.response.use(
             // expired token
             case 408: {
                 store.dispatch(onSignOutSuccess())
-                window.location = `${appLocalizer?.homeUrl}/lazy-task/#/lazy-login`;
+                window.location = `${appLocalizer?.homeUrl}/lazytasks/#/lazy-login`;
                 return Promise.reject(error.response.data)
             }
 

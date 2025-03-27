@@ -2,7 +2,7 @@ import {IconCheck, IconTrash} from '@tabler/icons-react';
 import React, {Fragment, useEffect, useRef, useState} from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import {deleteTask, removeSuccessMessage} from "../../../../Settings/store/taskSlice";
-import {Button, Text, Title, useMantineTheme} from '@mantine/core';
+import {Button, Text, Title, Tooltip, useMantineTheme, Center} from '@mantine/core';
 import {modals} from "@mantine/modals";
 import {hasPermission} from "../../../../ui/permissions";
 import {notifications} from "@mantine/notifications";
@@ -11,24 +11,21 @@ const TaskDelete = ({ task, taskId, isSubtask }) => {
     const dispatch = useDispatch();
     const {loggedUserId} = useSelector((state) => state.auth.user)
     const {loggedInUser} = useSelector((state) => state.auth.session)
-    const {success} = useSelector((state) => state.settings.task);
-
 
     //taskDeleteHandler
     const taskDeleteHandler = () => modals.openConfirmModal({
         title: (
-            <Title order={5}>Are you sure this task delete?</Title>
+            <Title order={5}>You are parmanently deleting this item</Title>
         ),
         size: 'sm',
         radius: 'md',
         withCloseButton: false,
         children: (
-            <Text size="sm">
-                This action is so important that you are required to confirm it with a modal. Please click
-                one of these buttons to proceed.
+            <Text size="md" mb='lg'>
+                Are you Sure?
             </Text>
         ),
-        labels: { confirm: 'Confirm', cancel: 'Cancel' },
+        labels: { confirm: 'Yes', cancel: 'No' },
         onCancel: () => console.log('Cancel'),
         onConfirm: () => {
             if(taskId && taskId!=='undefined'){
@@ -58,22 +55,26 @@ const TaskDelete = ({ task, taskId, isSubtask }) => {
                     });
                 }else{
                     const taskType = isSubtask ? 'sub-task' : 'task';
-                    dispatch(deleteTask({id: taskId, data: {'deleted_by': loggedUserId, 'type': taskType}}));
+                    dispatch(deleteTask({id: taskId, data: {'deleted_by': loggedUserId, 'type': taskType}})).then((response) => {
+                        //status 200
+                        if(response.payload.status === 200){
 
-                    if(success){
-                        notifications.show({
-                            color: theme.primaryColor,
-                            title: success,
-                            icon: <IconCheck />,
-                            autoClose: 5000,
-                            // withCloseButton: true,
-                        });
-                        const timer = setTimeout(() => {
-                            dispatch(removeSuccessMessage());
-                        }, 5000); // Clear notification after 3 seconds
+                            notifications.show({
+                                color: theme.primaryColor,
+                                title: response.payload.message,
+                                icon: <IconCheck />,
+                                autoClose: 5000,
+                                // withCloseButton: true,
+                            });
+                            const timer = setTimeout(() => {
+                                dispatch(removeSuccessMessage());
+                            }, 3000); // Clear notification after 3 seconds
 
-                        return () => clearTimeout(timer);
-                    }
+                            return () => clearTimeout(timer);
+                        }
+
+                    });
+
                 }
 
             }
@@ -83,13 +84,15 @@ const TaskDelete = ({ task, taskId, isSubtask }) => {
     return (
         <>
             {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-delete']) &&
-                <IconTrash
-                    className="cursor-pointer"
-                    onClick={()=> {taskDeleteHandler()}}
-                    size={20}
-                    stroke={1}
-                    color="red"
-                />
+                <Tooltip label="Task delete" position="top" withArrow>
+                    <IconTrash
+                        className="cursor-pointer"
+                        onClick={()=> {taskDeleteHandler()}}
+                        size={20}
+                        stroke={1}
+                        color="red"
+                    />
+                </Tooltip>
             }
         </>
     );

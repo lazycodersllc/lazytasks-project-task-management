@@ -6,6 +6,7 @@ import {useDispatch, useSelector} from "react-redux";
 import {editTask} from "../../../../Settings/store/taskSlice";
 import dayjs from "dayjs";
 import {hasPermission} from "../../../../ui/permissions";
+import {Tooltip} from "@mantine/core";
 
 const formatDate = (date) => {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -80,22 +81,25 @@ const TaskDueDate = ({ taskId, dueDate}) => {
   };
 
   return (
-    <div className="due-select-btn" onClick={toggleCalendar}>
-      {selectedDate ? (
-          <div className="due-selected text-[#202020] font-medium text-[14px] cursor-pointer">
+    <div className="due-select-btn">
+      <Tooltip label={`Due Date`} position="top" withArrow>
+        {selectedDate ? (
+            <div className="due-selected text-[#202020] font-medium text-[14px] cursor-pointer" onClick={toggleCalendar}>
               {formatDate(selectedDate)} {/* Render formatted date */}
-          </div>
-      ) : (
-          dueDate === null ? (
-              <div className="h-[30px] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer">
+            </div>
+        ) : (
+            dueDate === null ? (
+                <div className="h-[30px] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer" onClick={toggleCalendar}>
                   <IconCalendarEvent color="#4d4d4d" size="20" stroke={1.25} />
-              </div>
-          ) : (
-              <div className="due-selected text-[#202020] font-medium text-[14px] cursor-pointer">
+                </div>
+            ) : (
+                <div className="due-selected text-[#202020] font-medium text-[14px] cursor-pointer" onClick={toggleCalendar}>
                   {dbdateFormate(dueDate)}
-              </div>
-          )
-      )}
+                </div>
+            )
+        )}
+      </Tooltip>
+
 
       {calendarVisible && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (
         <div ref={calendarRef} className="absolute bg-white border border-solid border-[#6191A4] rounded-sm p-2 z-[9]" onClick={handleCalendarClick}>

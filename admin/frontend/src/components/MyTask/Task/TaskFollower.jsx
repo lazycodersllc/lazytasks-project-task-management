@@ -63,7 +63,7 @@ const TaskFollower = ({ task, followers }) => {
 
     return (
         <>
-            <div className="assignto-btn flex items-center">
+            <div className="assignto-btn flex items-center justify-center">
                 {selectedMembers && selectedMembers.length > 0 ? (
                     <div onClick={handleAssignedToButtonClick} className="flex-inline items-center cursor-pointer">
                         <UsersAvatarGroup users={selectedMembers} size={36} maxCount={3}/>

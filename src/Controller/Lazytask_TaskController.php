@@ -19,7 +19,8 @@ final class Lazytask_TaskController {
 
 	const TABLE_ATTACHMENTS = LAZYTASK_TABLE_PREFIX . 'attachments';
 
-	public function create(WP_REST_Request $request){
+	public function create(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -42,11 +43,13 @@ final class Lazytask_TaskController {
 
 		$type = isset($requestData['type']) && $requestData['type'] != "" ? $requestData['type'] : 'task';
 
-		$description = sanitize_text_field($requestData['description']);
+		$description = sanitize_textarea_field($requestData['description']);
 		$status = sanitize_text_field($requestData['status']);
 		$created_at = gmdate('Y-m-d H:i:s');
 		$members = isset($requestData['members']) && sizeof($requestData['members'])> 0 ? $requestData['members'] : [];
 		$tags = isset($requestData['tags']) && sizeof($requestData['tags'])> 0 ? $requestData['tags'] : [];
+
+		$attachments = isset($requestData['attachments']) && sizeof($requestData['attachments'])> 0 ? $requestData['attachments'] : [];
 		// Check if the required fields are present
 		if (empty($name)) {
 			return new WP_Error('required_fields', 'Please ensure all required fields are provided.', array('status' => 400));
@@ -56,6 +59,8 @@ final class Lazytask_TaskController {
 		$db->query('START TRANSACTION');
 		// get the task section by id
 		$taskSection = $this->getTaskSectionById($taskSectionId);
+		//sort_order max value by section id and project id
+		$sortOrder = $this->getMaxSortOrderBySectionId($taskSectionId, $projectId, $parent);
 
 		$argTask = array(
 			"name" => $name,
@@ -69,6 +74,7 @@ final class Lazytask_TaskController {
 			"created_by" => $createdBy,
 			'slug' => $slug,
 			"description" => $description,
+			'sort_order' => $sortOrder,
 			"status" => $taskSection && $taskSection['mark_is_complete'] == 'complete' ? 'COMPLETED': 'ACTIVE',
 			"created_at" => $created_at,
 		);
@@ -142,6 +148,37 @@ final class Lazytask_TaskController {
 			}
 		}
 
+		$attachmentArg = [];
+		if ($attachments && sizeof($attachments)>0) {
+
+			foreach ( $attachments as $attachment ) {
+
+				$attachment_id = $attachment['id'];
+
+				if($attachment_id){
+					$tableAttachments = $wpdb->prefix. 'pms_attachments';
+					$db->insert(
+						$tableAttachments,
+						array(
+							'file_name'=>isset( $attachment['name']) ? $attachment['name']: null,
+							'file_path'=>isset( $attachment['url']) ? $attachment['url']: null,
+							'mine_type' => isset( $attachment['type']) ? $attachment['type']: null,
+							'size' => isset( $attachment['size']) ? $attachment['size']: null,
+							'wp_attachment_id' => $attachment_id,
+							"subject_id" => $taskId,
+							"subject_name" => 'task',
+							"subject_type"=>'task',
+							"user_id" => $createdBy,
+							"created_at" => gmdate('Y-m-d H:i:s'),
+						)
+					);
+					$attachmentArg[] = $attachment_id;
+				}
+
+			}
+
+		}
+
 		$properties = [];
 
 		if($memberArg && sizeof($memberArg)>0){
@@ -153,6 +190,10 @@ final class Lazytask_TaskController {
 		}
 		if($assignedTo){
 			$argTask['assignedTo_name'] = $assignedTo['name'];
+		}
+
+		if( sizeof($attachmentArg) > 0 ) {
+			$argTask['attachments'] = $attachmentArg;
 		}
 
 		$properties['attributes'] = $argTask;
@@ -240,14 +281,45 @@ final class Lazytask_TaskController {
 		return new WP_Error('not_found', 'Task not found.', array('status' => 404));
 	}
 
-	public function update(WP_REST_Request $request){
+	private function getMaxSortOrderBySectionId( $sectionId, $projectId, $parent )
+	{
+		global $wpdb;
+		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+
+		$tableTasks = LAZYTASK_TABLE_PREFIX . 'tasks';
+
+		if ( $parent ) {
+			$sortOrder = $db->get_var(
+				$db->prepare(
+					"SELECT MAX(sort_order) FROM $tableTasks WHERE section_id = %d AND project_id = %d AND parent_id = %d",
+					(int)$sectionId,
+					(int)$projectId,
+					(int)$parent
+				)
+			);
+		} else {
+			$sortOrder = $db->get_var(
+				$db->prepare(
+					"SELECT MAX(sort_order) FROM $tableTasks WHERE section_id = %d AND project_id = %d AND parent_id IS NULL",
+					(int)$sectionId,
+					(int)$projectId
+				)
+			);
+		}
+
+		return $sortOrder ? $sortOrder + 1 : 0;
+	}
+
+
+	public function update(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
 		// Sanitize and validate the input data
 		$id = $request->get_param('id');
 		$requestData = $request->get_json_params();
-		$members = isset($requestData['members']) && sizeof($requestData['members'])> 0 ? $requestData['members'] : [];
+		$members = $requestData['members'];
 
 		if($id == null || $id == ''){
 			return new WP_Error('required_fields', 'Please ensure all required fields are provided.', array('status' => 400));
@@ -370,8 +442,7 @@ final class Lazytask_TaskController {
 		}
 
 		// Update the task members in the database
-		if(sizeof($members)>0){
-
+		if( $members !== null ) {
 			$loggedInUserId = isset($requestData['updated_by']) && $requestData['updated_by']!="" ? $requestData['updated_by'] : null;
 			$loggedInUser = get_user_by('ID', $loggedInUserId);
 
@@ -379,43 +450,45 @@ final class Lazytask_TaskController {
 			$db->delete($taskMembersTable, array('task_id' => $id));
 			$updatedAt = gmdate('Y-m-d H:i:s');
 			$createdAt = gmdate('Y-m-d H:i:s');
-			foreach ( $members as $member ) {
+			if ( $members > 0){
+				foreach ( $members as $member ) {
 
-				if((int)$member['id']==0){
-					$db->query('ROLLBACK');
-					return new WP_Error('db_update_error', 'Could not update task member in the database.', array('status' => 500));
-				}
-				$memberInserted = $db->insert($taskMembersTable, array(
-					"task_id" => $id,
-					"user_id" => (int)$member['id'],
-					"created_at" => $createdAt,
-					"updated_at" => $updatedAt,
-				));
+					if((int)$member['id']==0){
+						$db->query('ROLLBACK');
+						return new WP_Error('db_update_error', 'Could not update task member in the database.', array('status' => 500));
+					}
+					$memberInserted = $db->insert($taskMembersTable, array(
+						"task_id" => $id,
+						"user_id" => (int)$member['id'],
+						"created_at" => $createdAt,
+						"updated_at" => $updatedAt,
+					));
 
-				if (!$memberInserted) {
-					// Rollback the transaction
-					$db->query('ROLLBACK');
-					return new WP_Error('db_update_error', 'Could not update task member in the database.', array('status' => 500));
-				}
+					if (!$memberInserted) {
+						// Rollback the transaction
+						$db->query('ROLLBACK');
+						return new WP_Error('db_update_error', 'Could not update task member in the database.', array('status' => 500));
+					}
 
-				$assigned_to_id = isset($prevTask['assigned_to']) && $prevTask['assigned_to'] != "" ? $prevTask['assigned_to']['id'] : null;
+					$assigned_to_id = isset($prevTask['assigned_to']) && $prevTask['assigned_to'] != "" ? $prevTask['assigned_to']['id'] : null;
 
-				if($assigned_to_id && !in_array($member['id'], $prevTaskMembersId) && $member['id'] == $loggedInUserId){
-					$assignedToName = isset($prevTask['assigned_to']) && $prevTask['assigned_to'] != "" ? $prevTask['assigned_to']['name'] : null;
+					if($assigned_to_id && !in_array($member['id'], $prevTaskMembersId) && $member['id'] == $loggedInUserId){
+						$assignedToName = isset($prevTask['assigned_to']) && $prevTask['assigned_to'] != "" ? $prevTask['assigned_to']['name'] : null;
 
-					$memberName = $members[array_search($member['id'], array_column($members, 'id'))]['name'];
+						$memberName = $members[array_search($member['id'], array_column($members, 'id'))]['name'];
 
-					$referenceInfo = ['id'=>$id, 'name'=>$prevTask['name'], 'type'=>'task'];
-					$placeholdersArray = ['member_name' => $assignedToName, 'task_name'=>$prevTask['name'], 'creator_name'=> $memberName];
+						$referenceInfo = ['id'=>$id, 'name'=>$prevTask['name'], 'type'=>'task'];
+						$placeholdersArray = ['member_name' => $assignedToName, 'task_name'=>$prevTask['name'], 'creator_name'=> $memberName];
 
-					do_action('lazytask_task_follow_by_own', $referenceInfo, ['web-app', 'email', 'mobile'], [$assigned_to_id], $placeholdersArray);
-				}elseif(!in_array($member['id'], $prevTaskMembersId) && $member['id'] != $loggedInUserId){
-					$memberName = $members[array_search($member['id'], array_column($members, 'id'))]['name'];
+						do_action('lazytask_task_follow_by_own', $referenceInfo, ['web-app', 'email', 'mobile'], [$assigned_to_id], $placeholdersArray);
+					}elseif(!in_array($member['id'], $prevTaskMembersId) && $member['id'] != $loggedInUserId){
+						$memberName = $members[array_search($member['id'], array_column($members, 'id'))]['name'];
 
-					$referenceInfo = ['id'=>$id, 'name'=>$prevTask['name'], 'type'=>'task'];
-					$placeholdersArray = ['member_name' => $memberName, 'task_name'=>$prevTask['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name : ''];
+						$referenceInfo = ['id'=>$id, 'name'=>$prevTask['name'], 'type'=>'task'];
+						$placeholdersArray = ['member_name' => $memberName, 'task_name'=>$prevTask['name'], 'creator_name'=> $loggedInUser ? $loggedInUser->display_name : ''];
 
-					do_action('lazytask_task_follow_to_other', $referenceInfo, ['web-app', 'email', 'mobile'], [$member['id']], $placeholdersArray);
+						do_action('lazytask_task_follow_to_other', $referenceInfo, ['web-app', 'email', 'mobile'], [$member['id']], $placeholdersArray);
+					}
 				}
 			}
 		}
@@ -510,7 +583,8 @@ final class Lazytask_TaskController {
 	}
 
 
-	public function updateTaskSortOrder(WP_REST_Request $request){
+	public function updateTaskSortOrder(WP_REST_Request $request)
+	{
 		global $wpdb;
 
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
@@ -666,23 +740,33 @@ final class Lazytask_TaskController {
 
 	}
 
-	public function getTasksByProjectId($projectId){
+	public function getTasksByProjectId($projectId, $requestData)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+
+		//search filter added by tasks name when search is not empty
+		$searchFilter = '';
+		if (isset($requestData['search']) && $requestData['search'] != '') {
+			$search = '%' . $db->esc_like($requestData['search']) . '%';
+			$searchFilter = $db->prepare(" AND tasks.name LIKE %s", $search);
+		}
 
 		$allResults = $db->get_results($db->prepare("SELECT tasks.id as taskId, tasks.name as taskName, tasks.slug as taskSlug, tasks.description as taskDescription, tasks.status as taskStatus, tasks.created_at as taskCreatedAt, tasks.updated_at as taskUpdatedAt, tasks.start_date as start_date, tasks.end_date as end_date, tasks.parent_id as parentId, tasks.sort_order as sortOrder, 
        projects.company_id as companyId, projects.id as projectId, projects.name as projectName, projects.code as projectCode, projects.slug as projectSlug, projects.status as projectStatus, 
        taskSections.id as sectionId, taskSections.name as sectionName, taskSections.slug as sectionSlug,
+       createdBy.ID as createdBy_id, createdBy.display_name as createdBy_name, createdBy.user_email as createdBy_email,
        assignedTo.ID as assignedToId, assignedTo.display_name as assignedToName, assignedTo.user_email as assignedToEmail, assignedTo.user_login as assignedToUsername, assignedTo.user_registered as assignedToCreatedAt,
        priority.id as priorityId, priority.name as priorityName, priority.color_code as color_code, priority.sort_order as sort_order,
 	   taskParent.id as taskParentId, taskParent.name as taskParentName, taskParent.slug as taskParentSlug, taskParent.description as taskParentDescription, taskParent.status as taskParentStatus, taskParent.created_at as taskParentCreatedAt, taskParent.sort_order as parentSortOrder
 FROM {$wpdb->prefix}pms_tasks as tasks
     JOIN {$wpdb->prefix}pms_projects as projects ON tasks.project_id = projects.id
     JOIN {$wpdb->prefix}pms_task_sections as taskSections ON tasks.section_id = taskSections.id
+    JOIN {$wpdb->prefix}users as createdBy ON tasks.created_by = createdBy.ID
     LEFT JOIN {$wpdb->prefix}users as assignedTo ON tasks.assigned_to = assignedTo.ID
     LEFT JOIN {$wpdb->prefix}pms_project_priorities as priority ON tasks.priority_id = priority.id
 	LEFT JOIN {$wpdb->prefix}pms_tasks as taskParent ON tasks.parent_id = taskParent.id
-         WHERE tasks.deleted_at IS NULL AND projects.id = %d order by tasks.sort_order ASC", (int)$projectId), ARRAY_A);
+         WHERE tasks.deleted_at IS NULL AND projects.id = %d {$searchFilter} order by tasks.sort_order ASC", (int)$projectId), ARRAY_A);
 
 
 		$returnArray = null;
@@ -735,6 +819,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 					$childArray[$parentId][] = [
 						'id' => $value['taskId'],
+						'createdBy_id' => $value['createdBy_id'],
+						'createdBy_name' => $value['createdBy_name'],
 						'task_section_id' => $value['sectionId'],
 						'section_slug' => $value['sectionSlug'],
 						'section_name' => trim($value['sectionName']),
@@ -766,6 +852,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 					$returnArray['taskData'][$value['taskId']]= [
 						'id' => $value['taskId'],
+						'createdBy_id' => $value['createdBy_id'],
+						'createdBy_name' => $value['createdBy_name'],
 						'project_id'=> $value['projectId'],
 						'task_section_id' => $value['sectionId'],
 						'section_slug' => $value['sectionSlug'],
@@ -824,6 +912,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 				$returnArray['sectionData'][$result['sectionSlug']][] = [
 					'id' => $result['taskId'],
+					'createdBy_id' => $result['createdBy_id'],
+					'createdBy_name' => $result['createdBy_name'],
 					'project_id'=> $result['projectId'],
 					'task_section_id' => $result['sectionId'],
 					'section_slug' => $result['sectionSlug'],
@@ -852,6 +942,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 				$returnArray['taskData'][$result['taskId']]= [
 					'id' => $result['taskId'],
+					'createdBy_id' => $result['createdBy_id'],
+					'createdBy_name' => $result['createdBy_name'],
 					'project_id'=> $result['projectId'],
 					'task_section_id' => $result['sectionId'],
 					'section_slug' => $result['sectionSlug'],
@@ -884,7 +976,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return $returnArray;
 	}
 
-	public function getTaskSectionsByProjectId($projectId){
+	public function getTaskSectionsByProjectId($projectId)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 		$taskSectionsTable = LAZYTASK_TABLE_PREFIX . 'task_sections';
@@ -906,7 +999,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 	}
 
 
-	private function getTaskMembers($tasksId){
+	private function getTaskMembers($tasksId)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 		$usersTable = $wpdb->prefix . 'users';
@@ -944,7 +1038,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return $returnArray;
 	}
 
-	public function show(WP_REST_Request $request){
+	public function show(WP_REST_Request $request)
+	{
 
 		$taskId = $request->get_param('id');
 
@@ -974,7 +1069,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 	}
 
-	public function delete(WP_REST_Request $request){
+	public function delete(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1050,7 +1146,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 	}
 
-	public function getTaskById($taskId){
+	public function getTaskById($taskId)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 		if($taskId == ''){
@@ -1060,6 +1157,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		$result = $db->get_row($db->prepare("SELECT tasks.id as taskId, tasks.name as taskName, tasks.slug as taskSlug, tasks.description as taskDescription, tasks.status as taskStatus, tasks.created_at as taskCreatedAt, tasks.updated_at as taskUpdatedAt, tasks.start_date as start_date, tasks.end_date as end_date, tasks.parent_id as parentId, 
        projects.company_id as companyId, projects.id as projectId, projects.name as projectName, projects.code as projectCode, projects.slug as projectSlug, projects.status as projectStatus, 
        taskSections.id as sectionId, taskSections.name as sectionName, taskSections.slug as sectionSlug,
+       createdBy.ID as createdBy_id, createdBy.display_name as createdBy_name, createdBy.user_email as createdBy_email,
        assignedTo.ID as assignedToId, assignedTo.display_name as assignedToName, assignedTo.user_email as assignedToEmail, assignedTo.user_login as assignedToUsername, assignedTo.user_registered as assignedToCreatedAt,
        priority.id as priorityId, priority.name as priorityName, priority.color_code as color_code, priority.sort_order as sort_order,
 	   taskParent.id as taskParentId, taskParent.name as taskParentName, taskParent.slug as taskParentSlug, taskParent.description as taskParentDescription, taskParent.status as taskParentStatus, taskParent.created_at as taskParentCreatedAt,
@@ -1067,6 +1165,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 	FROM {$wpdb->prefix}pms_tasks as tasks
     JOIN {$wpdb->prefix}pms_projects as projects ON tasks.project_id = projects.id
     JOIN {$wpdb->prefix}pms_task_sections as taskSections ON tasks.section_id = taskSections.id
+    JOIN {$wpdb->prefix}users as createdBy ON tasks.created_by = createdBy.ID
     LEFT JOIN {$wpdb->prefix}users as assignedTo ON tasks.assigned_to = assignedTo.ID
     LEFT JOIN {$wpdb->prefix}pms_project_priorities as priority ON tasks.priority_id = priority.id
 	LEFT JOIN {$wpdb->prefix}pms_tasks as taskParent ON tasks.parent_id = taskParent.id
@@ -1123,9 +1222,14 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 				];
 			}
 
+			$comments = isset($taskComments[ $result['taskId'] ]) && sizeof($taskComments[ $result['taskId'] ]) > 0 ? $taskComments[ $result['taskId'] ] :[];
+			$logActivities = isset($taskActivityLogs[ $result['taskId'] ]) && sizeof($taskActivityLogs[ $result['taskId'] ]) > 0 ? $taskActivityLogs[ $result['taskId'] ] :[];
+			$commentsAndLogActivities = $this->mergeTaskCommentsAndLogActivities($comments, $logActivities);
 
 			$returnArray = [
 				'id' => $result['taskId'],
+				'createdBy_id' => $result['createdBy_id'],
+				'createdBy_name' => $result['createdBy_name'],
 				'project_id' => $result['projectId'],
 				'project' => $project,
 				'task_section_id' => $result['sectionId'],
@@ -1146,22 +1250,25 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 				'updated_at'=> $result['taskUpdatedAt'],
 				'members' => isset($taskMembers[ $result['taskId'] ]) ? $taskMembers[ $result['taskId'] ] :[],
 				'children' => isset($subTasks[ $result['taskId'] ]['child']) ? $subTasks[ $result['taskId'] ]['child'] :[],
-				'comments' => isset($taskComments[ $result['taskId'] ]) && sizeof($taskComments[ $result['taskId'] ]) > 0 ? $taskComments[ $result['taskId'] ] :[],
-				'logActivities' => isset($taskActivityLogs[ $result['taskId'] ]) && sizeof($taskActivityLogs[ $result['taskId'] ]) > 0 ? $taskActivityLogs[ $result['taskId'] ] :[],
+				'comments' => $comments,
+				'logActivities' => $logActivities,
 				'attachments' => isset($taskAttachments[ $result['taskId'] ]) && sizeof($taskAttachments[ $result['taskId'] ]) > 0 ? $taskAttachments[ $result['taskId'] ] :[],
 				'tags' => isset($taskTags[ $result['taskId'] ]) && sizeof($taskTags[ $result['taskId'] ]) > 0 ? $taskTags[ $result['taskId'] ] :[],
+				'commentsAndLogActivities' => $commentsAndLogActivities,
 			];
 		}
 		return $returnArray;
 	}
 
-	private function getSubTasksByTaskId($taskId){
+	private function getSubTasksByTaskId($taskId)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
 		$sql = "SELECT tasks.id as taskId, tasks.name as taskName, tasks.slug as taskSlug, tasks.description as taskDescription, tasks.status as taskStatus, tasks.created_at as taskCreatedAt, tasks.updated_at as taskUpdatedAt, tasks.start_date as start_date, tasks.end_date as end_date, tasks.parent_id as parentId, 
 	   projects.company_id as companyId, projects.id as projectId, projects.name as projectName, projects.code as projectCode, projects.slug as projectSlug, projects.status as projectStatus, 
 	   taskSections.id as sectionId, taskSections.name as sectionName, taskSections.slug as sectionSlug,
+	   createdBy.ID as createdBy_id, createdBy.display_name as createdBy_name, createdBy.user_email as createdBy_email,
 	   assignedTo.ID as assignedToId, assignedTo.display_name as assignedToName, assignedTo.user_email as assignedToEmail, assignedTo.user_login as assignedToUsername, assignedTo.user_registered as assignedToCreatedAt,
 	   priority.id as priorityId, priority.name as priorityName, priority.color_code as color_code, priority.sort_order as sort_order,
 	   taskParent.id as taskParentId, taskParent.name as taskParentName, taskParent.slug as taskParentSlug, taskParent.description as taskParentDescription, taskParent.status as taskParentStatus, taskParent.created_at as taskParentCreatedAt,
@@ -1169,6 +1276,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 	FROM {$wpdb->prefix}pms_tasks as tasks
 	JOIN {$wpdb->prefix}pms_projects as projects ON tasks.project_id = projects.id
 	JOIN {$wpdb->prefix}pms_task_sections as taskSections ON tasks.section_id = taskSections.id
+    JOIN {$wpdb->prefix}users as createdBy ON tasks.created_by = createdBy.ID
 	LEFT JOIN {$wpdb->prefix}users as assignedTo ON tasks.assigned_to = assignedTo.ID
 	LEFT JOIN {$wpdb->prefix}pms_project_priorities as priority ON tasks.priority_id = priority.id
 	LEFT JOIN {$wpdb->prefix}pms_tasks as taskParent ON tasks.parent_id = taskParent.id
@@ -1209,6 +1317,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 				$returnArray[$parentId]['child'][] = [
 					'id' => $result['taskId'],
+					'createdBy_id' => $result['createdBy_id'],
+					'createdBy_name' => $result['createdBy_name'],
 					'project_id' => $result['projectId'],
 					'task_section_id' => $result['sectionId'],
 					'section_name' => trim($result['sectionName']),
@@ -1243,7 +1353,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return $returnArray;
 	}
 
-	public function getParentTaskBySlug($slug, $projectId) {
+	public function getParentTaskBySlug($slug, $projectId)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1263,7 +1374,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 	}
 
 
-	public function createTaskSection(WP_REST_Request $request){
+	public function createTaskSection(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1306,7 +1418,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 	}
 
-	public function updateTaskSection(WP_REST_Request $request){
+	public function updateTaskSection(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1348,7 +1461,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return new WP_Error('not_found', 'Task section not found.', array('status' => 404));
 	}
 
-	public function markIsCompleteTaskSection(WP_REST_Request $request){
+	public function markIsCompleteTaskSection(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1413,7 +1527,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return new WP_Error('not_found', 'Task section not found.', array('status' => 404));
 	}
 
-	public function softDeleteTaskSection(WP_REST_Request $request){
+	public function softDeleteTaskSection(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1473,7 +1588,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return new WP_Error('not_found', 'Task section not found.', array('status' => 404));
 	}
 
-	public function updateSectionSortOrder(WP_REST_Request $request){
+	public function updateSectionSortOrder(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1507,7 +1623,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return new WP_REST_Response(['status'=>200, 'message'=>'Success','data' => $orderedList], 200);
 	}
 
-	public function getTaskSectionById($taskSectionId){
+	public function getTaskSectionById($taskSectionId)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1524,7 +1641,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return null;
 	}
 
-	public function createComment(WP_REST_Request $request){
+	public function createComment(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1572,6 +1690,26 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 		$commentId = $wpdb->insert_id;
 
+
+		// activity log for task delete
+		$properties['attributes'] = [
+			'comment_id' => $commentId,
+			'comment' => 'Comment has been created',
+			'created_by' => $userId,
+			'created_at' => $created_at,
+		];
+		$activityLogArg = [
+			"user_id" => $userId,
+			"subject_id" => $commentableId,
+			"subject_name" => 'task',
+			"subject_type" => 'comment',
+			"event" => 'created',
+			"properties" => wp_json_encode($properties),
+			"created_at" => $created_at,
+		];
+		$activitiesLogTable = LAZYTASK_TABLE_PREFIX . 'activity_log';
+		$db->insert($activitiesLogTable, $activityLogArg);
+
 		// Commit the transaction
 		$db->query('COMMIT');
 
@@ -1598,15 +1736,12 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 			return new WP_REST_Response(['status'=>200, 'message'=>'Comment created successfully', 'data'=>$comment, 'task'=>$task, 'column'=> $column, 'myTaskColumn'=>$myTaskColumn, 'loggedUserID'=>$userId ], 200);
 		}
 
-		/*$comment = $this->getCommentsById($commentId);
-		if($comment){
-			return new WP_REST_Response(['status'=>200, 'message'=>'Comment created successfully', 'data'=>$comment ], 200);
-		}*/
 		return new WP_Error('not_found', 'Task not found.', array('status' => 404));
 	}
 
 	// delete comment by id
-	public function softDeleteComment(WP_REST_Request $request){
+	public function softDeleteComment(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1624,6 +1759,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 			array(
 				"deleted_at" => $deleted_at,
 				"deleted_by" => $deleted_by,
+				"status" => 0,
 			),
 			array( 'id' => $commentId )
 		);
@@ -1633,15 +1769,20 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 			$db->query('ROLLBACK');
 			return new WP_Error('db_update_error', 'Could not delete comment in the database.', array('status' => 500));
 		}
+
+		$comment = $this->getCommentsById($commentId);
+
 		// activity log for comment delete
 		$properties['attributes'] = [
 			'deleted_by' => $deleted_by,
 			'deleted_at' => $deleted_at,
+			'comment_id' => $commentId,
+			'comment' => 'Comment has been deleted',
 		];
 		$activityLogArg = [
 			"user_id" => $deleted_by,
-			"subject_id" => $commentId,
-			"subject_name" => 'comment',
+			"subject_id" => $comment ? $comment['commentable_id'] : null,
+			"subject_name" => 'task',
 			"subject_type" => 'comment',
 			"event" => 'deleted',
 			"properties" => wp_json_encode($properties),
@@ -1652,7 +1793,6 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		// Commit the transaction
 		$db->query('COMMIT');
 
-		$comment = $this->getCommentsById($commentId);
 		if($comment){
 			$task = $this->getTaskById($comment['commentable_id']);
 			if($task){
@@ -1681,7 +1821,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 	}
 
 
-	public function getCommentsById($id){
+	public function getCommentsById($id)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 		$commentsTable = LAZYTASK_TABLE_PREFIX . 'comments';
@@ -1705,6 +1846,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 				'user_id' => $row['user_id'],
 				'user_name' => $row['user_name'],
 				'user_email' => $row['user_email'],
+				'avatar' => Lazytask_UserController::getUserAvatar($row['user_id']),
 				'created_at' => $row['created_at'],
 				'updated_at' => $row['updated_at'],
 				'children' => []
@@ -1714,7 +1856,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return $returnArray;
 	}
 
-	public function getCommentsByTaskId($commentableId, $commentableType){
+	public function getCommentsByTaskId($commentableId, $commentableType)
+	{
 
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
@@ -1772,7 +1915,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 	}
 
-	public function getActivityLogsByTaskId($subjectId, $subjectName){
+	public function getActivityLogsByTaskId($subjectId, $subjectName)
+	{
 
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
@@ -1809,6 +1953,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 					'event' => $all_result['event'],
 					'created_at' => $all_result['created_at'],
 					'updated_at' => $all_result['updated_at'],
+					'avatar' => Lazytask_UserController::getUserAvatar($all_result['user_id']),
 				];
 			}
 		}
@@ -1817,7 +1962,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 	}
 
 
-	public function createAttachment(WP_REST_Request $request){
+	public function createAttachment(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1926,8 +2072,9 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return new WP_Error('not_found', 'Task not found.', array('status' => 404));
 	}
 
-	//remove task attachment
-	public function removeAttachment(WP_REST_Request $request){
+	//delete task attachment
+	public function deleteAttachment(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -1989,7 +2136,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 	}
 
 
-	public function getAttachmentsByTaskId($taskId, $subjectName = 'task'){
+	public function getAttachmentsByTaskId($taskId, $subjectName = 'task')
+	{
 
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
@@ -2035,7 +2183,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 	}
 	// task attachment by id
-	public function getAttachmentById($id){
+	public function getAttachmentById($id)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 		$attachmentsTable = LAZYTASK_TABLE_PREFIX . 'attachments';
@@ -2068,7 +2217,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return $returnArray;
 	}
 
-	public function tagAssignToTask( WP_REST_Request $request) {
+	public function tagAssignToTask( WP_REST_Request $request)
+	{
 
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
@@ -2126,7 +2276,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 	}
 
-	public function tagRemoveFromTask( WP_REST_Request $request) {
+	public function tagRemoveFromTask( WP_REST_Request $request)
+	{
 
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
@@ -2183,7 +2334,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 	}
 
-	public function getTaskTagsByTaskId( $taskId ) {
+	public function getTaskTagsByTaskId( $taskId )
+	{
 
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
@@ -2223,9 +2375,19 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 
 
-	public function getTasksByAssignedUserId($userId){
+	public function getTasksByAssignedUserId( $userId, $requestData )
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+
+		$searchParms = isset($requestData['search']) && $requestData['search'] != "" ? sanitize_text_field($requestData['search']) : null;
+
+		//search filter added by tasks name when search is not empty
+		$searchFilter = '';
+		if ( $searchParms ) {
+			$search = '%' . $db->esc_like($searchParms) . '%';
+			$searchFilter = $db->prepare(" AND tasks.name LIKE %s", $search);
+		}
 
 		$allResults = $db->get_results($db->prepare("SELECT tasks.id as taskId, tasks.name as taskName, tasks.slug as taskSlug, tasks.description as taskDescription, tasks.status as taskStatus, tasks.created_at as taskCreatedAt, tasks.updated_at as taskUpdatedAt, tasks.start_date as start_date, tasks.end_date as end_date, tasks.parent_id as parentId, tasks.sort_order as sortOrder, 
        projects.company_id as companyId, projects.id as projectId, projects.name as projectName, projects.code as projectCode, projects.slug as projectSlug, projects.status as projectStatus, 
@@ -2233,13 +2395,13 @@ FROM {$wpdb->prefix}pms_tasks as tasks
        assignedTo.ID as assignedToId, assignedTo.display_name as assignedToName, assignedTo.user_email as assignedToEmail, assignedTo.user_login as assignedToUsername, assignedTo.user_registered as assignedToCreatedAt,
        priority.id as priorityId, priority.name as priorityName, priority.color_code as color_code, priority.sort_order as sort_order,
 	   taskParent.id as taskParentId, taskParent.name as taskParentName, taskParent.slug as taskParentSlug, taskParent.description as taskParentDescription, taskParent.status as taskParentStatus, taskParent.created_at as taskParentCreatedAt, taskParent.sort_order as parentSortOrder
-FROM {$wpdb->prefix}pms_tasks as tasks
+	FROM {$wpdb->prefix}pms_tasks as tasks
     JOIN {$wpdb->prefix}pms_projects as projects ON tasks.project_id = projects.id
     JOIN {$wpdb->prefix}users as assignedTo ON tasks.assigned_to = assignedTo.ID
    	LEFT JOIN {$wpdb->prefix}pms_task_sections as taskSections ON tasks.section_id = taskSections.id
     LEFT JOIN {$wpdb->prefix}pms_project_priorities as priority ON tasks.priority_id = priority.id
 	LEFT JOIN {$wpdb->prefix}pms_tasks as taskParent ON tasks.parent_id = taskParent.id
-    WHERE tasks.deleted_at IS NULL AND assignedTo.ID = %d order by tasks.sort_order ASC", $userId), ARRAY_A);
+    WHERE tasks.deleted_at IS NULL AND assignedTo.ID = %d {$searchFilter} order by tasks.sort_order ASC", $userId), ARRAY_A);
 
 
 		$returnArray = null;
@@ -2394,7 +2556,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return $returnArray;
 	}
 
-	public function getQuickTaskByUserId($userId) {
+	public function getQuickTaskByUserId($userId)
+	{
 
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
@@ -2421,7 +2584,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		return $returnArray;
 	}
 
-	public function getQuickTaskById( $id ) {
+	public function getQuickTaskById( $id )
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -2447,7 +2611,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 	}
 
-	public function quickTaskCreate(WP_REST_Request $request) {
+	public function quickTaskCreate(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -2495,7 +2660,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 	}
 
 	//delete quick task
-	public function quickTaskDelete(WP_REST_Request $request) {
+	public function quickTaskDelete(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -2510,5 +2676,98 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		}
 		return new WP_Error('not_found', 'Quick task not found.', array('status' => 404));
 	}
+
+	public function uploadAttachment(WP_REST_Request $request)
+	{
+		global $wpdb;
+		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+
+		// Sanitize and validate the input data
+		$requestData = $request->get_body_params();
+		$requestFileData = $request->get_file_params();
+
+		$userId = $requestData['user_id'];
+		$file_upload_response=[];
+
+		if($userId && $requestFileData){
+			require_once(ABSPATH . 'wp-admin/includes/file.php');
+			require_once(ABSPATH . 'wp-admin/includes/image.php');
+			if($requestFileData && sizeof($requestFileData)>0){
+
+				foreach ( $requestFileData as $file){
+					$upload_overrides = array('test_form' => false);
+
+					$moveFile = wp_handle_upload($file, $upload_overrides);
+
+					if($moveFile){
+						$attachment = array(
+							'post_author' => $userId,
+							'post_title' => $file['name'],
+							'post_content' => '',
+							'post_status' => 'inherit',
+							'post_mime_type' => image_type_to_mime_type(exif_imagetype($moveFile['file']))
+						);
+
+						$attachment_id = wp_insert_attachment($attachment, $moveFile['file']);
+
+						$attach_data = wp_generate_attachment_metadata($attachment_id, $moveFile['file']);
+						wp_update_attachment_metadata($attachment_id, $attach_data);
+
+						if($attachment_id){
+
+							$file_upload_response[] = [
+								'id' => $attachment_id,
+								'name' => $file['name'],
+								'url' => $moveFile['url'],
+								'type' => $file['type'],
+								'file_name'=> $file['name'] ?? null,
+								'file_path'=> $moveFile['url'] ?? null,
+								'mine_type' => $file['type'] ?? null,
+								'size' => $file['size'] ?? null,
+								'wp_attachment_id' => $attachment_id,
+							];
+						}
+					}
+
+				}
+
+			}
+
+			return new WP_REST_Response(['status'=>200, 'message'=>'Attachment upload successfully', 'data'=>$file_upload_response ], 200);
+
+		}
+		return new WP_Error('not_found', 'Task not found.', array('status' => 404));
+	}
+
+	public function removeAttachment(WP_REST_Request $request)
+	{
+
+		$id = $request->get_param('id');
+
+		$attachment = wp_get_attachment_image($id);
+
+		if($attachment){
+
+			wp_delete_attachment($id, true);
+
+			return new WP_REST_Response(['status'=>200, 'message'=>'Attachment remove successfully' ], 200);
+		}
+
+		return new WP_Error('not_found', 'Attachment not found.', array('status' =>''));
+	}
+
+	public function mergeTaskCommentsAndLogActivities( $comments, $logActivities )
+	{
+
+		$mergedArray = array_merge($comments, $logActivities);
+
+	   usort($mergedArray, function ($a, $b) {
+			return strtotime($a['created_at']) - strtotime($b['created_at']);
+		});
+
+	   return $mergedArray;
+
+	}
+
 
 }

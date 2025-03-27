@@ -1,32 +1,45 @@
-import React, {Fragment, useEffect} from 'react';
-import {Button, Container, Grid, ScrollArea, Tabs, Title} from '@mantine/core';
-import Header from './Header';
+import React, {Fragment, useEffect, useState} from 'react';
+import {Button, Container, Grid, Modal, ScrollArea, Tabs, Title} from '@mantine/core';
 import {useDispatch, useSelector} from "react-redux";
-import {loggedInUserToken, onSignInSuccess, setToken} from "../store/auth/sessionSlice";
-
 import {fetchTasksByUser} from "./Settings/store/myTaskSlice";
 import {fetchQuickTasksByUser} from "./Settings/store/quickTaskSlice";
-import {fetchAllTags} from "./Settings/store/tagSlice";
 import QuickTaskList from "./Dashboard/QuickTaskList";
-import TaskList from "./Dashboard/TaskList";
 import DashboardBarChart from "./Dashboard/DashboardBarChart";
 import ProjectSummery from "./Dashboard/ProjectSummery";
 import TaskListTabs from "./Dashboard/TaskListTabs";
+import {fatchLazytasksConfig} from "./Settings/store/settingSlice";
+import Onboarding from "./Onboarding/Onboarding";
 
 const Dashboard = () => {
 
     const dispatch = useDispatch();
     const {token} = useSelector((state) => state.auth.session);
     const {loggedUserId} = useSelector((state) => state.auth.user)
+    const {lazytasksConfig} = useSelector((state) => state.settings.setting);
+
+    const [ config, setConfig ] = useState(lazytasksConfig);
+
 
     useEffect(() => {
-        setTimeout(() => {
-            if(loggedUserId){
-                dispatch(fetchTasksByUser({id:loggedUserId}))
-                dispatch(fetchQuickTasksByUser({id:loggedUserId}))
+        const fetchData = async () => {
+            try {
+                if(loggedUserId){
+                    await dispatch(fetchTasksByUser({id:loggedUserId}))
+                    await dispatch(fetchQuickTasksByUser({id:loggedUserId}))
+                }
+
+                await dispatch(fatchLazytasksConfig()).then((response) => {
+                    if (response.payload.status === 200){
+                        setConfig(response.payload.data)
+                    }
+                });
+
+            } catch (err) {
+                console.error("Unexpected error:", err);
             }
-        }, 500);
-    }, [dispatch, loggedUserId]);
+        };
+        fetchData();
+    }, [ dispatch, loggedUserId ]);
 
     return (
         <Fragment>
@@ -59,6 +72,19 @@ const Dashboard = () => {
                         </ScrollArea>
                     </div>
                 </Container>
+
+                <Modal
+                    opened={config?.lazytasks_basic_info_guide_modal && appLocalizer?.is_admin }
+                    onClose={()=> setConfig({...config, lazytasks_basic_info_guide_modal: false})}
+                    title=""
+                    size="auto"
+                    // scrollAreaComponent={ScrollArea.Autosize}
+                    withCloseButton={false}
+                    closeOnClickOutside={false}
+                    centered
+                >
+                    <Onboarding />
+                </Modal>
             </div>
 
             {/* <Footer /> */}

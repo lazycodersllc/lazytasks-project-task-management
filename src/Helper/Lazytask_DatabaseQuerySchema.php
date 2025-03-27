@@ -61,4 +61,26 @@ class Lazytask_DatabaseQuerySchema {
 		return $returnArray;
 	}
 
+	//getProjectPriorityById
+	public static function getProjectPriorityById($priorityId, $projectId){
+		global $wpdb;
+		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+		$priorityTable = LAZYTASK_TABLE_PREFIX . 'project_priorities';
+		$sql = "SELECT * FROM `{$priorityTable}` WHERE `id` = %d AND project_id = %d";
+		$results = $db->get_row($db->prepare(
+			$sql, (int)$priorityId, (int)$projectId
+		), ARRAY_A);
+		return $results;
+	}
+
+	//all projects
+	public static function getAllProjects(){
+		global $wpdb;
+		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+		$projectTable = LAZYTASK_TABLE_PREFIX . 'projects';
+		$sql = "SELECT * FROM `{$projectTable}` WHERE deleted_at IS NULL AND deleted_by IS NULL";
+		$results = $db->get_results($sql, ARRAY_A);
+		return $results ? $results : [];
+	}
+
 }

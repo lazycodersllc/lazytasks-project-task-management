@@ -1,7 +1,12 @@
 
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 
-import {getSettings, Lazytask_updateSetting} from "../../../services/SettingService";
+import {
+    getSettings,
+    Lazytask_getConfig,
+    Lazytask_updateConfig,
+    Lazytask_updateSetting
+} from "../../../services/SettingService";
 
 
 export const fetchSettings = createAsyncThunk(
@@ -17,9 +22,22 @@ export const editSetting = createAsyncThunk(
     return Lazytask_updateSetting(data)
 })
 
+export const fatchLazytasksConfig = createAsyncThunk(
+    'setting/fatchLazytasksConfig',
+    async () => {
+    return Lazytask_getConfig()
+})
+
+export const editLazytasksConfig = createAsyncThunk(
+    'setting/editLazytasksConfig',
+    async ({data}) => {
+    return Lazytask_updateConfig( data )
+})
+
 
 const initialState = {
     settings: [],
+    lazytasksConfig:{},
     isLoading: false,
     isError: false,
     error: '',
@@ -65,6 +83,35 @@ const settingSlice = createSlice({
                 state.success = `Setting Update Successfully`
             })
             .addCase(editSetting.rejected, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.error = action.error?.message
+            })
+            .addCase(fatchLazytasksConfig.pending, (state) => {
+                state.isLoading = true
+                state.isError = false
+            })
+            .addCase(fatchLazytasksConfig.fulfilled, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.lazytasksConfig = action.payload.data
+            })
+            .addCase(fatchLazytasksConfig.rejected, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.error = action.error?.message
+            })
+            .addCase(editLazytasksConfig.pending, (state) => {
+                // state.isLoading = true
+                state.isError = false
+            })
+            .addCase(editLazytasksConfig.fulfilled, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.lazytasksConfig = action.payload.data
+                state.success = `Setting Update Successfully`
+            })
+            .addCase(editLazytasksConfig.rejected, (state, action) => {
                 state.isLoading = false
                 state.isError = false
                 state.error = action.error?.message

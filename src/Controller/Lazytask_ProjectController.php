@@ -70,7 +70,8 @@ final class Lazytask_ProjectController {
 	const TABLE_PROJECT_MEMBERS = LAZYTASK_TABLE_PREFIX . 'projects_users';
 
 
-	public function create(WP_REST_Request $request){
+	public function create(WP_REST_Request $request)
+	{
 		global $wpdb;
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
@@ -212,8 +213,11 @@ final class Lazytask_ProjectController {
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 		$projectTableName = LAZYTASK_TABLE_PREFIX . 'projects';
 
+		$companiesMembersTable = LAZYTASK_TABLE_PREFIX.'companies_users';
+
 		// Sanitize and validate the input data
 		$requestData = $request->get_json_params();
+
 
 		$id = $request->get_param('id');
 		if(!$id){
@@ -268,12 +272,35 @@ final class Lazytask_ProjectController {
 			$uniqueMembers = array_unique( array_column( $members, 'id' ) );
 			// Then, insert the new members
 			foreach ( $uniqueMembers as $member ) {
-				$db->insert(self::TABLE_PROJECT_MEMBERS, array(
+				$db->insert( self::TABLE_PROJECT_MEMBERS, array(
 					"project_id" => $id,
-					"user_id" => (int)$member,
-					"created_at" => gmdate('Y-m-d H:i:s'),
-					"updated_at" => gmdate('Y-m-d H:i:s'),
-				));
+					"user_id"    => (int) $member,
+					"created_at" => gmdate( 'Y-m-d H:i:s' ),
+					"updated_at" => gmdate( 'Y-m-d H:i:s' ),
+				) );
+
+				$checkExistCompanyMember = $db->get_row(
+					$db->prepare(
+						"SELECT * FROM `{$companiesMembersTable}` WHERE company_id = %d AND user_id = %d", (int)$prevProject['company_id'], (int)$member ) );
+
+				if(!$checkExistCompanyMember){
+					$db->insert(
+						$companiesMembersTable,
+						array(
+							"company_id" => (int)$prevProject['company_id'],
+							"user_id" => (int)$member,
+							"created_at" => gmdate('Y-m-d H:i:s'),
+							"updated_at" => gmdate('Y-m-d H:i:s'),
+						),
+						[
+							'%d',
+							'%d',
+							'%s',
+							'%s',
+						]
+					);
+				}
+
 
 				if(!in_array($member, $prevProjectMembersId)){
 
@@ -597,6 +624,7 @@ final class Lazytask_ProjectController {
 		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
 
 		$requestData = $request->get_json_params();
+		$id = $requestData['id'];
 		$projectId = $requestData['project_id'];
 		$name = sanitize_text_field($requestData['name']);
 		$color_code = isset($requestData['color_code']) && $requestData['color_code']!="" ? $requestData['color_code'] : '#000000';
@@ -609,6 +637,30 @@ final class Lazytask_ProjectController {
 		}
 		if($name == ''){
 			return new WP_REST_Response(['status'=>404, 'message'=>'Name is required', 'data'=>null], 404);
+		}
+		//id is exit then update
+		if ( $id ){
+			$projectPriority = Lazytask_DatabaseQuerySchema::getProjectPriorityById($id, $projectId);
+			if($projectPriority){
+				$updated = $db->update(
+					LAZYTASK_TABLE_PREFIX . 'project_priorities',
+					array(
+						"name" => $name,
+						"color_code" => $color_code,
+						"sort_order" => $sort_order,
+						"updated_at" => $created_at,
+						"updated_by" => $created_by,
+					),
+					array( 'id' => $projectPriority['id'] )
+				);
+				if($updated){
+					$data =  Lazytask_DatabaseQuerySchema::getProjectPriorities($projectId);
+					if($data){
+						return new WP_REST_Response(['status'=>200, 'message'=>'Project priority updated successfully', 'data'=>$data], 200);
+					}
+				}
+			}
+			return new WP_REST_Response(['status'=>404, 'message'=>'Project priority not found', 'data'=>null], 404);
 		}
 
 		$db->insert(LAZYTASK_TABLE_PREFIX . 'project_priorities', array(
@@ -630,6 +682,48 @@ final class Lazytask_ProjectController {
 
 	}
 
+	//delete project priority
+	public function deleteProjectPriority(WP_REST_Request $request){
+		global $wpdb;
+		$db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+		$requestData = $request->get_params();
+		$priorityId = $requestData['id'];
+		$projectId = $requestData['project_id'];
+		$taskId = $requestData['taskId'];
+
+		if($priorityId == ''){
+			return new WP_REST_Response(['status'=>404, 'message'=>'Priority ID is required', 'data'=>null], 404);
+		}
+		if($projectId == ''){
+			return new WP_REST_Response(['status'=>404, 'message'=>'Project ID is required', 'data'=>null], 404);
+		}
+
+		$projectPriority = Lazytask_DatabaseQuerySchema::getProjectPriorityById($priorityId, $projectId);
+		if($projectPriority){
+
+			//check if any task is assigned with this priority not this taskId
+			$taskTable = LAZYTASK_TABLE_PREFIX . 'tasks';
+			$task = $db->get_row(
+				$db->prepare(
+					"SELECT id FROM `{$taskTable}` WHERE deleted_at IS NULL AND id != %d AND project_id = %d AND priority_id = %d", (int)$taskId, (int)$projectId, (int)$priorityId), ARRAY_A);
+
+			if($task){
+				return new WP_REST_Response(['status'=>400, 'message'=>'Task is assigned with this priority', 'data'=>null], 200);
+			}
+
+			//hard remove project priority
+			$deleted = $db->delete(LAZYTASK_TABLE_PREFIX . 'project_priorities', array('id' => $projectPriority['id']));
+
+			if($deleted){
+				$data =  Lazytask_DatabaseQuerySchema::getProjectPriorities($projectId);
+				if($data){
+					return new WP_REST_Response(['status'=>200, 'message'=>'Project priority deleted successfully', 'data'=>$data], 200);
+				}
+			}
+		}
+		return new WP_REST_Response(['status'=>404, 'message'=>'Project priority not found', 'data'=>null], 404);
+	}
+
 	public function getPrioritiesByProjectId(WP_REST_Request $request){
 		$projectId = $request->get_param( 'id' );
 		if($projectId == ''){
@@ -645,6 +739,7 @@ final class Lazytask_ProjectController {
 	public function getTasksByProjectId(WP_REST_Request $request){
 		global $wpdb;
 		$projectId = $request->get_param( 'id' );
+		$requestData = $request->get_params();
 		$project = $this->getProjectById($projectId);
 
 
@@ -660,7 +755,7 @@ final class Lazytask_ProjectController {
 			$taskSections = array_unique(array_column($projectTaskSections, 'slug'));
 
 			$taskController = new Lazytask_TaskController();
-			$tasks = $taskController->getTasksByProjectId($project['id']);
+			$tasks = $taskController->getTasksByProjectId($project['id'], $requestData);
 
 			$sectionData = null;
 			if(isset($tasks['sectionData']) && sizeof($tasks['sectionData'])>0){

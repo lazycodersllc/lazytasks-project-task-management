@@ -21,7 +21,7 @@ const DashboardBarChart = ({slug, header}) => {
             <Card.Section withBorder inheritPadding py="xs" className="bg-[#FDFDFD]">
                 <Group>
                     {/*<IconGripVertical size="20" />*/}
-                    <Title order={6}>Project Summery Chart</Title>
+                    <Title order={6}>Project Summary Chart</Title>
                 </Group>
             </Card.Section>
 
@@ -39,6 +39,10 @@ const DashboardBarChart = ({slug, header}) => {
                         { name: 'ACTIVE', color: '#ED7D31' },
                         { name: 'COMPLETED', color: '#39758D' },
                     ]}
+                    barProps={{
+                        radius: 5,
+                        barSize:Math.max(20, 100 - (userProjects.length * 8))
+                    }}
                 />
             </Card.Section>
         </Card>

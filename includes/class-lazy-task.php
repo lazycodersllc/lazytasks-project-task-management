@@ -71,7 +71,7 @@ class Lazytask_Lazy_Task {
 		if ( defined( 'LAZYTASK_VERSION' ) ) {
 			$this->version = LAZYTASK_VERSION;
 		} else {
-			$this->version = '1.0.8';
+			$this->version = '1.0.10';
 		}
 		$this->plugin_name = 'lazytasks-project-task-management';
 
@@ -165,6 +165,7 @@ class Lazytask_Lazy_Task {
 //		$this->loader->add_action( 'plugins_loaded', $plugin_admin, 'my_plugin_set_db' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'lazytask_enqueue_styles' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'lazytask_enqueue_scripts' );
+	    $this->loader->add_filter( 'admin_init', $plugin_admin, 'lazytask_redirect' );
         $this->loader->add_action( 'admin_menu', $plugin_admin, 'lazytask_admin_menu' );
         $this->loader->add_action( 'rest_api_init', $plugin_admin, 'lazytask_admin_routes' );
         $this->loader->add_action( 'wp_login', $plugin_admin, 'lazytask_auth_login');
@@ -263,7 +264,7 @@ class Lazytask_Lazy_Task {
     }
 
     function lazytask_add_user_role() {
-        add_role( 'll_pms', 'Lazy Link PMS',
+        add_role( 'lazytasks_role', 'LazyTasks User',
             array(
                 'll_pms_plugins' => true
             )
@@ -280,7 +281,7 @@ class Lazytask_Lazy_Task {
                     if(in_array($key, $rolesArray))
                     {
                         $role = get_role( $key);
-                        $role->add_cap( 'll_pms', true );
+                        $role->add_cap( 'lazytasks_role', true );
                     }
 
                 }

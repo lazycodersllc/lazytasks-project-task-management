@@ -469,12 +469,37 @@ final class Lazytask_UserController {
 		$user = get_user_by('email', $email);
 		$key = get_password_reset_key($user);
 
-		$reset_url = site_url('/lazy-task')."/#/change-password/?key=".$key."&login=".rawurlencode($user->user_login);
+		$reset_url = site_url('/lazytasks')."/#/change-password/?key=".$key."&login=".rawurlencode($user->user_login);
 
 		// Send email to user with the reset link
 		wp_mail($user->user_email, 'Password Reset Request', 'Click the following link to reset your password: ' . $reset_url);
 
 		return new WP_REST_Response(['status'=>200, 'message'=>'Password reset email sent. Please check'], 200);
+	}
+
+	public function lazytask_change_password(WP_REST_Request $request) 
+	{
+
+		$current_password = trim($request->get_param('currentPassword'));
+		$new_password = trim($request->get_param('newPassword'));
+		$confirm_password = trim($request->get_param('confirmPassword'));
+		$user_id = intval($request->get_param('user_id'));
+
+
+		// Verify current password
+		$user = get_userdata($user_id);
+		if (empty($user->user_pass)) {
+			return new WP_REST_Response(['status' => 400, 'message' => 'User password is not set.'], 400);
+		}		
+
+		if (!wp_check_password($current_password, $user->user_pass, $user_id)) {
+			return new WP_REST_Response(['status' => 400, 'message' => 'Current password is incorrect.'], 400);
+		}
+
+		// Update the password
+		wp_set_password($new_password, $user_id);
+
+		return new WP_REST_Response(['status'=>200, 'message'=>'Password changed successfully.'], 200);
 	}
 
 	public function lazytask_forget_password_store(WP_REST_Request $request) {
@@ -577,7 +602,8 @@ final class Lazytask_UserController {
 		$roles = $parameters['roles'];
 //		$roles = isset($parameters['roles']) && sizeof($parameters['roles']) > 0 ? json_decode($parameters['roles'], true) : [];
 		$email = sanitize_text_field($parameters['email']);
-		$password = isset($parameters['password']) && $parameters['password']!=''? sanitize_text_field($parameters['password']): '123456';
+		$random_password = wp_generate_password(10, true, false);
+		$password = isset($parameters['password']) && $parameters['password']!=''? sanitize_text_field($parameters['password']): $random_password;
 		// $role = sanitize_text_field($parameters['role']);
 		$error = new WP_Error();
 		if (empty($username)) {
@@ -615,12 +641,13 @@ final class Lazytask_UserController {
 			$user_id = wp_insert_user($args);
 			if (!is_wp_error($user_id)) {
 				$user = get_user_by('ID', $user_id);
-				$user->set_role('ll_pms');
+				$user->set_role('lazytasks_role');
 				update_user_meta($user_id, 'first_name', $firstName);
 				update_user_meta($user_id, 'last_name', $lastName);
 				add_user_meta($user_id, 'phone_number', $phoneNumber, true);
 				if($roles){
-					add_user_meta($user_id, 'll_roles', $roles, true);
+					//wp_capabilities
+					add_user_meta($user_id, 'lazytasks_capabilities', $roles, true);
 					$this->addUserRole($user_id, $roles);
 				}
 				$db->query('COMMIT');
@@ -704,7 +731,7 @@ final class Lazytask_UserController {
 
 				update_user_meta($userId, 'phone_number', $phoneNumber);
 				if($roles){
-					update_user_meta($userId, 'll_roles', $roles);
+					update_user_meta($userId, 'lazytasks_capabilities', $roles);
 
 					$this->addUserRole($userId, $roles);
 				}
@@ -771,10 +798,12 @@ final class Lazytask_UserController {
 		public function getTaskByLoggedInUserId(WP_REST_Request $request) {
 			$userId = $request->get_param( 'id' );
 
+			$requestData = $request->get_params();
+
 			$projectsByUser = $this->getProjectsByUserId($userId);
 
 			$taskController = new Lazytask_TaskController();
-			$tasks = $taskController->getTasksByAssignedUserId($userId);
+			$tasks = $taskController->getTasksByAssignedUserId($userId, $requestData);
 			$returnArray = [];
 			$columns = ['overdue'=>'Overdue', 'today'=>'Today', 'nextSevenDays'=>'7 Days', 'upcoming'=>'Upcoming'];
 

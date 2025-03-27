@@ -296,7 +296,7 @@ const AddTaskFromQuickTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDraw
                                     </div>
                                     <div className="flex z-[104]">
                                         <div className="w-1/3">
-                                            <Text fw={400} fz={14} c="#202020">Assign To</Text>
+                                            <Text fw={400} fz={14} c="#202020">Assigned</Text>
                                         </div>
                                         <div className={`relative`}>
                                             <TaskAssignTo

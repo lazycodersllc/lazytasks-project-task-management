@@ -1,5 +1,17 @@
 import React, {useState, useEffect, Fragment, useRef} from 'react';
-import {Accordion, Button, Checkbox, Flex, Group, List, Popover, Text, Title, useMantineTheme} from '@mantine/core';
+import {
+  Accordion,
+  Button,
+  Checkbox,
+  Flex,
+  Group,
+  List,
+  Popover,
+  Text,
+  Title,
+  Tooltip,
+  useMantineTheme
+} from '@mantine/core';
 import {
   IconAngle, IconCheck,
   IconChevronDown,
@@ -24,6 +36,7 @@ import {modals} from "@mantine/modals";
 
 import {hasPermission} from "../../../ui/permissions";
 import {notifications} from "@mantine/notifications";
+import AddTaskDrawer from "./AddTaskDrawer";
 
 const TaskList = () => {
   const theme = useMantineTheme();
@@ -279,20 +292,23 @@ const TaskList = () => {
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                             >
-                              <div {...provided.dragHandleProps} className="flex items-center w-full border-b border-solid border-[#dddddd] !bg-[#fcfcfc]" >
-                                <div className="flex w-full items-center font-bold py-3 pr-3 !pl-1">
-                                  <IconGripVertical
-                                      size={24}
-                                      stroke={1.25}
-                                      className="pl-2 px-1 w-[30px]" />
+                              <div {...provided.dragHandleProps} className="flex items-center w-full border-b border-solid border-[#dddddd] !bg-[#F0F8FF]" >
+                                <div className="flex w-full items-center font-bold py-1 pr-3 !pl-3">
+                                  <Accordion.Control>
+                                  </Accordion.Control>
                                   <TaskSectionName
                                       taskSectionId={taskListSections[taskListSection] && taskListSections[taskListSection].id}
                                       nameOfTaskSection={taskListSections[taskListSection] && taskListSections[taskListSection].name}
                                       view="listView"
                                   />
                                 </div>
+                                <div class="flex gap-1">
+                                  { hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee']) && (
+                                      <AddTaskDrawer view = 'listView' projectId={projectInfo && projectInfo.id} taskSectionId={taskListSections[taskListSection] && taskListSections[taskListSection].id } />
+                                  )}
+                                </div>
                                 {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-delete']) &&
-                                    <div className="flex items-center gap-2 cursor-pointer">
+                                    <div className="flex items-center gap-2 cursor-pointer pr-1">
                                       <Popover width={200} position="bottom-end" withArrow shadow="md">
                                         <Popover.Target>
                                           <IconDotsVertical size={20} stroke={1.25}/>
@@ -304,37 +320,40 @@ const TaskList = () => {
                                                  spacing="xs"
                                                  size="sm">
                                                <List.Item>
-                                                 <Checkbox
-                                                     label="Mark as complete"
-                                                     defaultChecked={!!(taskListSections[taskListSection] && taskListSections[taskListSection].mark_is_complete === 'complete')}
-                                                     onChange={(event) => {
-                                                       const markIsComplete = disableOthers && taskListSections[taskListSection].mark_is_complete !== 'complete'? 'disable' : 'enable';
-                                                       markIsCompleteHandler(event, markIsComplete)
-                                                     }}
-                                                     color="orange"
-                                                     value={taskListSections[taskListSection] && taskListSections[taskListSection].id}
-                                                 />
+                                                 <Tooltip label={`Mark as complete`} position="top" withArrow>
+                                                   <Checkbox
+                                                       label="Mark as complete"
+                                                       defaultChecked={!!(taskListSections[taskListSection] && taskListSections[taskListSection].mark_is_complete === 'complete')}
+                                                       onChange={(event) => {
+                                                         const markIsComplete = disableOthers && taskListSections[taskListSection].mark_is_complete !== 'complete'? 'disable' : 'enable';
+                                                         markIsCompleteHandler(event, markIsComplete)
+                                                       }}
+                                                       color="orange"
+                                                       value={taskListSections[taskListSection] && taskListSections[taskListSection].id}
+                                                   />
+                                                 </Tooltip>
                                                </List.Item>
                                                <List.Item>
-                                                 <Flex className={`cursor-pointer`} onClick={() => {
-                                                      taskSectionDeleteHandler(taskListSections[taskListSection] && taskListSections[taskListSection].id, columns && columns && columns[taskListSection] ? columns[taskListSection].length : 0)
-                                                      }}
-                                                       gap={`sm`}>
-                                                       <IconTrash
-                                                           className="cursor-pointer"
-                                                           size={20}
-                                                           stroke={1.25}
-                                                           color="var(--mantine-color-red-filled)"
-                                                       /> <Text>Delete</Text>
-                                                 </Flex>
+                                                 <Tooltip label={`Delete section`} position="top" withArrow>
+                                                   <Flex className={`cursor-pointer`} onClick={() => {
+                                                     taskSectionDeleteHandler(taskListSections[taskListSection] && taskListSections[taskListSection].id, columns && columns && columns[taskListSection] ? columns[taskListSection].length : 0)
+                                                   }}
+                                                         gap={`sm`}>
+                                                     <IconTrash
+                                                         className="cursor-pointer"
+                                                         size={20}
+                                                         stroke={1.25}
+                                                         color="var(--mantine-color-red-filled)"
+                                                     /> <Text>Delete</Text>
+                                                   </Flex>
+                                                 </Tooltip>
                                                </List.Item>
                                              </List>
                                           }
                                         </Popover.Dropdown>
                                       </Popover>
 
-                                      <Accordion.Control>
-                                      </Accordion.Control>
+
                                     </div>
                                 }
                               </div>
@@ -364,7 +383,7 @@ const TaskList = () => {
       </Accordion>
       {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-add']) &&
           <button
-              className="rounded-md border border-dashed border-[#ED7D31] px-4 py-2 mt-4 w-full"
+              className="rounded-md border border-dashed border-[#ED7D31] px-4 py-1 mt-4 w-full"
               onClick={handleAddSection}
           >
             <span className="text-lg font-bold text-[#ED7D31]"> + Add Section</span>

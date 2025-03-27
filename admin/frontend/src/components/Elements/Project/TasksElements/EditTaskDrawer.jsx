@@ -11,9 +11,9 @@ import {
     Select,
     Loader,
     Title,
-    LoadingOverlay
+    LoadingOverlay, Anchor, ActionIcon, useMantineTheme
 } from '@mantine/core';
-import {IconChevronDown, IconColumnRemove, IconFile, IconPaperclip, IconTrash} from '@tabler/icons-react';
+import {IconCheck, IconChevronDown, IconColumnRemove, IconFile, IconPaperclip, IconTrash} from '@tabler/icons-react';
 import ContentEditable from 'react-contenteditable'; 
 import TaskAssignTo from './Task/TaskAssignTo';
 import TaskFollower from './Task/TaskFollower';
@@ -34,19 +34,24 @@ import dayjs from "dayjs";
 import TaskActivity from "./TaskActivity";
 import {modals} from "@mantine/modals";
 import {hasPermission} from "../../../ui/permissions";
+import {notifications} from "@mantine/notifications";
+import TaskCommentAndActivity from "./TaskCommentAndActivity";
 
 const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer, closeTaskEditDrawer, isCalendar, submit }) => {
 
     const dispatch = useDispatch();
+    const theme = useMantineTheme();
+
     const {loggedUserId} = useSelector((state) => state.auth.user)
     const {loggedInUser} = useSelector((state) => state.auth.session)
     const {task} = useSelector((state) => state.settings.task);
+    const [selectedValue, setSelectedValue] = useState('Comments & Activities');
 
     useEffect(() => {
         if(taskId){
             dispatch(fetchTask({id: taskId}))
         }
-    }, [taskId])
+    }, [ taskId, selectedValue ])
 
     const contentEditableRef = useRef('');
 
@@ -98,9 +103,19 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
       });
       formData.append('task_id', task.id);
       formData.append('user_id', loggedUserId);
-      dispatch(createAttachment({data: formData}))
-      // setAttachments([...attachments, ...files]);
-    // setAttachments(Array.from(files)); // Convert files to an array
+      dispatch(createAttachment({data: formData})).then( ( response ) => {
+            if( response.payload && response.payload.status === 200 ) {
+
+                setAttachments( response.payload.data );
+
+                notifications.show({
+                    color: theme.primaryColor,
+                    title: response.payload.message,
+                    icon: <IconCheck />,
+                    autoClose: 2000,
+                });
+            }
+      });
 };
     useEffect(() => {
         if(taskEditDrawerOpen===true){
@@ -117,10 +132,8 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
     }, [taskEditDrawerOpen]);
 
     const [commentDropdownOpened, { toggle }] = useDisclosure();
-    const [selectedValue, setSelectedValue] = useState('Only Comments');
 
     const handleSelect = (value) => {
-        console.log(value)
         setSelectedValue(value);
         toggle();
     };
@@ -152,7 +165,20 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
             task_id: task && task.id,
             deleted_by: loggedUserId
         }
-        dispatch(deleteAttachment({ id:id, data: deletedTaskAttachment}))
+        dispatch(deleteAttachment({ id:id, data: deletedTaskAttachment})).then((response) => {
+            if(response.payload && response.payload.status === 200){
+
+                setAttachments(response.payload.data);
+
+                notifications.show({
+                    color: theme.primaryColor,
+                    title: response.payload.message,
+                    icon: <IconCheck />,
+                    autoClose: 2000,
+                    // withCloseButton: true,
+                });
+            }
+        });
     }
 
     useEffect(() => {
@@ -164,18 +190,17 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
 
     const taskDeleteHandler = (taskId) => modals.openConfirmModal({
         title: (
-            <Title order={5}>Are you sure this task delete?</Title>
+            <Title order={5}>You are parmanently deleting this item</Title>
         ),
         size: 'sm',
         radius: 'md',
         withCloseButton: false,
         children: (
-            <Text size="sm">
-                This action is so important that you are required to confirm it with a modal. Please click
-                one of these buttons to proceed.
+            <Text size="sm" mb="lg">
+                Are you Sure?
             </Text>
         ),
-        labels: { confirm: 'Confirm', cancel: 'Cancel' },
+        labels: { confirm: 'Yes', cancel: 'No' },
         onCancel: () => console.log('Cancel'),
         onConfirm: () => {
             if(taskId && taskId!=='undefined'){
@@ -227,107 +252,112 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
               withCloseButton={false} size="lg" closeOnClickOutside={true}
               overlayProps={{ backgroundOpacity: 0, blur: 0 }}
           >
-              <div className="mt-4">
+              <div className="mt-2">
                   <LoadingOverlay
                       visible={visible}
                       zIndex={1000}
                       overlayProps={{ radius: 'sm', blur: 4 }}
                   />
 
-                  <div className="drawer-head flex items-center mb-4">
-                      <div className="w-[85%]">
+                  <div className="drawer-head flex w-full items-center mb-4">
+                      <div className="w-[80%]">
                           {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) ?
                               <ContentEditable
                                   innerRef={contentEditableRef}
                                   onChange={(e) => setTaskName(e.target.value)}
                                   onBlur={handlerBlur} // Handle changes
                                   html={taskName}
-                                  className="inline-block w-full text-[#4d4d4d] font-bold text-[16px]"
+                                  className="inline-block w-full text-[#4d4d4d] font-bold text-[16px] !min-h-[36px]"
                               />
                               :
                               <Text size="sm" className="text-[#000000] font-semibold text-[14px] px-0 !outline-none pr-1">{taskName}</Text>
                           }
                       </div>
-                      <div className="dh-btn flex w-[10%]">
-                          <div className="flex gap-1 items-center">
+                      <div className="dh-btn flex w-[20%]">
+                          <div className="flex w-full gap-3 items-center justify-center">
+
+                              <Drawer.CloseButton size={`lg`} icon={"Update"} className={`!ml-2 !h-[36px] !border-0 !w-[70px] !bg-[#ED7D31] !text-white`} />
                               {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-delete']) &&
                                   <IconTrash
                                       onClick={()=> {taskDeleteHandler(task && task.id)}}
-                                      size="20"
+                                      size="24"
                                       color="var(--mantine-color-red-filled)"
                                   />
                               }
-                              <FileInput
-                                  multiple
-                                  variant="unstyled"
-                                  rightSection={icon}
-                                  rightSectionPointerEvents="none"
-                                  clearable
-                                  onChange={handleFileUpload}
-                              />
-                              <Drawer.CloseButton/>
                           </div>
                       </div>
                   </div>
-                  <ScrollArea className="h-[calc(100vh-130px)]" scrollbarSize={4}>
+                  <ScrollArea className="h-[calc(100vh-90px)]" scrollbarSize={4}>
                       <div className="tasks-body flex flex-col gap-4 relative w-full">
-                          <div className="flex z-[104]">
-                              <div className="w-1/3">
-                                  <Text fw={400} fz={14} c="#202020">Assign To</Text>
+                          <div className="flex items-center z-[104]">
+                              <div className="w-1/4">
+                                  <Text fw={700} fz={14} c="#202020">Created By</Text>
                               </div>
-                              <div className={`relative`}>
+                              <div className={`relative w-3/4`}>
+                                  <Text fw={400} fz={14} c="#202020">{ task.createdBy_name }</Text>
+                              </div>
+                          </div>
+                          <div className="flex items-center z-[104]">
+                              <div className="w-1/4">
+                                  <Text fw={700} fz={14} c="#202020">Assigned</Text>
+                              </div>
+                              <div className={`relative w-3/4`}>
                                   <TaskAssignTo taskId={task.id} assigned={task.assigned_to} assignedMember={(props) => {
                                       console.log('')
                                   }}/>
                               </div>
                           </div>
-                          <div className="flex z-[103]">
-                              <div className="w-1/3">
-                                  <Text fw={400} fz={14} c="#202020">Following</Text>
+                          <div className="flex items-center z-[103]">
+                              <div className="w-1/4">
+                                  <Text fw={700} fz={14} c="#202020">Following</Text>
                               </div>
-                              <div className={`relative`}>
+                              <div className={`relative w-3/4`}>
                                   <TaskFollower taskId={task.id} followers={task.members} editHandler={(props) => {
                                       console.log('')
                                   }}/>
                               </div>
                           </div>
-                          <div className="flex z-[102]">
-                              <div className="w-1/3">
-                                  <Text fw={400} fz={14} c="#202020">Due Date</Text>
+                          <div className="flex items-center z-[102]">
+                              <div className="w-1/4">
+                                  <Text fw={700} fz={14} c="#202020">Due Date</Text>
                               </div>
                               <TaskDueDate taskId={task.id} dueDate={task.end_date}/>
                           </div>
-                          <div className="flex z-[101]">
-                              <div className="w-1/3">
-                                  <Text fw={400} fz={14} c="#202020">Priority</Text>
+                          <div className="flex items-center z-[101]">
+                              <div className="w-1/4">
+                                  <Text fw={700} fz={14} c="#202020">Priority</Text>
                               </div>
-                              <div className="border border-solid border-grey rounded-md">
-                                  <TaskPriority taskId={task.id} priority={task.priority}/>
+                              <TaskPriority taskId={task.id} priority={task.priority}/>
+                          </div>
+                          <div className="flex items-center z-[100]">
+                              <div className="w-1/4">
+                                  <Text fw={700} fz={14} c="#202020">Tags</Text>
+                              </div>
+                              <div className={`relative`}>
+                                <TaskTag taskId={task.id} taskTags={task.tags}/>
                               </div>
                           </div>
                           <div className="flex z-[100]">
-                              <div className="w-1/3">
-                                  <Text fw={400} fz={14} c="#202020">Tags</Text>
+                              <div className="w-1/4">
+                                  <Text fw={700} fz={14} c="#202020">Attachments</Text>
                               </div>
-                              <TaskTag taskId={task.id} taskTags={task.tags}/>
-                          </div>
-                          <div className="flex z-[100]">
-                              <div className="w-1/3">
-                                  <Text fw={400} fz={14} c="#202020">Attachments</Text>
-                              </div>
-                              <div className='flex flex-wrap gap-3'>
+                              <div className='flex flex-wrap gap-3 w-3/4'>
                                   {attachments && attachments.length >0 && attachments.map((attachment, index) => (
                                       <div key={index}
                                            className='bg-[#EBF1F4] rounded-[20px] px-2 py-1 flex gap-2 items-center'>
                                           <IconFile size={14}/>
-                                          <Text size="xs" lineClamp={1} fw={300} fz={14} c="#202020">{attachment.name}</Text>
+                                          <Anchor href={attachment.file_path} download underline="not-hover">
+                                              <Text size="xs" lineClamp={1} fw={300} fz={14} c="#202020">{attachment.name}</Text>
+                                          </Anchor>
                                           {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-delete']) &&
-                                              <IconTrash onClick={()=>handleAttachmentDelete(attachment.id)} size={20} stroke={1} color="red"/>
+                                              <ActionIcon onClick={()=>handleAttachmentDelete(attachment.id)} variant="transparent" aria-label="Delete">
+                                                  <IconTrash size={20} stroke={1} color="red"/>
+                                              </ActionIcon>
                                           }
                                       </div>
                                   ))}
                                   {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) &&
-                                      <div className="attachment w-[35px]">
+                                      <div className="attachment w-[30px] h-[30px]">
                                           <FileInput
                                               multiple
                                               variant="unstyled"
@@ -342,6 +372,7 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
                           </div>
                           <div className="flex z-0">
                               <Textarea
+                                  labelProps={{ style: { fontWeight: 'bold' } }}
                                   label="Description"
                                   description=""
                                   style={{width: '100%'}}
@@ -391,6 +422,9 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
                                   }
                                   {selectedValue === 'Only Activities' &&
                                       <TaskActivity task={task} selectedValue={selectedValue}/>
+                                  }
+                                  {selectedValue === 'Comments & Activities' &&
+                                      <TaskCommentAndActivity task={task} selectedValue={selectedValue}/>
                                   }
                               </div>
                           </div>

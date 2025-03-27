@@ -189,7 +189,7 @@ const AddTaskDrawerFromCalendar = ({ startDate, endDate, project, taskAddDrawerO
 
                                 </div>
                                 <div className="dh-btn flex w-[10%]">
-                                    <div className="attachment w-[35px] mt-[-3px]">
+                                    {/*<div className="attachment w-[35px] mt-[-3px]">
                                         <FileInput
                                             multiple
                                             variant="unstyled"
@@ -198,7 +198,7 @@ const AddTaskDrawerFromCalendar = ({ startDate, endDate, project, taskAddDrawerO
                                             clearable
                                             onChange={handleFileUpload}
                                         />
-                                    </div>
+                                    </div>*/}
                                     <Drawer.CloseButton/>
 
                                 </div>
@@ -229,7 +229,7 @@ const AddTaskDrawerFromCalendar = ({ startDate, endDate, project, taskAddDrawerO
                                     </div>
                                     <div className="flex z-[104] relative">
                                         <div className="w-1/3">
-                                            <Text fw={400} fz={14} c="#202020">Assign To</Text>
+                                            <Text fw={400} fz={14} c="#202020">Assigned</Text>
                                         </div>
                                         <div className={`relative`}>
                                             <TaskAssignTo
@@ -304,6 +304,7 @@ const AddTaskDrawerFromCalendar = ({ startDate, endDate, project, taskAddDrawerO
                                     </div>
                                     <div className="flex z-0">
                                         <Textarea
+                                            labelProps={{ style: { fontWeight: 'bold' } }}
                                             label="Description"
                                             description=""
                                             style={{width: '100%'}}

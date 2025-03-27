@@ -26,7 +26,7 @@ const EditWorkspaceModal = ({ workspaceData }) => {
 
 
     const [workspaceEditModalOpen, { open: openWorkspaceEditModal, close: closeWorkspaceEditModal }] = useDisclosure(false);
-    const [showMembersList, setShowMembersList] = useState(false);
+    const [showMembersList, setShowMembersList] = useState(true);
     const [editedName, setEditedName] = useState(workspaceData.name); // State to hold edited name
 
     const editWorkspaceNameHandler = (props) => {
@@ -210,6 +210,7 @@ const EditWorkspaceModal = ({ workspaceData }) => {
         }
         if(workspaceEditModalOpen===true){
             dispatch(fetchCompany(workspaceData.id))
+            setShowMembersList(true);
         }
     }, [workspaceEditModalOpen]);
 
@@ -234,7 +235,7 @@ const EditWorkspaceModal = ({ workspaceData }) => {
                     <Modal.Content radius={15}>
                         <Modal.Header px={20} py={10}>
                             <Title order={5}>Edit Workspace</Title>
-                            <Modal.CloseButton />
+                            <Modal.CloseButton size={`md`} icon={"Update"} className={`!w-[70px]`} />
                         </Modal.Header>
                         <Modal.Body>
                             <div className="edit-form-box">
@@ -286,7 +287,7 @@ const EditWorkspaceModal = ({ workspaceData }) => {
                                 {showMembersList && (
                                     <div
                                         className="members-lists mt-3 border boder-solid border-[#6191A4] rounded-md p-3 pb-0">
-                                        <Text size="sm" fw={700} c="#202020">{filteredMembers && filteredMembers.length} people
+                                        <Text size="sm" fw={700} c="#202020">{filteredMembers && filteredMembers.length > 0 ? filteredMembers.length : 'no' } people
                                             available</Text>
                                         <div className="members-lists mt-3">
                                             <ScrollArea h={250} scrollbarSize={4} scrollHideDelay={500}>

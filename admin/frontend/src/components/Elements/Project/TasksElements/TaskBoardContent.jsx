@@ -1,9 +1,7 @@
 import {useState, useEffect, Fragment} from 'react';
 import React from 'react'; 
 import TaskContent from './Task/TaskContent';
-import { ReactSortable } from 'react-sortablejs';
-import AddTaskDrawer from './AddTaskDrawer'; 
-import { useSelector, useDispatch } from 'react-redux';
+
 import {Draggable, Droppable} from "react-beautiful-dnd";
 
 const TaskBoardContent = ({ listType, view, taskSection, projectId, taskSectionId, contents }) => {

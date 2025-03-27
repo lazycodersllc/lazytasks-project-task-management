@@ -1,7 +1,18 @@
 import React, {useEffect, useRef, useState} from 'react';
 import { useDisclosure } from '@mantine/hooks';
-import {Drawer, Button, FileInput, rem, Textarea, Text, ScrollArea, Select} from '@mantine/core';
-import {IconChevronDown, IconFile, IconPaperclip, IconTrashX} from '@tabler/icons-react';
+import {
+    Drawer,
+    Button,
+    FileInput,
+    rem,
+    Textarea,
+    Text,
+    ScrollArea,
+    Select,
+    Anchor,
+    LoadingOverlay, ActionIcon, useMantineTheme
+} from '@mantine/core';
+import {IconCheck, IconChevronDown, IconFile, IconPaperclip, IconTrash, IconTrashX} from '@tabler/icons-react';
 import ContentEditable from 'react-contenteditable'; 
 import TaskAssignTo from './Task/TaskAssignTo';
 import TaskFollower from './Task/TaskFollower';
@@ -18,21 +29,30 @@ import {
     editMyTask,
     setEditableMyTask
 } from "../Settings/store/myTaskSlice";
+import {fetchTask} from "../Settings/store/taskSlice";
+import {notifications} from "@mantine/notifications";
+import TaskCommentAndActivity from "./Task/TaskCommentAndActivity";
 
-const EditMyTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeTaskEditDrawer }) => {
+const EditMyTaskDrawer = ({ taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer, closeTaskEditDrawer }) => {
     const dispatch = useDispatch();
+    const theme = useMantineTheme();
+
     const {loggedUserId} = useSelector((state) => state.auth.user)
+    const {task} = useSelector((state) => state.settings.task);
+    const [selectedValue, setSelectedValue] = useState('Comments & Activities');
+
+    useEffect(() => {
+        if(taskId){
+            dispatch(fetchTask({id: taskId}))
+        }
+    }, [ dispatch, taskId, selectedValue ])
 
     const icon = <IconPaperclip style={{ width: rem(18), height: rem(18) }} stroke={1.5} />;
-    // const [taskEditDrawerOpen, { open: openTaskEditDrawer, close: closeTaskEditDrawer }] = useDisclosure(false);
 
     const [taskName, setTaskName] = useState(task && task.name ? task.name: 'Untitled Task');
     const [taskDescription, setTaskDescription] = useState(task && task.description ? task.description: '');
-    const [selectedMember, setSelectedMember] = useState(null);
-    const [selectedFollower, setSelectedFollower] = useState(null);
-    const [selectedDueDate, setSelectedDueDate] = useState(task && task.end_date ? dayjs(task.end_date).format('YYYY-MM-DD'): null);
-    const [selectedPriority, setSelectedPriority] = useState(null);
     const contentEditableRef = useRef('');
+    const [visible, setVisible] = useState(false);
 
 
   const [attachments, setAttachments] = useState( task.attachments && task.attachments.length>0 ? task.attachments : []);
@@ -49,9 +69,19 @@ const EditMyTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeT
         });
         formData.append('task_id', task.id);
         formData.append('user_id', loggedUserId);
-        dispatch(createMyTaskAttachment({data: formData}))
-        // setAttachments([...attachments, ...files]);
-        // setAttachments(Array.from(files)); // Convert files to an array
+        dispatch(createMyTaskAttachment({data: formData})).then( ( response ) => {
+            if( response.payload && response.payload.status === 200 ) {
+
+                setAttachments( response.payload.data );
+
+                notifications.show({
+                    color: theme.primaryColor,
+                    title: response.payload.message,
+                    icon: <IconCheck />,
+                    autoClose: 2000,
+                });
+            }
+        });
     };
 
 
@@ -60,38 +90,35 @@ const EditMyTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeT
             task_id: task && task.id,
             deleted_by: loggedUserId
         }
-        dispatch(deleteMyTaskAttachment({ id:id, data: deletedTaskAttachment}))
+        dispatch(deleteMyTaskAttachment({ id:id, data: deletedTaskAttachment})).then((response) => {
+            if(response.payload && response.payload.status === 200){
+
+                setAttachments(response.payload.data);
+
+                notifications.show({
+                    color: theme.primaryColor,
+                    title: response.payload.message,
+                    icon: <IconCheck />,
+                    autoClose: 2000,
+                    // withCloseButton: true,
+                });
+
+            }
+
+        });
     }
 
     useEffect(() => {
-        if(taskEditDrawerOpen===false){
-            // setShowMembersList(workspaceCreateModalOpen);
-            handleTaskCreation();
+        if(taskEditDrawerOpen===true){
+            setVisible(true);
         }
         setAttachments(task.attachments && task.attachments.length>0 ? task.attachments : [])
+        setTimeout(() => {
+            setVisible(false);
+        }, 1000);
     }, [taskEditDrawerOpen]);
-    const handleTaskCreation = () => {
-        const newTaskData = {
-            name: taskName,
-            // project_id: projectId,
-            // task_section_id: taskSectionId,
-            created_by: loggedUserId,
-            assigned_to: selectedMember,
-            members: selectedFollower,
-            start_date: selectedDueDate,
-            end_date: selectedDueDate,
-            priority: selectedPriority,
-            type:'task'
-        };
-        if(newTaskData.name!=='' && newTaskData.name!=='Untitled Task'){
-            // dispatch(createTask(newTaskData));
-            // setTaskName('');
-            // setCurrentMemberData([]);
-        }
-    };
 
     const [commentDropdownOpened, { toggle }] = useDisclosure();
-    const [selectedValue, setSelectedValue] = useState('Only Comments');
 
     const handleSelect = (value) => {
         console.log(value)
@@ -119,6 +146,8 @@ const EditMyTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeT
     };
 
     useEffect(() => {
+        setTaskName(task && task.name ? task.name: 'Type task name here')
+        setTaskDescription(task && task.description ? task.description: '')
         setAttachments(task.attachments && task.attachments.length>0 ? task.attachments : [])
     },[task]);
 
@@ -133,14 +162,20 @@ const EditMyTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeT
                   handleDrawerClose();
               }}
               position="right"
-              withCloseButton={false} size="lg" closeOnClickOutside={false}
+              withCloseButton={false} size="lg" closeOnClickOutside={true}
           overlayProps={{ backgroundOpacity: 0, blur: 0 }}
           >
-            <div className="mt-4">
+            <div className="mt-2">
+
+                <LoadingOverlay
+                    visible={visible}
+                    zIndex={1000}
+                    overlayProps={{ radius: 'sm', blur: 4 }}
+                />
               
               <Drawer.Body>
                 <div className="drawer-head flex mb-4">
-                  <div className="w-[90%]">
+                  <div className="w-[88%]">
                   <ContentEditable
                       innerRef={contentEditableRef}
                       onChange={(e) => setTaskName(e.target.value)}
@@ -150,64 +185,69 @@ const EditMyTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeT
                   />
                   </div>
                   <div className="dh-btn flex w-[10%]">
-                    <div className="attachment w-[35px] mt-[-3px]">
-                      <FileInput
-                            multiple
-                            variant="unstyled"
-                            rightSection={icon}
-                            rightSectionPointerEvents="none"
-                            clearable
-                            onChange={handleFileUpload}
-                        />
-                    </div>
-                    <Drawer.CloseButton />
+                    <Drawer.CloseButton size={`md`} icon={`Update`} className={`!w-[70px]`} />
 
                   </div>
                 </div>
-                  <ScrollArea className="h-[calc(100vh-130px)]" scrollbarSize={4}>
+                  <ScrollArea className="h-[calc(100vh-90px)]" scrollbarSize={4}>
                     <div className="tasks-body flex flex-col gap-4 relative">
                         <div className="flex z-[104]">
-                            <div className="w-1/3">
-                                <Text fw={400} fz={14} c="#202020">Assign To</Text>
+                            <div className="w-1/4">
+                                <Text fw={700} fz={14} c="#202020">Created By</Text>
+                            </div>
+                            <div className={`relative w-3/4`}>
+                                <Text fw={400} fz={14} c="#202020">{ task.createdBy_name }</Text>
+                            </div>
+                        </div>
+                        <div className="flex z-[104]">
+                            <div className="w-1/4">
+                                <Text fw={700} fz={14} c="#202020">Assigned</Text>
                             </div>
                             <TaskAssignTo task={task} assigned={task.assigned_to} />
                         </div>
                         <div className="flex z-[103]">
-                            <div className="w-1/3">
-                                <Text fw={400} fz={14} c="#202020">Following</Text>
+                            <div className="w-1/4">
+                                <Text fw={700} fz={14} c="#202020">Following</Text>
                             </div>
                             <TaskFollower task={task} followers={task.members} />
                         </div>
                         <div className="flex z-[102]">
-                            <div className="w-1/3">
-                                <Text fw={400} fz={14} c="#202020">Due Date</Text>
+                            <div className="w-1/4">
+                                <Text fw={700} fz={14} c="#202020">Due Date</Text>
                             </div>
                             <TaskDueDate taskId={task.id} dueDate={task.end_date}/>
                         </div>
                         <div className="flex z-[101]">
-                            <div className="w-1/3">
-                                <Text fw={400} fz={14} c="#202020">Priority</Text>
+                            <div className="w-1/4">
+                                <Text fw={700} fz={14} c="#202020">Priority</Text>
                             </div>
                             <div className="border border-solid border-grey rounded-md">
                                 <TaskPriority task={task} priority={task.priority}/>
                             </div>
                         </div>
                         <div className="flex z-[100]">
-                            <div className="w-1/3">
-                                <Text fw={400} fz={14} c="#202020">Tags</Text>
+                            <div className="w-1/4">
+                                <Text fw={700} fz={14} c="#202020">Tags</Text>
                             </div>
                             <TaskTag task={task} taskTags={task.tags} />
                         </div>
                         <div className="flex z-[100]">
-                            <div className="w-1/3">
-                                <Text fw={400} fz={14} c="#202020">Attachments</Text>
+                            <div className="w-1/4">
+                                <Text fw={700} fz={14} c="#202020">Attachments</Text>
                             </div>
-                            <div className='flex flex-wrap gap-3'>
+                            <div className='flex flex-wrap gap-3 w-3/4'>
                               {attachments && attachments.length>0 && attachments.map((attachment, index) => (
                                   <div key={index} className='bg-[#EBF1F4] rounded-[20px] px-2 py-1 flex gap-2 items-center'>
                                       <IconFile size={14}/>
-                                      <Text  lineClamp={1} fw={400} fz={14} c="#202020">{attachment.name}</Text>
-                                      <IconTrashX onClick={()=>handleAttachmentDelete(attachment.id)} size={18} stroke={1} color="red"/>
+
+                                      <Anchor href={attachment.file_path} download underline="not-hover">
+                                          <Text size="xs" lineClamp={1} fw={300} fz={14} c="#202020">{attachment.name}</Text>
+                                      </Anchor>
+
+                                      <ActionIcon onClick={()=>handleAttachmentDelete(attachment.id)} variant="transparent" aria-label="Delete">
+                                          <IconTrash size={20} stroke={1} color="red"/>
+                                      </ActionIcon>
+
                                   </div>
                               ))}
                               <div className="attachment w-[35px]">
@@ -224,6 +264,7 @@ const EditMyTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeT
                         </div>
                         <div className="flex z-0">
                             <Textarea
+                                labelProps={{ style: { fontWeight: 'bold' } }}
                                 label="Description"
                                 description=""
                                 style={{ width: '100%' }}
@@ -237,7 +278,7 @@ const EditMyTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeT
                         </div>
                         <div className="flex">
                             <button className="mt-1">
-                                <span className="text-sm font-medium text-[#ED7D31]">+ Add sub task</span>
+                                {/*<span className="text-sm font-medium text-[#ED7D31]">+ Add sub task</span>*/}
                             </button>
                         </div>
 
@@ -271,6 +312,9 @@ const EditMyTaskDrawer = ({ task, taskEditDrawerOpen, openTaskEditDrawer, closeT
                                 }
                                 { selectedValue ==='Only Activities' &&
                                     <TaskActivity task={task} selectedValue={selectedValue}/>
+                                }
+                                { selectedValue ==='Comments & Activities' &&
+                                    <TaskCommentAndActivity task={task} selectedValue={selectedValue}/>
                                 }
                             </div>
                         </div>

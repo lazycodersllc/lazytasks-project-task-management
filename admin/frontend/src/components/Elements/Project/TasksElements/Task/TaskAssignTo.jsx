@@ -1,6 +1,6 @@
 import { IconUserCircle } from '@tabler/icons-react';
 import React, {useState, useRef, useEffect, Fragment} from 'react';
-import { Avatar, ScrollArea, Text } from '@mantine/core';
+import {Avatar, ScrollArea, Text, Tooltip} from '@mantine/core';
 import {useDispatch, useSelector} from 'react-redux';
 import {editTask, setEditableTask} from "../../../../Settings/store/taskSlice";
 import {hasPermission} from "../../../../ui/permissions";
@@ -69,29 +69,39 @@ const TaskAssignTo = ({ taskId, assigned, view, assignedMember= {}}) => {
         <Fragment>
             <div onClick={handleAssignedToButtonClick} className="assignto-btn">
                 {selectedMember ? (
-                    <div className="flex items-center gap-2">
-                        <Avatar
-                            color={ `${bgColor(selectedMember.name)["font-color"]}` }
-                            bg={ `${bgColor(selectedMember.name)["bg-color"]}` }
-                            size={32}
-                            radius={32}
-                            src={selectedMember.avatar?selectedMember.avatar:null}
 
-                        >
-                            { selectedMember.avatar ? '' : <Text style={{ lineHeight:"14px"}} size="xs">{acronym(selectedMember.name)}</Text> }
-                        </Avatar>
-                        {/*<Avatar src={selectedMember.avatar} size={32} radius={32}/>*/}
-                        {!(view === 'cardView') && (
-                            // <p className="ml-2">{selectedMember.name}</p>
-                            <Text title={selectedMember.name} lineClamp={1} size="sm" fw={500} c="#202020" className="ml-2">
-                                {selectedMember.name}
-                            </Text>
-                        )}
-            </div>
-            ) : (
-                <div className="h-[30x] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer">
-                    <IconUserCircle color="#4d4d4d" size="20" stroke={1.25} />
-                </div>
+                        <div className="flex items-center gap-2">
+                            <Tooltip label={`Assigned`} position="top" withArrow>
+                                <Avatar
+                                    color={ `${bgColor(selectedMember.name)["font-color"]}` }
+                                    bg={ `${bgColor(selectedMember.name)["bg-color"]}` }
+                                    size={32}
+                                    radius={32}
+                                    src={selectedMember.avatar?selectedMember.avatar:null}
+
+                                >
+                                    { selectedMember.avatar ? '' : <Text style={{ lineHeight:"14px"}} size="xs">{acronym(selectedMember.name)}</Text> }
+                                </Avatar>
+                            </Tooltip>
+
+                            {/*<Avatar src={selectedMember.avatar} size={32} radius={32}/>*/}
+                            {!(view === 'cardView') && (
+                                // <p className="ml-2">{selectedMember.name}</p>
+                                <Tooltip label={selectedMember.name} position="top" withArrow>
+                                    <Text lineClamp={1} size="sm" fw={500} c="#202020" className="ml-2">
+                                        {selectedMember.name}
+                                    </Text>
+                                </Tooltip>
+                            )}
+                        </div>
+                ) : (
+                    <div className="flex items-center">
+                        <div className="h-[30x] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer">
+                            <Tooltip label={`Assign to`} position="top" withArrow>
+                                <IconUserCircle color="#4d4d4d" size="20" stroke={1.25} />
+                            </Tooltip>
+                        </div>
+                    </div>
                 )
                 }
             </div>

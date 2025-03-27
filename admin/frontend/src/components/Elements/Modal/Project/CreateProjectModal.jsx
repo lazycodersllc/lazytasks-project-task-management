@@ -15,7 +15,7 @@ const CreateProjectModal = ({ buttonStyle, companyId, companyName, members }) =>
     const dispatch = useDispatch();
     const {loggedUserId} = useSelector((state) => state.auth.user);
     const [projectCreateModalOpen, { open: openProjectCreateModal, close: closeProjectCreateModal }] = useDisclosure(false);
-    const [showMembersList, setShowMembersList] = useState(false);
+    const [showMembersList, setShowMembersList] = useState(true);
 
     const [projectName, setProjectName] = useState('');
     const [workspaceId, setWorkspaceId] = useState(companyId?companyId:null);
@@ -66,6 +66,8 @@ const CreateProjectModal = ({ buttonStyle, companyId, companyName, members }) =>
         if(projectCreateModalOpen===false){
             setShowMembersList(projectCreateModalOpen);
             handleProjectCreation();
+        }else{
+            setShowMembersList(true)
         }
     }, [projectCreateModalOpen]);
 
@@ -156,7 +158,7 @@ const CreateProjectModal = ({ buttonStyle, companyId, companyName, members }) =>
                     <Modal.Content radius={15}>
                         <Modal.Header px={20} py={10}>
                             <Title order={5}>Create Project</Title>
-                            <Modal.CloseButton />
+                            <Modal.CloseButton size={`md`} icon={"Create"} className={`!w-[70px]`} />
                         </Modal.Header>
                         <Modal.Body>
                             <div className="create-form-box">
@@ -239,7 +241,7 @@ const CreateProjectModal = ({ buttonStyle, companyId, companyName, members }) =>
                                     <div
                                         className="members-lists mt-3 border boder-solid border-[#6191A4] rounded-md p-3 pb-0">
                                         <Text size="sm" fw={700}
-                                              c="#202020">{filteredMembers && filteredMembers.length > 0 && filteredMembers.length} people
+                                              c="#202020">{filteredMembers && filteredMembers.length > 0 ? filteredMembers.length : 'no' } people
                                             available</Text>
                                         <div className="members-lists mt-3">
                                             <ScrollArea h={250} scrollbarSize={4} scrollHideDelay={500}>

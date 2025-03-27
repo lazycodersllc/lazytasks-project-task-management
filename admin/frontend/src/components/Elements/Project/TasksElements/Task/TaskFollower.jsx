@@ -70,16 +70,19 @@ const TaskFollower = ({taskId, followers, editHandler=[]}) => {
 
     return (
         <> 
-            <div className="assignto-btn flex items-center">
-                {selectedMembers && selectedMembers.length > 0 ? (
-                    <div onClick={handleAssignedToButtonClick} className="flex-inline items-center cursor-pointer">
-                        <UsersAvatarGroup users={selectedMembers} size={36} maxCount={3} />
-                    </div>
-                ) : (
-                    <div onClick={handleAssignedToButtonClick} className="h-[30px] w-[30px] border border-dashed border-[#4d4d4d] rounded-full p-1 cursor-pointer">
-                        <IconUsers color="#4d4d4d" size="20" stroke={1.25} />
-                    </div>
-                )}
+            <div className="assignto-btn">
+
+                    {selectedMembers && selectedMembers.length > 0 ? (
+                        <div onClick={handleAssignedToButtonClick} className="flex-inline items-center cursor-pointer">
+                            <UsersAvatarGroup users={selectedMembers} size={36} maxCount={3} />
+                        </div>
+                    ) : (
+                        <Tooltip label={`Follow`} position="top" withArrow>
+                            <div onClick={handleAssignedToButtonClick} className="h-[30px] w-[30px] border border-dashed border-[#4d4d4d] rounded-full p-1 cursor-pointer">
+                                <IconUsers color="#4d4d4d" size="20" stroke={1.25} />
+                            </div>
+                        </Tooltip>
+                    )}
             </div>
             
 

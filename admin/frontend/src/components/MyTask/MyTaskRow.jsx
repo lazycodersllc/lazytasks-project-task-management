@@ -37,7 +37,9 @@ const [taskEditDrawerOpen, { open: openTaskEditDrawer, close: closeTaskEditDrawe
             </div>
             <div className="due-date w-[10%]">
                 <div onClick={(e) => e.stopPropagation()}>
-                    <TaskDueDate taskId={task.id} dueDate={task.end_date}/>
+                    <div className="w-full inline-flex items-center justify-center">
+                        <TaskDueDate taskId={task.id} dueDate={task.end_date}/>
+                    </div>
                 </div>
             </div>
             <div className="priority w-[10%]">
@@ -45,7 +47,7 @@ const [taskEditDrawerOpen, { open: openTaskEditDrawer, close: closeTaskEditDrawe
                     <TaskPriority task={task} priority={task.priority}/>
                 </div>
             </div>
-            <div className="tags w-[28%]">
+            <div className="tags w-[28%] pl-5">
                 <div onClick={(e) => e.stopPropagation()}>
                     <TaskTag task={task} taskTags={task.tags}/>
                 </div>
@@ -53,7 +55,7 @@ const [taskEditDrawerOpen, { open: openTaskEditDrawer, close: closeTaskEditDrawe
         </div>
 
 
-        {taskEditDrawerOpen && <EditMyTaskDrawer task={task} taskEditDrawerOpen={taskEditDrawerOpen} openTaskEditDrawer={openTaskEditDrawer} closeTaskEditDrawer={closeTaskEditDrawer} />}
+        {taskEditDrawerOpen && <EditMyTaskDrawer taskObj={task} taskId={task && task.id} taskEditDrawerOpen={taskEditDrawerOpen} openTaskEditDrawer={openTaskEditDrawer} closeTaskEditDrawer={closeTaskEditDrawer} />}
 
     </>
 

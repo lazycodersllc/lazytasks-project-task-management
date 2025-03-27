@@ -6,19 +6,19 @@ import {
     addProjectPriority,
     addTask,
     addTaskSection,
-    assignTagToTask,
+    assignTagToTask, attachmentsUpload,
     getTask,
     getTaskListsByProject,
     markIsCompleteTaskSection,
     removeAttachments,
-    removeComments,
+    removeComments, removeProjectPriority,
     removeTagFromTask,
     removeTask,
     removeTaskSection,
     updateSectionSortOrder,
     updateTask,
     updateTaskSection,
-    updateTaskSortOrder
+    updateTaskSortOrder, wpRemoveAttachments
 } from "../../../services/TaskService";
 
 export const fetchTasksByProject = createAsyncThunk(
@@ -51,6 +51,10 @@ export const createTaskSection = createAsyncThunk('tasks/createTaskSection', asy
 
 export const createProjectPriority = createAsyncThunk('tasks/createProjectPriority', async (data) => {
     return addProjectPriority(data)
+})
+
+export const deleteProjectPriority = createAsyncThunk('tasks/deleteProjectPriority', async ({data}) => {
+    return removeProjectPriority(data)
 })
 
 export const editTaskSection = createAsyncThunk(
@@ -92,10 +96,20 @@ export const createAttachment = createAsyncThunk('tasks/createAttachment', async
     return addAttachments(data)
 })
 
+export const uploadAttachments = createAsyncThunk('tasks/uploadAttachments', async ({data}) => {
+    return attachmentsUpload(data)
+})
+
 export const deleteAttachment = createAsyncThunk(
     'tasks/deleteAttachment',
     async ({ id, data}) => {
     return removeAttachments(id, data)
+})
+
+export const wpDeleteAttachment = createAsyncThunk(
+    'tasks/removeAttachment',
+    async ({ id, data}) => {
+    return wpRemoveAttachments(id)
 })
 
 export const addTagToTask = createAsyncThunk('tasks/addTagToTask', async (data) => {
@@ -125,12 +139,14 @@ const initialState = {
     taskListSections: {},
     addedListSections: {},
     columns: {},
+    reload : false,
     childColumns: {},
     ordered: [],
     boardMembers: [],
     projectPriorities: [],
     comment:{},
     attachments:[],
+    uploadsAttachment:[],
     attachment:{},
     taskTags:[],
     isLoading: false,
@@ -209,11 +225,15 @@ const taskSlice = createSlice({
         updateBoardMembers: (state, action) => {
             state.boardMembers = action.payload
         },
+        //update is loading
+        updateIsLoading: (state, action) => {
+            state.isLoading = action.payload
+        },
     },
     extraReducers: (builder) => {
         builder
             .addCase(fetchTasksByProject.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(fetchTasksByProject.fulfilled, (state, action) => {
@@ -234,7 +254,7 @@ const taskSlice = createSlice({
                 state.error = action.error?.message
             })
             .addCase(fetchTask.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(fetchTask.fulfilled, (state, action) => {
@@ -248,7 +268,7 @@ const taskSlice = createSlice({
                 state.error = action.error?.message
             })
             .addCase(createTask.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(createTask.fulfilled, (state, action) => {
@@ -281,7 +301,7 @@ const taskSlice = createSlice({
                 state.error = action.error?.message
             })
             .addCase(editTask.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(editTask.fulfilled, (state, action) => {
@@ -304,7 +324,7 @@ const taskSlice = createSlice({
                 ]
                 })*/
 
-                if(action.payload.data && action.payload.data.section_slug && action.payload.data.parent===null){
+                /*if(action.payload.data && action.payload.data.section_slug && action.payload.data.parent===null){
                     Object.entries(state.columns).forEach(([key, tasks]) => {
                         if (key === action.payload.data.section_slug) {
                             state.columns[key] = tasks.map(task =>
@@ -312,6 +332,20 @@ const taskSlice = createSlice({
                             );
                         }
                     });
+                }*/
+                if (
+                    action.payload.data &&
+                    action.payload.data.section_slug &&
+                    action.payload.data.parent === null
+                ) {
+                    const sectionKey = action.payload.data.section_slug;
+                     state.reload = true
+
+                    if (state.columns[sectionKey]) {
+                        state.columns[sectionKey] = state.columns[sectionKey].map(task =>
+                            task.id === action.payload.data.id ? action.payload.data : task
+                        );
+                    }
                 }
 
                 // for sub task
@@ -334,7 +368,7 @@ const taskSlice = createSlice({
                 console.log(action)
             })
             .addCase(editTaskSortOrder.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(editTaskSortOrder.fulfilled, (state, action) => {
@@ -354,7 +388,7 @@ const taskSlice = createSlice({
                 state.error = action.error?.message
             })
             .addCase(createTaskSection.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(createTaskSection.fulfilled, (state, action) => {
@@ -374,7 +408,7 @@ const taskSlice = createSlice({
                 state.error = action.error?.message
             })
             .addCase(editTaskSection.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(editTaskSection.fulfilled, (state, action) => {
@@ -392,7 +426,7 @@ const taskSlice = createSlice({
                 state.error = action.error?.message
             })
             .addCase(markIsCompletedTaskSection.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(markIsCompletedTaskSection.fulfilled, (state, action) => {
@@ -426,7 +460,7 @@ const taskSlice = createSlice({
                 state.error = action.error?.message
             })
             .addCase(deleteTaskSection.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(deleteTaskSection.fulfilled, (state, action) => {
@@ -451,7 +485,7 @@ const taskSlice = createSlice({
                 state.error = action.error?.message
             })
             .addCase(editSectionSortOrder.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(editSectionSortOrder.fulfilled, (state, action) => {
@@ -481,8 +515,24 @@ const taskSlice = createSlice({
                 state.isError = false
                 state.error = action.error?.message
             })
+            //deleteProjectPriority
+            .addCase(deleteProjectPriority.pending, (state) => {
+                // state.isLoading = true
+                state.isError = false
+            })
+            .addCase(deleteProjectPriority.fulfilled, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.projectPriorities = action.payload.data
+                state.success = `Priority Deleted Successfully`
+            })
+            .addCase(deleteProjectPriority.rejected, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.error = action.error?.message
+            })
             .addCase(createComment.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(createComment.fulfilled, (state, action) => {
@@ -519,7 +569,7 @@ const taskSlice = createSlice({
                 state.error = action.error?.message
             })
             .addCase(deleteComment.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(deleteComment.fulfilled, (state, action) => {
@@ -564,7 +614,7 @@ const taskSlice = createSlice({
             })
             // attachment start
             .addCase(createAttachment.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(createAttachment.fulfilled, (state, action) => {
@@ -607,8 +657,20 @@ const taskSlice = createSlice({
                 state.isError = false
                 state.error = action.error?.message
             })
+            .addCase(uploadAttachments.pending, (state) => {
+                // state.isLoading = true
+                state.isError = false
+            })
+            .addCase(uploadAttachments.fulfilled, (state, action) => {
+                state.uploadsAttachment = action.payload.data
+            })
+            .addCase(uploadAttachments.rejected, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.error = action.error?.message
+            })
             .addCase(deleteAttachment.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(deleteAttachment.fulfilled, (state, action) => {
@@ -652,7 +714,7 @@ const taskSlice = createSlice({
                 state.error = action.error?.message
             })
             .addCase(addTagToTask.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(addTagToTask.fulfilled, (state, action) => {
@@ -689,7 +751,7 @@ const taskSlice = createSlice({
                 state.error = action.error?.message
             })
             .addCase(deleteTagFromTask.pending, (state) => {
-                state.isLoading = true
+                // state.isLoading = true
                 state.isError = false
             })
             .addCase(deleteTagFromTask.fulfilled, (state, action) => {
@@ -776,6 +838,22 @@ const taskSlice = createSlice({
                 state.isError = false
                 state.error = action.error?.message
             })
+        //wpDeleteAttachment
+            .addCase(wpDeleteAttachment.pending, (state) => {
+                // state.isLoading = true
+                state.isError = false
+            })
+            .addCase(wpDeleteAttachment.fulfilled, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.success = `Attachment Upload Successfully`
+            })
+            .addCase(wpDeleteAttachment.rejected, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.error = action.error?.message
+            })
+
 
     },
 })
@@ -789,6 +867,7 @@ export const {
     removeSuccessMessage,
     removeProjectFromState,
     updateBoardMembers,
+    updateIsLoading,
     initialTask
 } = taskSlice.actions
 export default taskSlice.reducer

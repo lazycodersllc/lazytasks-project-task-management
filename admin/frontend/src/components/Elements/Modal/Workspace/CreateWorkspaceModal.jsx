@@ -9,12 +9,15 @@ import { useSelector, useDispatch } from 'react-redux';
 import { workspace, addWorkspace, updateWorkspaceUsers } from '../../../../reducers/workspaceSlice';
 import {fetchAllMembers} from "../../../../store/auth/userSlice";
 import {createCompany} from "../../../Settings/store/companySlice";
-import UserAvatarSingle from "../../../ui/UserAvatarSingle"; // Import your Redux action creators for adding a workspace and updating workspace users
+import UserAvatarSingle from "../../../ui/UserAvatarSingle";
+import {hasPermission} from "../../../ui/permissions"; // Import your Redux action creators for adding a workspace and updating workspace users
 
 const CreateWorkspaceModal = () => { 
     const dispatch = useDispatch();
     const {allMembers} = useSelector((state) => state.auth.user);
     const {loggedUserId} = useSelector((state) => state.auth.user)
+    const {loggedInUser} = useSelector((state) => state.auth.session)
+
 
     useEffect(() => {
         dispatch(fetchAllMembers())
@@ -24,7 +27,7 @@ const CreateWorkspaceModal = () => {
 
     const [workspaceName, setWorkspaceName] = useState('');
 
-    const [showMembersList, setShowMembersList] = useState(false);
+    const [showMembersList, setShowMembersList] = useState(true);
 
     const [currentMemberData, setCurrentMemberData] = useState([
     ]);
@@ -78,8 +81,10 @@ const CreateWorkspaceModal = () => {
     useEffect(() => {
 
         if(workspaceCreateModalOpen===false){
-            setShowMembersList(workspaceCreateModalOpen);
+            setShowMembersList(false);
             handleWorkspaceCreation();
+        }else {
+            setShowMembersList(true)
         }
     }, [workspaceCreateModalOpen]);
 
@@ -128,7 +133,9 @@ const CreateWorkspaceModal = () => {
     };
     return (
         <>
-            <WorkspaceCreateButton onClick={handleWorkspaceAdd} />
+            { hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director' ]) &&
+                <WorkspaceCreateButton onClick={handleWorkspaceAdd} />
+            }
             {workspaceCreateModalOpen &&
                 <Modal.Root
                     opened={workspaceCreateModalOpen}
@@ -140,7 +147,7 @@ const CreateWorkspaceModal = () => {
                     <Modal.Content radius={15}>
                         <Modal.Header px={20} py={10}>
                             <Title order={5}>Create Workspace</Title>
-                            <Modal.CloseButton />
+                            <Modal.CloseButton size={`md`} icon={"Create"} className={`!w-[70px]`} />
                         </Modal.Header>
                         <Modal.Body>
                             <div className="create-form-box">
@@ -178,7 +185,7 @@ const CreateWorkspaceModal = () => {
                                 <div className="relative mb-4">
                                     <TextInput
                                         leftSection={<IconSearch size={16}/>}
-                                        placeholder="Search members..."
+                                        placeholder="Quick search member"
                                         value={searchValue}
                                         onChange={handleSearchInputChange}
                                         onFocus={handleSearchInputFocus}
@@ -197,7 +204,7 @@ const CreateWorkspaceModal = () => {
                                 {showMembersList && (
                                     <div
                                         className="members-lists mt-3 border boder-solid border-[#6191A4] rounded-md p-3 pb-0">
-                                        <Text size="sm" fw={700} c="#202020">{filteredMembers && filteredMembers.length} people
+                                        <Text size="sm" fw={700} c="#202020">{ filteredMembers && filteredMembers.length > 0 ? filteredMembers.length : 'no' } people
                                             available</Text>
                                         <div className="members-lists mt-3">
                                             <ScrollArea h={250} scrollbarSize={4} scrollHideDelay={500}>

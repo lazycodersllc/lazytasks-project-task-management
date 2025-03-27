@@ -29,6 +29,8 @@ import Header from './components/Header';
 import SettingMain from "./components/Settings/SettingMain";
 import MyZen from "./components/MyZen";
 
+import Onboarding from './components/Onboarding/Onboarding';
+
 // import License from "./view/license/License"
 
 const AppRoutes = () => {
@@ -96,6 +98,8 @@ const AppRoutes = () => {
                     {/*<Route path="/" element={<ProtectedRoute authenticated={signedIn} />}>*/}
                     <Route path="/" element={<ProtectedWithHeader signedIn={signedIn}/>}>
                         {/*<Route path="/" element={<Dashboard />} />*/}
+                        <Route path="/onboarding" element={<Onboarding />} />
+                        
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/my-task" element={<MyTask />} />
                         <Route path="/my-zen" element={<MyZen />} />

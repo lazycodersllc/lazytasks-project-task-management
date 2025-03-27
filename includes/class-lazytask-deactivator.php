@@ -38,6 +38,9 @@ class Lazytask_Deactivator {
 
 		delete_option('lazytask_page_id');
 
+		delete_option('lazytask_do_activation_redirect');
+		delete_option('lazytasks_config');
+
 
 	}
 

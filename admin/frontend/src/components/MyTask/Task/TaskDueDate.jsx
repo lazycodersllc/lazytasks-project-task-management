@@ -39,14 +39,11 @@ const formattedDate = inputDate.toLocaleDateString('en-US', options);
 const TaskDueDate = ({ taskId, dueDate}) => {
   const dispatch = useDispatch();
 
-  const [selectedDate, setSelectedDate] = useState(dueDate ? new Date(dueDate) : null );
+  // const [selectedDate, setSelectedDate] = useState(dueDate ? new Date(dueDate) : null );
   const [calendarVisible, setCalendarVisible] = useState(false);
   const calendarRef = useRef(null);
   const {loggedUserId} = useSelector((state) => state.auth.user)
   const {loggedInUser} = useSelector((state) => state.auth.session)
-
-
-  
 
   useEffect(() => {
     document.addEventListener('mousedown', handleClickOutside);
@@ -58,14 +55,15 @@ const TaskDueDate = ({ taskId, dueDate}) => {
   const handleSelect = (date) => {
     if(taskId && taskId !== 'undefined' && date){
       var formatedDate = dayjs(date).format('YYYY-MM-DD');
-      dispatch(editMyTask({id: taskId, data: {start_date: formatedDate, end_date: formatedDate, 'updated_by': loggedUserId }}))
+      dispatch(editMyTask({id: taskId, data: {start_date: formatedDate, end_date: formatedDate, 'updated_by': loggedUserId }})).then((response) => {
+        // setSelectedDate(date);
+        setCalendarVisible(false); // Hide calendar after selecting a date
+      });
     }
-    setSelectedDate(date);
-    setCalendarVisible(false); // Hide calendar after selecting a date 
   };
 
   useEffect(() => {
-    setSelectedDate(dueDate ? new Date(dueDate) : null);
+    // setSelectedDate(dueDate ? new Date(dueDate) : null);
   }, [dispatch, dueDate]);
   const handleClickOutside = (event) => {
     if (calendarRef.current && !calendarRef.current.contains(event.target)) {
@@ -82,21 +80,15 @@ const TaskDueDate = ({ taskId, dueDate}) => {
   };
 
   return (
-    <div className="due-select-btn cursor-pointer inline-block" onClick={toggleCalendar}>
-      {selectedDate ? (
-          <div className="due-selected text-[#4d4d4d] font-semibold text-[14px]">
-              {formatDate(selectedDate)} {/* Render formatted date */}
+    <div className="due-select-btn cursor-pointer" onClick={toggleCalendar}>
+      {dueDate === null ? (
+          <div className="h-[32px] w-[32px] border border-dashed border-[#4d4d4d] rounded-full p-1">
+            <IconCalendarEvent color="#4d4d4d" size="22" />
           </div>
       ) : (
-          dueDate === null ? (
-              <div className="h-[32px] w-[32px] border border-dashed border-[#4d4d4d] rounded-full p-1">
-                  <IconCalendarEvent color="#4d4d4d" size="22" /> 
-              </div>
-          ) : (
-              <div className="due-selected text-[#4d4d4d] font-semibold text-[14px]">
-                  {dbdateFormate(dueDate)}
-              </div>
-          )
+          <div className="due-selected text-[#4d4d4d] font-semibold text-[14px]">
+            {dbdateFormate(dueDate)}
+          </div>
       )}
 
       {calendarVisible && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (

@@ -106,14 +106,21 @@ const QuickTaskList = () => {
               <Card.Section px="xs" pb="xs">
                   <ScrollArea className="relative h-[200px] pb-[35px]" scrollbarSize={4}>
                       <div className="">
-                          {tasks && tasks.length > 0 && tasks.map((task, index) => (
+                          {tasks && tasks.length > 0 ? tasks.map((task, index) => (
                               //odd and even calculated index value
                               <div className={`${index % 2 === 0?'bg-[#f8f9fa]':''}`}>
                                   <div onDoubleClickCapture={()=>{handleEditTaskDrawerOpen(task)}} className="content px-2 py-2 cursor-pointer">
                                       <Text fz="sm">{task.name}</Text>
                                   </div>
                               </div>
-                          ))
+                              )
+                          ):<div className="text-center pt-4 text-sm">
+                                You have no quick tasks at the moment. <br/>
+                              Let's create one and become more efficient. <br/>
+                              <span style={{ color: "#ED7D31", paddingTop: "5px", display: "inline-block" }}>
+                              Never forget a task however small it is!
+                              </span>
+                              </div>
                           }
 
                       </div>

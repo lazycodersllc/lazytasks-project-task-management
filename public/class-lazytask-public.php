@@ -73,9 +73,9 @@ class Lazytask_Public {
 		 * class.
 		 */
 
-		if (is_page('lazy-task')) {
+		if (is_page('lazytasks')) {
 			// phpcs:ignore WordPress.WP.EnqueuedStylesScope
-			wp_enqueue_style( 'lazy-task-style', plugin_dir_url( __DIR__ ) . 'admin/frontend/build/index.css', array(), $this->version, 'all');
+			wp_enqueue_style( 'lazytasks-style', plugin_dir_url( __DIR__ ) . 'admin/frontend/build/index.css', array(), $this->version, 'all');
 		}
 
 	}
@@ -99,10 +99,10 @@ class Lazytask_Public {
 		 * class.
 		 */
 
-		if (is_page('lazy-task')) {
+		if (is_page('lazytasks')) {
 			// phpcs:ignore WordPress.WP.EnqueuedScriptsScope
-			wp_enqueue_script('pms-rbs', plugin_dir_url( __DIR__ ) . 'admin/frontend/build/index.js', array('jquery', 'wp-element'), '1.0.8', true);
-			wp_localize_script('pms-rbs', 'appLocalizer', [
+			wp_enqueue_script('lazytasks-script', plugin_dir_url( __DIR__ ) . 'admin/frontend/build/index.js', array('jquery', 'wp-element'), '1.0.10', true);
+			wp_localize_script('lazytasks-script', 'appLocalizer', [
 				'apiUrl' => home_url('/wp-json'),
 				'homeUrl' => home_url(''),
 				'nonce' => wp_create_nonce('wp_rest'),

@@ -1,18 +1,22 @@
 import React, {useState, useEffect, Fragment, useRef} from 'react';
-import {Accordion, ScrollArea, Tabs} from '@mantine/core';
+import {Accordion, LoadingOverlay, ScrollArea, Tabs} from '@mantine/core';
 import { useSelector, useDispatch } from 'react-redux';
 import {IconGripVertical} from "@tabler/icons-react";
 import MyTaskListContent from "./MyTaskListContent";
-import {updateColumns} from "../Settings/store/myTaskSlice";
+import {fetchTasksByUser, updateColumns} from "../Settings/store/myTaskSlice";
 import TaskHeader from "./Partial/TaskHeader";
+import {updateIsLoading} from "../Settings/store/taskSlice";
 
 const MyTaskList = () => {
-const dispatch = useDispatch();
+  const dispatch = useDispatch();
 
-const {userTaskOrdered, userTaskListSections, userTaskColumns} = useSelector((state) => state.settings.myTask);
+  const {loggedUserId} = useSelector((state) => state.auth.user)
+  const {userTaskOrdered, userTaskListSections, userTaskColumns} = useSelector((state) => state.settings.myTask);
+  const { isLoading } = useSelector((state) => state.settings.task);
   const contentEditableRef = useRef('');
   const [expandedItems, setExpandedItems] = useState([]); // Initialize with an empty array
   const [accordionItems, setAccordionItems] = useState([]);
+
   useEffect(() => {
     if ( userTaskListSections ) {
       const transformedItems = Object.entries(userTaskListSections).map(([key, value]) => ({
@@ -30,13 +34,37 @@ const {userTaskOrdered, userTaskListSections, userTaskColumns} = useSelector((st
     dispatch(updateColumns(userTaskColumns))
   }, [userTaskColumns]);
 
+    const changeTabHandler = (value) => {
+      dispatch(updateIsLoading( true ))
+    }
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        if ( loggedUserId && isLoading === true ) {
+          await dispatch(fetchTasksByUser({id:loggedUserId})).then((response) => {
+            // setVisible(false);
+            if( response.payload.state === 200 ){
+              dispatch(updateColumns(response.payload.data && response.payload.data.tasks ? response.payload.data.tasks : {}))
+            }
+          })
+        }
+      } catch (err) {
+        console.error("Unexpected error:", err);
+      } finally {
+        dispatch(updateIsLoading( false ))
+      }
+    };
+    fetchData();
+  }, [ isLoading ]);
+
 
   return (
     <Fragment>
       <Tabs color="#39758D" variant="pills" radius="sm" defaultValue="today">
         <Tabs.List className="mb-3">
           {userTaskOrdered && userTaskOrdered.length > 0 && userTaskOrdered.map((taskListSection, index) => (
-              <Tabs.Tab value={taskListSection} className="font-bold">
+              <Tabs.Tab value={taskListSection} className="font-bold" onClick={() => changeTabHandler(true)}>
                   {userTaskListSections && userTaskListSections[taskListSection] && userTaskListSections[taskListSection]}
               </Tabs.Tab>
           ))}
@@ -46,12 +74,11 @@ const {userTaskOrdered, userTaskListSections, userTaskColumns} = useSelector((st
                 <Tabs.Panel value={taskListSection}>
                   <TaskHeader />
                   <ScrollArea className="h-[calc(100vh-300px)] p-[3px]" scrollbarSize={4}>
-                    {/*<LoadingOverlay
-                                    visible={taskReload}
+                    <LoadingOverlay
+                                    visible={isLoading}
                                     zIndex={1000}
-                                    overlayProps={{ radius: 'xs', blur: 1 }}
-                                    loaderProps={{ color: 'red', type: 'bars' }}
-                                />*/}
+                                    overlayProps={{ radius: 'sm', blur: 4 }}
+                                />
                     <MyTaskListContent
                         contents={userTaskColumns && userTaskColumns[taskListSection] ? userTaskColumns[taskListSection]:[]}
                     />

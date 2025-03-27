@@ -42,35 +42,41 @@ const TaskListContent = ({ listType, view, taskSection, projectId, taskSectionId
                 ref={dropProvided.innerRef}
                 {...dropProvided.droppableProps}
             >
-              {tasks && tasks.map((task, taskIndex) => (
-                  <Draggable
-                      key={task.id}
-                      draggableId={task.id.toString()}
-                      index={taskIndex}
-                  >
-                        {(dragProvided) => (
-                            <div
-                                key={taskIndex}
-                                className='mb-0 mt-0 single-task'
-                                ref={dragProvided.innerRef}
-                                {...dragProvided.draggableProps}
-                                {...dragProvided.dragHandleProps}
-                            >
-                                <TaskContent view={'listView'} taskSection={taskSection} taskData={task}/>
-                            </div>
-                        )}
-                  </Draggable>
-
-              ))}
+              { tasks && tasks.length > 0 ? (
+                  tasks.map( (task, taskIndex) => (
+                      //how to check task is exist or not
+                        task && task.id && task.id !== 'undefined' &&
+                          <Draggable
+                              key={task?.id}
+                              draggableId={task?.id.toString()}
+                              index={taskIndex}
+                          >
+                              {(dragProvided) => (
+                                  <div
+                                      key={taskIndex}
+                                      className='mb-0 mt-0 single-task'
+                                      ref={dragProvided.innerRef}
+                                      {...dragProvided.draggableProps}
+                                      {...dragProvided.dragHandleProps}
+                                  >
+                                      <TaskContent view={'listView'} taskSection={taskSection} taskData={task}/>
+                                  </div>
+                              )}
+                          </Draggable>
+                      )
+                  )
+              ) : (
+                  <div className='text-center text-gray-500 py-4'>No task</div>
+              ) }
                 {dropProvided.placeholder}
             </div>
         )}
 
       </Droppable>
 
-        { view === 'listView' && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee']) && (
+        {/*{ view === 'listView' && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee']) && (
             <AddTaskDrawer view = 'listView' projectId={projectId} taskSectionId={taskSectionId} />
-        )}
+        )}*/}
 
     </Fragment>
   );

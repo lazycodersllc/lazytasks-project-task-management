@@ -58,8 +58,10 @@ const TaskAssignTo = ({ task, assigned }) => {
                         </Text>
                     </div>
                 ) : (
-                    <div className="h-[32px] w-[32px] border border-dashed border-[#4d4d4d] rounded-full p-1 cursor-pointer">
-                        <IconUserCircle color="#4d4d4d" size="22" />
+                    <div className="flex items-center justify-center">
+                        <div className="h-[32px] w-[32px] border border-dashed border-[#4d4d4d] rounded-full p-1 cursor-pointer">
+                            <IconUserCircle color="#4d4d4d" size="22" />
+                        </div>
                     </div>
                 )}
             </div>

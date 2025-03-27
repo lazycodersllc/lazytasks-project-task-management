@@ -76,8 +76,8 @@ class Lazytask_Admin {
 		 * class.
 		 */
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if (isset($_REQUEST['page']) && str_contains($_REQUEST['page'], 'pms-rbs')){
-			wp_enqueue_style( 'lazy-task-style', plugin_dir_url( __FILE__ ) . 'frontend/build/index.css', array(), $this->version, 'all');
+		if (isset($_REQUEST['page']) && str_contains($_REQUEST['page'], 'lazytasks-page')){
+			wp_enqueue_style( 'lazytasks-style', plugin_dir_url( __FILE__ ) . 'frontend/build/index.css', array(), $this->version, 'all');
 		}
 		wp_enqueue_style( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'css/pms-rbs-admin.css', array(), $this->version, 'all' );
 
@@ -103,12 +103,12 @@ class Lazytask_Admin {
 		 */
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-        if (isset($_REQUEST['page']) && str_contains($_REQUEST['page'], 'pms-rbs')) {
+        if (isset($_REQUEST['page']) && str_contains($_REQUEST['page'], 'lazytasks-page')) {
 	        $userController = new \Lazytask\Controller\Lazytask_UserController();
 			$userResponse = $userController->admin_after_auth_login();
 
-            wp_enqueue_script('pms-rbs', plugin_dir_url(__FILE__) . 'frontend/build/index.js', array('jquery', 'wp-element'), '1.0.8', true);
-            wp_localize_script('pms-rbs', 'appLocalizer', [
+            wp_enqueue_script('lazytasks-script', plugin_dir_url(__FILE__) . 'frontend/build/index.js', array('jquery', 'wp-element'), '1.0.10', true);
+            wp_localize_script('lazytasks-script', 'appLocalizer', [
                 'apiUrl' => home_url('/wp-json'),
                 'homeUrl' => home_url(''),
                 'nonce' => wp_create_nonce('wp_rest'),
@@ -125,8 +125,8 @@ class Lazytask_Admin {
         add_menu_page(
             __("Lazy Tasks", "lazytasks-project-task-management"),
             __("Lazy Tasks", "lazytasks-project-task-management"),
-            "ll_pms",
-            "pms-rbs",
+            "lazytasks_role",
+            "lazytasks-page",
             array($this, "lazytask_init"),
             "dashicons-layout",
             0
@@ -148,6 +148,16 @@ class Lazytask_Admin {
 	    wp_set_current_user($user->ID, $user->display_name);
 	    wp_set_auth_cookie($user->ID, true, false);
 	    setcookie('user_id', $user->ID, strtotime('+1 day'));
+
+	}
+
+	public function lazytask_redirect()
+	{
+		if ( (int)get_option( 'lazytask_do_activation_redirect' ) === 1 ) {
+			update_option('lazytask_do_activation_redirect', 0 );
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			exit(esc_url(wp_safe_redirect(admin_url('admin.php?page=lazytasks-page'))));
+		}
 
 	}
 

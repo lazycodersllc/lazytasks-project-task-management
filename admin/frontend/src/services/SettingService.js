@@ -31,5 +31,26 @@ export const Lazytask_updateSetting = async (data) => {
     return response.data;
 }
 
+export const Lazytask_getConfig = async () => {
+
+    const response = await ApiService.fetchData({
+        url: `/settings/config`,
+        method: 'get'
+    })
+
+    return response.data;
+}
+
+export const Lazytask_updateConfig = async (data) => {
+
+    const response = await ApiService.fetchData({
+        url: `/settings/config/update`,
+        method: 'post',
+        data
+    })
+
+    return response.data;
+}
+
 
 

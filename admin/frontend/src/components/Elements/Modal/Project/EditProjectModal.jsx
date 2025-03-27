@@ -16,7 +16,7 @@ const EditProjectModal = ({ projectData }) =>  {
     const {loggedUserId} = useSelector((state) => state.auth.user)
 // console.log(projectData.parent)
     const [projectEditModalOpen, { open: openProjectEditModal, close: closeProjectEditModal }] = useDisclosure(false);
-    const [showMembersList, setShowMembersList] = useState(false);
+    const [showMembersList, setShowMembersList] = useState(true);
     const [editedName, setEditedName] = useState(projectData.name); // State to hold edited name
 
 
@@ -189,6 +189,7 @@ const EditProjectModal = ({ projectData }) =>  {
         }
         if(projectEditModalOpen===true){
             dispatch(fetchTasksByProject({id: projectData.id}))
+            setShowMembersList(true);
         }
     }, [projectEditModalOpen]);
 
@@ -206,7 +207,7 @@ const EditProjectModal = ({ projectData }) =>  {
                     <Modal.Content radius={15}>
                         <Modal.Header px={20} py={10}>
                             <Title order={5}>Edit Project</Title>
-                            <Modal.CloseButton />
+                            <Modal.CloseButton size={`md`} icon={"Update"} className={`!w-[70px]`} />
                         </Modal.Header>
                         <Modal.Body>
                             <div className="edit-form-box">
@@ -263,7 +264,7 @@ const EditProjectModal = ({ projectData }) =>  {
                                     <div
                                         className="members-lists mt-3 border boder-solid border-[#6191A4] rounded-md p-3 pb-0">
                                         <Text size="sm" fw={700}
-                                              c="#202020">{filteredMembers && filteredMembers.length > 0 && filteredMembers.length} people
+                                              c="#202020">{filteredMembers && filteredMembers.length > 0 ? filteredMembers.length : 'no'} people
                                             available</Text>
                                         <div className="members-lists mt-3">
                                             <ScrollArea h={250} scrollbarSize={4} scrollHideDelay={500}>

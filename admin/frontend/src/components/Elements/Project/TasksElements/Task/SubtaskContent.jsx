@@ -9,6 +9,7 @@ import TaskTag from './TaskTag';
 import {useDisclosure} from "@mantine/hooks";
 import EditTaskDrawer from "../EditTaskDrawer";
 import TaskDelete from "./TaskDelete";
+import {Grid} from "@mantine/core";
 
 const SubtaskContent = ({taskData, subtask, view}) => {
 
@@ -42,15 +43,15 @@ const SubtaskContent = ({taskData, subtask, view}) => {
             ) : ( 
                 
             <div onDoubleClickCapture={()=>{handleEditSubTaskDrawerOpen()}} className="sabtask pl-[5px]" >
-                <div className="flex single-task-content sub-task">
-                    <div className="task-name w-[27%] 2xl:w-[28%] pr-3 items-center">
-                        <div className="flex gap-2 items-center ml-2">
-                            {/* <TaskName isSubtask nameOfTask={subtask.name} /> */}
-                            <TaskName task={subtask && subtask} taskId={subtask && subtask.id} isSubtask nameOfTask={subtask && subtask.name ? subtask.name : "Untitled Subtask"} />
-                        </div>
-                    </div>
-                    <div className="assign-to w-[9.6%]">
-                        {/* <TaskAssignTo assigned={subtask.assigned_to}/> */}
+                <div className="single-task-content sub-task py-1.5">
+                  <Grid columns={24}>
+                    <Grid.Col className={`flex items-center w-full !py-0 !pl-0`} span={6.2}>
+                      <div className="flex gap-4 items-center w-full">
+                        <TaskName task={subtask && subtask} taskId={subtask && subtask.id} isSubtask nameOfTask={subtask && subtask.name ? subtask.name : "Untitled Subtask"} />
+                      </div>
+                    </Grid.Col>
+                    <Grid.Col className={`assign-to flex items-center w-full !py-0`} span={2.3}>
+                      <div onClick={(e) => e.stopPropagation()}>
                         <TaskAssignTo
                             taskId={subtask && subtask.id}
                             assigned={subtask && subtask.assigned_to ? subtask.assigned_to : null}
@@ -58,26 +59,38 @@ const SubtaskContent = ({taskData, subtask, view}) => {
                               console.log('')
                             }}
                         />
-                    </div>
-                    <div className="following w-[12%]">
-                        {/* <TaskFollower followers={subtask.members}/> */}
+                      </div>
+                    </Grid.Col>
+                    <Grid.Col className={`following flex items-center justify-center !py-0`} span={2.3}>
+                      <div onClick={(e) => e.stopPropagation()} >
                         <TaskFollower taskId={subtask && subtask.id} followers={subtask && subtask.members ? subtask.members : null} editHandler={(props) => {
                           console.log('')
                         }}/>
-                    </div>
-                    <div className="due-date w-[9.5%]">
-                        {/* <TaskDueDate dueDate={subtask.end_date}/> */}
-                        <TaskDueDate taskId={subtask && subtask.id} dueDate={subtask && subtask.end_date ? subtask.end_date : null}/>
-                    </div>
-                    <div className="priority w-[9.6%]">
-                        {/* <TaskPriority priority={subtask.priority}/> */}
+                      </div>
+                    </Grid.Col>
+                    <Grid.Col className={`due-date flex items-center w-full !py-0`} span={2.35}>
+                      <div className={`w-full`} onClick={(e) => e.stopPropagation()} >
+                        <div className={`w-full flex items-start justify-center`}>
+                          <TaskDueDate taskId={subtask && subtask.id} dueDate={subtask && subtask.end_date ? subtask.end_date : null}/>
+                        </div>
+                      </div>
+                    </Grid.Col>
+                    <Grid.Col className={`priority flex items-center w-full !py-0`} span={2.35}>
+                      <div className="pl-1 w-full flex justify-center" onClick={(e) => e.stopPropagation()}>
                         <TaskPriority taskId={subtask && subtask.id} priority={subtask && subtask.priority ? subtask.priority : null}/>
-                    </div>
-                    <div className="tags w-[28.5%]">
-                        {/* <TaskTag tags={subtask.members} /> */}
+                      </div>
+                    </Grid.Col>
+                    <Grid.Col className={`tags flex items-center w-full !py-0 !pl-10`} span={7.35}>
+                      <div className={`w-full flex items-center`} onClick={(e) => e.stopPropagation()}>
                         <TaskTag taskId={subtask && subtask.id} taskTags={subtask && subtask.tags ? subtask.tags : null} />
-                    </div>
-                  <TaskDelete task={subtask} taskId={subtask && subtask.id} isSubtask />
+                      </div>
+                    </Grid.Col>
+                    <Grid.Col className={`w-full flex items-center justify-end`} span={1} style={{paddingRight: '23px'}}>
+                      <TaskDelete task={subtask} taskId={subtask && subtask.id} isSubtask />
+                    </Grid.Col>
+
+                  </Grid>
+
                 </div>
             </div>
             

@@ -29,7 +29,7 @@ const ProjectSummery = () => {
             <Card.Section withBorder inheritPadding py="xs" className="bg-[#FDFDFD] mb-2">
                 <Group>
                     {/*<IconGripVertical size="20" />*/}
-                    <Title order={6}>Project Summery</Title>
+                    <Title order={6}>Project Summary</Title>
                 </Group>
             </Card.Section>
 

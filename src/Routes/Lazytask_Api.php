@@ -58,6 +58,15 @@ class Lazytask_Api {
 
 		register_rest_route(
 			self::ROUTE_NAMESPACE,
+			'/change-password',
+			array(
+			'methods' => WP_REST_Server::CREATABLE,
+			'callback' => array(new Lazytask_UserController(), 'lazytask_change_password'),
+			'permission_callback' => '__return_true'
+		));
+		
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
 			'/forget-password-store',
 			array(
 			'methods' => WP_REST_Server::CREATABLE,
@@ -612,6 +621,20 @@ class Lazytask_Api {
 			)
 		);
 
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
+			'/priorities/delete',
+			array(
+				'methods' => WP_REST_Server::READABLE,
+				'callback' => array(new Lazytask_ProjectController(), 'deleteProjectPriority'),
+				'permission_callback' => function($request) {
+					$userController = new Lazytask_UserController();
+					return $userController->permission_check($request, ['superadmin', 'admin', 'director']);
+				},
+				'args' => array()
+			)
+		);
+
 		//task section start
 
 		register_rest_route(
@@ -833,15 +856,44 @@ class Lazytask_Api {
 
 		register_rest_route(
 			self::ROUTE_NAMESPACE,
+			'/attachments/upload',
+			array(
+				'methods' => WP_REST_Server::CREATABLE,
+				'callback' => array(new Lazytask_TaskController(), 'uploadAttachment'),
+				'permission_callback' => '__return_true',
+				'args' => array()
+			)
+		);
+
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
 			'/attachments/delete/(?P<id>\d+)',
 			array(
 				'methods' => WP_REST_Server::READABLE,
-				'callback' => array(new Lazytask_TaskController(), 'removeAttachment'),
+				'callback' => array(new Lazytask_TaskController(), 'deleteAttachment'),
 //				'permission_callback' => array(new UserController(), 'permission_check'),
 				'permission_callback' => function($request) {
 					$userController = new Lazytask_UserController();
 					return $userController->permission_check($request, ['superadmin', 'admin', 'director', 'accounts', 'manager', 'line_manager', 'employee']);
 				},
+				'args' => array(
+					'id' => array(
+						'required' => true,
+						'validate_callback' => function($param, $request, $key){
+							return $param;
+						}
+					)
+				)
+			)
+		);
+
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
+			'/attachments/remove/(?P<id>\d+)',
+			array(
+				'methods' => WP_REST_Server::READABLE,
+				'callback' => array(new Lazytask_TaskController(), 'removeAttachment'),
+				'permission_callback' => '__return_true',
 				'args' => array(
 					'id' => array(
 						'required' => true,
@@ -1166,6 +1218,24 @@ class Lazytask_Api {
 					}
 				)
 			)
+		]);
+
+		//getLazytaskConfig
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
+			'/settings/config', [
+			'methods' => WP_REST_Server::READABLE,
+			'callback' => [new Lazytask_SettingController(), 'getLazytaskConfig'],
+			'permission_callback' => '__return_true',
+		]);
+
+		//getLazytaskConfig
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
+			'/settings/config/update', [
+			'methods' => WP_REST_Server::EDITABLE,
+			'callback' => [new Lazytask_SettingController(), 'updateLazytaskConfig'],
+			'permission_callback' => '__return_true',
 		]);
 
 	}
