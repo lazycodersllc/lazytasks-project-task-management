@@ -20,15 +20,14 @@ const DeleteWorkspaceModal = (props) => {
 
     const deleteHandler = () => modals.openConfirmModal({
         title: (
-            <Title order={5}>Are you sure this workspace delete?</Title>
+            <Title order={5}>You are parmanently deleting this workspace</Title>
         ),
         size: 'sm',
         radius: 'md',
         withCloseButton: false,
         children: (
             <Text size="sm">
-                This action is so important that you are required to confirm it with a modal. Please click
-                one of these buttons to proceed.
+                Are you sure you want to delete this workspace?
             </Text>
         ),
         labels: { confirm: 'Confirm', cancel: 'Cancel' },

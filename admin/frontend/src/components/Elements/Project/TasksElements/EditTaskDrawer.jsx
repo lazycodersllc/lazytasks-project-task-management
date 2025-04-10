@@ -46,10 +46,15 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
     const {loggedInUser} = useSelector((state) => state.auth.session)
     const {task} = useSelector((state) => state.settings.task);
     const [selectedValue, setSelectedValue] = useState('Comments & Activities');
+    const [visible, setVisible] = useState(false);
 
     useEffect(() => {
         if(taskId){
-            dispatch(fetchTask({id: taskId}))
+            dispatch(fetchTask({id: taskId})).then( (response) => {
+                if ( response.payload && response.payload.status === 200 ) {
+                    setVisible(false);
+                }
+            });
         }
     }, [ taskId, selectedValue ])
 
@@ -69,7 +74,6 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
   const [attachments, setAttachments] = useState( task.attachments && task.attachments.length>0 ? task.attachments : []);
   const [subTask, setSubTask] = useState(task.children && task.children.length>0 ? task.children : []);
 
-  const [visible, setVisible] = useState(false);
 
     const handleAssignButtonClick = (member) => {
         setSelectedMember(member);
@@ -102,7 +106,7 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
           formData.append(`attachments${index}`, file);
       });
       formData.append('task_id', task.id);
-      formData.append('user_id', loggedUserId);
+      formData.append('user_id', loggedInUser ? loggedInUser.loggedUserId : loggedUserId );
       dispatch(createAttachment({data: formData})).then( ( response ) => {
             if( response.payload && response.payload.status === 200 ) {
 
@@ -125,9 +129,9 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
         setAttachments(task.attachments && task.attachments.length>0 ? task.attachments : [])
         setSubTask(task.children && task.children.length>0 ? task.children : [])
 
-        setTimeout(() => {
+        /*setTimeout(() => {
             setVisible(false);
-        }, 1000);
+        }, 1000);*/
 
     }, [taskEditDrawerOpen]);
 
@@ -142,9 +146,17 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
     const handlerBlur = () => {
         const taskEditableName = contentEditableRef.current.innerHTML;
         if( task && task.id && task.id!=='undefined' && taskEditableName !== taskName){
-            dispatch(editTask({id: task.id, data: {name: taskEditableName, 'updated_by': loggedUserId}}))
+            dispatch(editTask({id: task.id, data: {name: taskEditableName, 'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId}}))
             setTaskName(taskEditableName);
             dispatch(setEditableTask({...task, name: taskEditableName}))
+        }
+    };
+
+    const handleFocusSubtask = () => {
+           
+        // Clear the task name the default placeholder
+        if (taskName === 'Type task name here') {
+            setTaskName('');
         }
     };
 
@@ -153,7 +165,7 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
         if(description && description!=='' && description !== task.description && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit'])){
             const updatedTask = {
                 description: description,
-                updated_by: loggedUserId
+                updated_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
             }
             dispatch(editTask({ id:task.id, data: updatedTask}))
             setTaskDescription(description);
@@ -163,7 +175,7 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
     const handleAttachmentDelete = (id) => {
         const deletedTaskAttachment = {
             task_id: task && task.id,
-            deleted_by: loggedUserId
+            deleted_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
         dispatch(deleteAttachment({ id:id, data: deletedTaskAttachment})).then((response) => {
             if(response.payload && response.payload.status === 200){
@@ -230,7 +242,7 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
                     });
                 }else{
                     const taskType = task && task.parent ? 'sub-task' : 'task';
-                    dispatch(deleteTask({id: taskId, data: {'deleted_by': loggedUserId, 'type': taskType}}));
+                    dispatch(deleteTask({id: taskId, data: {'deleted_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId, 'type': taskType}}));
                 }
 
             }
@@ -266,6 +278,7 @@ const EditTaskDrawer = ({taskObj, taskId, taskEditDrawerOpen, openTaskEditDrawer
                                   innerRef={contentEditableRef}
                                   onChange={(e) => setTaskName(e.target.value)}
                                   onBlur={handlerBlur} // Handle changes
+                                  onFocus={handleFocusSubtask}
                                   html={taskName}
                                   className="inline-block w-full text-[#4d4d4d] font-bold text-[16px] !min-h-[36px]"
                               />

@@ -95,7 +95,7 @@ export function HeaderTabs() {
 
 
             <Container className="py-1" size="full">
-                <Group className={` h-[78px]`} justify="space-between">
+                <Group className={` h-[60px]`} justify="space-between">
                     {/* <MantineLogo size={28} /> */}
                     <div className='flex space-x-4'>
                         {dashboardMainMenuData.map((menuItem) => (
@@ -112,14 +112,14 @@ export function HeaderTabs() {
                         }
                     </div>
 
-                    <div className='flex items-center gap-4'>
+                    <div className='flex items-center gap-2'>
                         {/* <ButtonMenu /> */}
                         <div id="lazytask_premium_mobile_app_qr_code">
                             {/*for preminum*/}
 
                         </div>
                         <Button size="lg" className={`font-semibold`} onClick={open} variant="filled"
-                            color="#ED7D31">Workspace</Button>
+                            color="#ED7D31" style={{ height: '34px' }}>Workspace</Button>
 
                         <Burger opened={opened} onClick={toggle} hiddenFrom="xs" size="sm" />
                         <Menu
@@ -194,7 +194,7 @@ export function HeaderTabs() {
                     withCloseButton={false}
                     size="md"
                     overlayProps={{ backgroundOpacity: 0, blur: 0 }}
-
+                    zIndex={1000}
                 >
                     <Drawer.Body>
 

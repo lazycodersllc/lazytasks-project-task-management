@@ -18,7 +18,7 @@ const [taskEditDrawerOpen, { open: openTaskEditDrawer, close: closeTaskEditDrawe
   return (
     <>
         <div onDoubleClickCapture={()=>{handleEditTaskDrawerOpen(task)}} className="flex single-task-content main-task items-center w-full">
-            <div className="task-name w-[30%] pr-2 items-center">
+            <div className={`task-name pr-2 items-center ${task.parent?'w-[29%]':'w-[30%]'}`}>
                 <div className="flex gap-2 items-center w-full">
                     <div className="w-full" onClick={(e) => e.stopPropagation()}>
                         <TaskName task={task && task} taskId={task.id} nameOfTask={task.name}/>
@@ -47,7 +47,7 @@ const [taskEditDrawerOpen, { open: openTaskEditDrawer, close: closeTaskEditDrawe
                     <TaskPriority task={task} priority={task.priority}/>
                 </div>
             </div>
-            <div className="tags w-[28%] pl-5">
+            <div className={`tags ${task.parent?'w-[29%] pl-8':'w-[28%] pl-5'}`}>
                 <div onClick={(e) => e.stopPropagation()}>
                     <TaskTag task={task} taskTags={task.tags}/>
                 </div>

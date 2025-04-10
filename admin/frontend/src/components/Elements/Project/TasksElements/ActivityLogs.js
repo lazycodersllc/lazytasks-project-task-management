@@ -6,7 +6,7 @@ const HighlightedText = ({ children, className }) => {
     return (
         <span
             className={classNames(
-                'font-semibold text-gray-900 dark:text-gray-100 whitespace-pre-line',
+                'gray-900 dark:text-gray-100 whitespace-pre-line',
                 className
             )}
         >
@@ -25,8 +25,9 @@ const ActivityLogs = ({ activity }) => {
 
                     {activity?.subject_name==='task' && activity?.event==='created' && attrName==='name' && (
                         <div className="mt-1">
-                            <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
-                            <span className="mx-1"> is created. </span>
+                            <span className=""> Created the task </span>
+                            <HighlightedText>"{activity.properties.attributes[attrName]}"</HighlightedText>
+                            
                         </div>
                     )}
 
@@ -40,25 +41,23 @@ const ActivityLogs = ({ activity }) => {
                         <>
                             {attrName==='name' &&
                                 <div className="mt-1">
-                                    <span className="mx-1">Title change: </span>
-                                    <HighlightedText>{activity.properties.old[attrName]}</HighlightedText>
+                                    <span className="">Has changed the task title from </span>
+                                    <HighlightedText>"{activity.properties.old[attrName]}"</HighlightedText>
                                     <span className="mx-1"> to </span>
-                                    <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
+                                    <HighlightedText>"{activity.properties.attributes[attrName]}"</HighlightedText>
                                 </div>
                             }
                             {attrName==='description' &&
                                 (
                                     activity.properties.old[attrName] ? (
                                         <div className="mt-1">
-                                            <span className="mx-1">Description change: </span>
-                                            <HighlightedText>{activity.properties.old[attrName]}</HighlightedText>
-                                            <span className="mx-1"> to </span>
-                                            <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
+                                            <span className="">Has updated the description to </span>
+                                            <HighlightedText>"{activity.properties.attributes[attrName]}"</HighlightedText>
                                         </div>
                                     ):(
                                         <div className="mt-1">
-                                            <span className="mx-1">Description add: </span>
-                                            <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
+                                            <span className="">Has added the description </span>
+                                            <HighlightedText>"{activity.properties.attributes[attrName]}"</HighlightedText>
                                         </div>
                                     )
                                 )
@@ -67,14 +66,14 @@ const ActivityLogs = ({ activity }) => {
                                 (
                                     activity.properties.old[attrName] ? (
                                         <div className="mt-1">
-                                            <span className="mx-1">Assigned: </span>
-                                            <HighlightedText>{activity.properties.old[attrName]}</HighlightedText>
+                                            <span className="">Assigned the task from </span>
+                                            <HighlightedText>"{activity.properties.old[attrName]}"</HighlightedText>
                                             <span className="mx-1"> to </span>
-                                            <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
+                                            <HighlightedText>"{activity.properties.attributes[attrName]}"</HighlightedText>
                                         </div>
                                     ):(
                                         <div className="mt-1">
-                                            <span className="mx-1">Assigned: </span>
+                                            <span className="">Assigned the task to </span>
                                             <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
                                         </div>
                                     )
@@ -84,15 +83,15 @@ const ActivityLogs = ({ activity }) => {
                                 (
                                     activity.properties.old[attrName] ? (
                                         <div className="mt-1">
-                                            <span className="mx-1">Priority: </span>
-                                            <HighlightedText>{activity.properties.old[attrName]}</HighlightedText>
+                                            <span className="">Has changed the priority for this task from </span>
+                                            <HighlightedText>"{activity.properties.old[attrName]}"</HighlightedText>
                                             <span className="mx-1"> to </span>
-                                            <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
+                                            <HighlightedText>"{activity.properties.attributes[attrName]}"</HighlightedText>
                                         </div>
                                     ):(
                                         <div className="mt-1">
-                                            <span className="mx-1">Priority: </span>
-                                            <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
+                                            <span className="">Has set priority for this task to </span>
+                                            <HighlightedText>"{activity.properties.attributes[attrName]}"</HighlightedText>
                                         </div>
                                     )
                                 )
@@ -101,39 +100,45 @@ const ActivityLogs = ({ activity }) => {
                                 (
                                     activity.properties.old[attrName] ? (
                                         <div className="mt-1">
-                                            <span className="mx-1">Start date change: </span>
+                                            <span className="">Start date change: </span>
                                             <HighlightedText>{activity.properties.old[attrName]}</HighlightedText>
                                             <span className="mx-1"> to </span>
                                             <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
                                         </div>
                                     ):(
                                         <div className="mt-1">
-                                            <span className="mx-1">Start date: </span>
+                                            <span className="">Start date: </span>
                                             <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
                                         </div>
                                     )
                                 )
                             }
-                            {attrName==='end_date' &&
-                                (
+                            {attrName === 'end_date' && (
+                                activity.properties.attributes[attrName] ? (
                                     activity.properties.old[attrName] ? (
                                         <div className="mt-1">
-                                            <span className="mx-1">Due date change: </span>
-                                            <HighlightedText>{activity.properties.old[attrName]}</HighlightedText>
+                                            <span className="">Has changed the due date from </span>
+                                            <HighlightedText>"{activity.properties.old[attrName]}"</HighlightedText>
                                             <span className="mx-1"> to </span>
-                                            <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
+                                            <HighlightedText>"{activity.properties.attributes[attrName]}"</HighlightedText>
                                         </div>
-                                    ):(
+                                    ) : (
                                         <div className="mt-1">
-                                            <span className="mx-1">Due date: </span>
-                                            <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
+                                            <span className="">Has set due date for this task to </span>
+                                            <HighlightedText>"{activity.properties.attributes[attrName]}"</HighlightedText>
                                         </div>
                                     )
+                                ) : (
+                                    <div className="mt-1">
+                                        <span className="">Has cleared the due date </span>
+                                        <HighlightedText>"{activity.properties.old[attrName]}"</HighlightedText>
+                                        <span className="mx-1">for this task</span>
+                                    </div>
                                 )
-                            }
+                            )}
                             {attrName==='section_name' &&
                                 <div className="mt-1">
-                                    <span className="mx-1">Section change: </span>
+                                    <span className="">Section change: </span>
                                     <HighlightedText>{activity.properties.old[attrName]}</HighlightedText>
                                     <span className="mx-1"> to </span>
                                     <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
@@ -154,8 +159,8 @@ const ActivityLogs = ({ activity }) => {
                     {activity?.subject_name==='task' && activity?.event === 'attachment-removed' && attrName==='name' &&
                         <>
                             <div className="mt-4">
-                                <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
-                                <span className="mx-1"> is deleted. </span>
+                                <span className="">Has deleted the attachment </span>
+                                <HighlightedText>"{activity.properties.attributes[attrName]}"</HighlightedText>
                             </div>
 
                         </>
@@ -163,8 +168,8 @@ const ActivityLogs = ({ activity }) => {
                     {activity?.subject_name==='task' && activity?.event === 'attachment-upload' && attrName==='name' &&
                         <>
                             <div className="mt-4">
-                                <HighlightedText>{activity.properties.attributes[attrName]}</HighlightedText>
-                                <span className="mx-1"> is upload. </span>
+                                <span className="">Has added the attachment </span>
+                                <HighlightedText>"{activity.properties.attributes[attrName]}"</HighlightedText>
                             </div>
 
                         </>

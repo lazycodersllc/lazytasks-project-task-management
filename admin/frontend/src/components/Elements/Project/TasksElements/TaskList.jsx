@@ -25,7 +25,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import {
   createTaskSection, deleteTaskSection,
   editSectionSortOrder, editTaskSection, editTaskSortOrder,
-  fetchTasksByProject, markIsCompletedTaskSection, updateChildColumns, updateColumns,
+  markIsCompletedTaskSection, updateChildColumns, updateColumns,
   updateOrdered
 } from "../../../Settings/store/taskSlice";
 import TaskSectionName from "./Task/TaskSectionName";
@@ -37,6 +37,7 @@ import {modals} from "@mantine/modals";
 import {hasPermission} from "../../../ui/permissions";
 import {notifications} from "@mantine/notifications";
 import AddTaskDrawer from "./AddTaskDrawer";
+import {updateInputFieldFocus} from "../../../../store/base/commonSlice";
 
 const TaskList = () => {
   const theme = useMantineTheme();
@@ -99,10 +100,11 @@ const TaskList = () => {
      name: 'Type section name here',
      project_id: projectInfo.id,
      sort_order: ordered.length + 1,
-     created_by: loggedUserId
+     created_by: loggedInUser ? loggedInUser.loggedUserId:loggedUserId
    }
 
     dispatch(createTaskSection(newSection))
+    dispatch(updateInputFieldFocus(true));
   };
 
   const onDragEnd = (result) => {
@@ -126,7 +128,7 @@ const TaskList = () => {
       const submittedData = {
         orderedList: newOrdered,
         project_id: projectInfo.id,
-        updated_by: loggedUserId
+        updated_by: loggedInUser ? loggedInUser.loggedUserId:loggedUserId
       }
       dispatch(editSectionSortOrder({data:submittedData}))
       dispatch(updateOrdered(newOrdered))
@@ -151,7 +153,7 @@ const TaskList = () => {
       const submittedData = {
         orderedList: combineUpdateChildData,
         project_id: projectInfo.id,
-        updated_by: loggedUserId
+        updated_by: loggedInUser ? loggedInUser.loggedUserId:loggedUserId
       }
 
       dispatch(editTaskSortOrder({data:submittedData}))
@@ -176,7 +178,7 @@ const TaskList = () => {
     const submittedData = {
       orderedList: combineUpdateData,
       project_id: projectInfo.id,
-      updated_by: loggedUserId
+      updated_by: loggedInUser ? loggedInUser.loggedUserId:loggedUserId
     }
 
     dispatch(editTaskSortOrder({data:submittedData}))
@@ -187,7 +189,7 @@ const TaskList = () => {
   //taskDeleteHandler
   const taskSectionDeleteHandler = (taskSectionId, noOfTasks) => modals.openConfirmModal({
     title: (
-        <Title order={5}>Are you sure this section delete?</Title>
+        <Title order={5}>You are parmanently deleting this section</Title>
     ),
     centered: true,
     size: 'sm',
@@ -195,8 +197,7 @@ const TaskList = () => {
     withCloseButton: false,
     children: (
         <Text size="sm">
-          This action is so important that you are required to confirm it with a modal. Please click
-          one of these buttons to proceed.
+          Are you sure you want to delete this section?
         </Text>
     ),
     labels: { confirm: 'Confirm', cancel: 'Cancel' },
@@ -221,8 +222,7 @@ const TaskList = () => {
             ),
           });
         }else {
-          console.log(taskSectionId, noOfTasks)
-          dispatch(deleteTaskSection({id: taskSectionId, data: {'deleted_by': loggedUserId}}));
+          dispatch(deleteTaskSection({id: taskSectionId, data: {'deleted_by': loggedInUser ? loggedInUser.loggedUserId:loggedUserId}}));
         }
       }
     },
@@ -253,7 +253,7 @@ const TaskList = () => {
       //event target unchecked
         event.target.checked = false;
     }else{
-      dispatch(markIsCompletedTaskSection({id: event.target.value, data: { project_id: projectInfo ? projectInfo.id:null, markIsChecked: event.target.checked, updated_by: loggedInUser && loggedInUser.id ? loggedInUser.id : loggedUserId}}))
+      dispatch(markIsCompletedTaskSection({id: event.target.value, data: { project_id: projectInfo ? projectInfo.id:null, markIsChecked: event.target.checked, updated_by: loggedInUser && loggedInUser.loggedUserId ? loggedInUser.loggedUserId : loggedUserId}}))
     }
   }
 
@@ -267,7 +267,7 @@ const TaskList = () => {
          chevron={<IconChevronDown size={30} stroke={2} />}
          classNames={{
            control: '!w-[18px] !pl-0 !pr-2',
-           content: '!pb-0 !pt-0',
+           content: '!pb-0 !pt-0 !px-0',
          }}
 
       >
@@ -293,7 +293,7 @@ const TaskList = () => {
                                 {...provided.draggableProps}
                             >
                               <div {...provided.dragHandleProps} className="flex items-center w-full border-b border-solid border-[#dddddd] !bg-[#F0F8FF]" >
-                                <div className="flex w-full items-center font-bold py-1 pr-3 !pl-3">
+                                <div className="flex w-full items-center font-bold py-1 pr-3 !pl-3 gap-5">
                                   <Accordion.Control>
                                   </Accordion.Control>
                                   <TaskSectionName

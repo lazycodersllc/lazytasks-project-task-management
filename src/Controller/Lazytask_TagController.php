@@ -53,7 +53,7 @@ final class Lazytask_TagController {
 			return new WP_REST_Response(['status'=>400, 'message'=>'Name is required', 'data'=>[]], 400);
 		}
 
-		$created_at = gmdate('Y-m-d H:i:s');
+		$created_at = current_time('mysql');
 		$submittedData = [];
 		$submittedData['name'] = sanitize_text_field($name);
 		$submittedData['parent_id'] = isset($requestData['parent_id']) ? (int)$requestData['parent_id']:null;

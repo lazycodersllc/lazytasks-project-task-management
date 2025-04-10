@@ -31,7 +31,7 @@ const TaskName = ({task, taskId, isSubtask, nameOfTask, view }) => {
     const handlerBlur = () => {
         const taskEditableName = contentEditableRef.current.innerHTML;
         if( taskId && taskId!=='undefined' && taskEditableName !== taskName){
-            dispatch(editMyTask({id: taskId, data: {name: taskEditableName, 'updated_by': loggedUserId}}))
+            dispatch(editMyTask({id: taskId, data: {name: taskEditableName, 'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId}}))
             setTaskName(taskEditableName);
         }
     };

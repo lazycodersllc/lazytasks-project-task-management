@@ -37,7 +37,7 @@ const NotificationTemplate = () => {
             
             <div className='dashboard'>
                 <Container size="full">
-                    <div className="settings-page-card bg-white rounded-xl p-5 pt-3 my-5 mb-0">
+                    <div className="settings-page-card bg-white rounded-xl p-5 pt-3 my-5 pb-[2.3rem]">
                         <SettingsNav />
 
                         <ScrollArea scrollbars="y" className="w-full h-[calc(100vh-250px)] pr-1" scrollbarSize={4}

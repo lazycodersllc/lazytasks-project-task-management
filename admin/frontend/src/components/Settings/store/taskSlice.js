@@ -11,7 +11,7 @@ import {
     getTaskListsByProject,
     markIsCompleteTaskSection,
     removeAttachments,
-    removeComments, removeProjectPriority,
+    removeComments, removeProjectPriority, updateProjectPrioritySortOrder,
     removeTagFromTask,
     removeTask,
     removeTaskSection,
@@ -55,6 +55,10 @@ export const createProjectPriority = createAsyncThunk('tasks/createProjectPriori
 
 export const deleteProjectPriority = createAsyncThunk('tasks/deleteProjectPriority', async ({data}) => {
     return removeProjectPriority(data)
+})
+
+export const editProjectPrioritySortOrder = createAsyncThunk('tasks/editProjectPrioritySortOrder', async ({data}) => {
+    return updateProjectPrioritySortOrder(data);
 })
 
 export const editTaskSection = createAsyncThunk(
@@ -514,6 +518,22 @@ const taskSlice = createSlice({
                 state.isLoading = false
                 state.isError = false
                 state.error = action.error?.message
+            })
+            .addCase(editProjectPrioritySortOrder.pending, (state) => {
+                state.isLoading = false
+                state.isError = false
+            })
+            .addCase(editProjectPrioritySortOrder.fulfilled, (state, action) => {
+                state.isLoading = false
+                state.isError = false
+                state.projectPriorities = action.payload.data
+                state.success = `Priority Sorted Successfully`
+            })
+            .addCase(editProjectPrioritySortOrder.rejected, (state, action) => {
+                console.error('Error Payload:', action.error);
+                state.isLoading = false;
+                state.isError = true;
+                state.error = action.error?.message || 'Failed to update project priorities';
             })
             //deleteProjectPriority
             .addCase(deleteProjectPriority.pending, (state) => {

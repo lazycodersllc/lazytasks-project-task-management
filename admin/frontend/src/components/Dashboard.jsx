@@ -47,12 +47,12 @@ const Dashboard = () => {
             
             <div className='dashboard'>
                 <Container size="full">
-                    <div className="settings-page-card bg-white rounded-xl p-5 pt-3 my-5 mb-0">
+                    <div className="settings-page-card bg-white rounded-xl p-5 pt-3 mt-5 mb-5">
                         <div className='mt-2 mb-3'>
                             {/*<h3 className="text-2xl font-semibold text-red-500 mb-4">Dashboard Content</h3>*/}
                             <Title order={4}>Dashboard</Title>
                         </div>
-                        <ScrollArea scrollbars="y" className="w-full h-[calc(100vh-200px)] px-2" scrollbarSize={4}>
+                        <ScrollArea scrollbars="y" className="w-full h-[calc(100vh-186px)] px-2" scrollbarSize={4}>
                             <Grid className="mb-5" columns={12}>
                                 <Grid.Col span={3}>
                                     <QuickTaskList/>

@@ -55,7 +55,7 @@ const TaskDelete = ({ task, taskId, isSubtask }) => {
                     });
                 }else{
                     const taskType = isSubtask ? 'sub-task' : 'task';
-                    dispatch(deleteTask({id: taskId, data: {'deleted_by': loggedUserId, 'type': taskType}})).then((response) => {
+                    dispatch(deleteTask({id: taskId, data: {'deleted_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId, 'type': taskType}})).then((response) => {
                         //status 200
                         if(response.payload.status === 200){
 

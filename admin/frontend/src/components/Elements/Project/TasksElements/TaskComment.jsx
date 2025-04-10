@@ -119,9 +119,9 @@ const TaskComment = ({task, selectedValue}) => {
                   direction="row"
               >
                 <Avatar size={32} src={comment.avatar} alt={comment.user_name} />
-                <Text fw={500} fz={14} c="#202020">{comment.user_name}</Text>
-                <Text fw={400} fz={12} c="#39758D"><IconPointFilled size={14} /></Text>
-                <Text fw={400} fz={12} c="#39758D">{comment.created_at ? dayjs(comment.created_at).format(dateTimeFormat) : ''}</Text>
+                <Text fw={500} fz={16} c="#202020">{comment.user_name}</Text>
+                {/* <Text fw={400} fz={12} c="#39758D"><IconPointFilled size={14} /></Text> */}
+                
                 { ( hasPermission(loggedInUser && loggedInUser.llc_permissions, [ 'superadmin', 'admin', 'director' ] ) || parseInt( loggedUserId ) === parseInt(comment.user_id) ) &&
                     <ActionIcon onClick={()=>commentDeleteHandler(comment && comment.id)} variant="transparent" aria-label="Delete">
                       <IconTrash size={16} stroke={1} color="var(--mantine-color-red-filled)"/>
@@ -130,6 +130,7 @@ const TaskComment = ({task, selectedValue}) => {
               </Flex>
               <div className="comment-body pl-[40px]">
                 <Text fw={400} fz={14} c="#4D4D4D" style={{ whiteSpace: 'pre-line' }}>{comment.content}</Text>
+                <Text fw={400} fz={12} c="#39758D">{comment.created_at ? dayjs(comment.created_at).format(dateTimeFormat) : ''}</Text>
               </div>
             </div>
         ))}

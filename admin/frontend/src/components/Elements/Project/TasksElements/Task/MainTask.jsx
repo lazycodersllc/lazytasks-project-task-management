@@ -166,7 +166,7 @@ const MainTask = ({ addSubtask, taskData, view }) => {
                       </div>
                   </Grid.Col>
                   <Grid.Col className={`assign-to flex items-center w-full !py-0`} span={2.5}>
-                      <div onClick={(e) => e.stopPropagation()}>
+                      <div className={`pl-1`} onClick={(e) => e.stopPropagation()}>
                           <TaskAssignTo taskId={task.id} assigned={task.assigned_to} assignedMember={(props) => {
                               console.log('')
                           }}/>

@@ -19,9 +19,9 @@ const ProjectSummery = () => {
                     </NavLink>
                 </Text>
             </Table.Td>
-            <Table.Td>{element.ACTIVE}</Table.Td>
-            <Table.Td>{element.COMPLETED}</Table.Td>
-            <Table.Td>{ parseInt(element.ACTIVE ? element.ACTIVE:0) + parseInt(element.COMPLETED ? element.COMPLETED:0) }</Table.Td>
+            <Table.Td style={{ textAlign: 'right' }}>{element.ACTIVE}</Table.Td>
+            <Table.Td style={{ textAlign: 'right' }}>{element.COMPLETED}</Table.Td>
+            <Table.Td style={{ textAlign: 'right' }}>{ parseInt(element.ACTIVE ? element.ACTIVE:0) + parseInt(element.COMPLETED ? element.COMPLETED:0) }</Table.Td>
         </Table.Tr>
     ));
     return (

@@ -38,7 +38,7 @@ const AddTaskDrawer = ({ view, projectId, taskSectionId }) => {
     const dispatch = useDispatch();
     const theme = useMantineTheme();
     const {loggedUserId} = useSelector((state) => state.auth.user)
-    const {success} = useSelector((state) => state.settings.task);
+    const {loggedInUser} = useSelector((state) => state.auth.session)
 
     const icon = <IconPaperclip style={{ width: rem(18), height: rem(18) }} stroke={1.5} />;
     const [taskCreateDrawerOpen, { open: openTaskCreateDrawer, close: closeTaskCreateDrawer }] = useDisclosure(false);
@@ -64,7 +64,9 @@ const AddTaskDrawer = ({ view, projectId, taskSectionId }) => {
     const handleDueDateSelect = (date) => {
         if(date){
             var formatedDate = dayjs(date).format('YYYY-MM-DD');
-            setSelectedDueDate(formatedDate)
+            setSelectedDueDate(formatedDate);
+        }else{
+            setSelectedDueDate(null);
         }
     };
 
@@ -80,7 +82,7 @@ const AddTaskDrawer = ({ view, projectId, taskSectionId }) => {
       files.forEach((file, index) => {
           formData.append(`attachments${index}`, file);
       });
-        formData.append('user_id', loggedUserId);
+        formData.append('user_id', loggedInUser ? loggedInUser.loggedUserId : loggedUserId );
         dispatch(uploadAttachments({data: formData})).then((response) => {
 
             if ( response.payload.status === 200 ){
@@ -123,7 +125,7 @@ const AddTaskDrawer = ({ view, projectId, taskSectionId }) => {
             name: taskName,
             project_id: projectId,
             task_section_id: taskSectionId,
-            created_by: loggedUserId,
+            created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
             assigned_to: selectedMember,
             members: selectedFollower,
             start_date: selectedDueDate,
@@ -136,28 +138,35 @@ const AddTaskDrawer = ({ view, projectId, taskSectionId }) => {
             attachments: attachments
         };
         if(newTaskData.name!=='' && newTaskData.name!=='Type task name here'){
-            dispatch(createTask(newTaskData));
-            setTaskName('Type task name here');
-            setTaskDescription('');
-            setSelectedMember(null)
-            setSelectedTags(null)
-            setSelectedPriority(null)
-            setSelectedDueDate(null)
-            setSelectedFollower(null)
-            setAttachments([]);
-            if(success){
-                notifications.show({
-                    color: theme.primaryColor,
-                    title: success,
-                    icon: <IconCheck />,
-                    autoClose: 5000,
-                });
-                const timer = setTimeout(() => {
-                    dispatch(removeSuccessMessage());
-                }, 5000); // Clear notification after 3 seconds
+            dispatch(createTask(newTaskData)).then((response) => {
+                if ( response.payload.status === 200 ){
+                    setTaskName('Type task name here');
+                    setTaskDescription('');
+                    setSelectedMember(null)
+                    setSelectedTags(null)
+                    setSelectedPriority(null)
+                    setSelectedDueDate(null)
+                    setSelectedFollower(null)
+                    setAttachments([]);
 
-                return () => clearTimeout(timer);
-            }
+                    closeTaskCreateDrawer();
+
+                    notifications.show({
+                        color: theme.primaryColor,
+                        title: response.payload.message || 'Task created successfully',
+                        icon: <IconCheck />,
+                        autoClose: 5000,
+                    });
+                    const timer = setTimeout(() => {
+                        dispatch(removeSuccessMessage());
+                    }, 5000); // Clear notification after 3 seconds
+
+                    return () => clearTimeout(timer);
+
+                }
+            });
+
+
         }
     };
     const handleAddTaskDrawerOpen = () => {
@@ -199,8 +208,6 @@ const AddTaskDrawer = ({ view, projectId, taskSectionId }) => {
                           onKeyDown={(e) => {
                               if (e.key === "Enter") {
                                   handleTaskCreation();
-                                  // setTaskName('Type task name here');
-                                  closeTaskCreateDrawer();
                               }
                           }}
                       />

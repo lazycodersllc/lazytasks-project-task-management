@@ -176,6 +176,19 @@ export async function removeProjectPriority( data ) {
     }
 }
 
+export async function updateProjectPrioritySortOrder( data ) {
+    try {
+        const response = await ApiService.fetchData({
+            url: '/priorities/sortOrder/update',
+            method: 'post',
+            data,
+        })
+        return response.data;
+    } catch (error) {
+        return error.message;
+    }
+}
+
 export async function addComments( data ) {
     try {
         const response = await ApiService.fetchData({

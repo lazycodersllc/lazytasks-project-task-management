@@ -25,11 +25,6 @@ const TaskBoard = () => {
   const dispatch = useDispatch();
   const {id}= useParams();
 
-  useEffect(() => {
-    dispatch(fetchTasksByProject({id:id}))
-  }, [dispatch]);
-
-
   const [accordionItems, setAccordionItems] = useState([]);
   useEffect(() => {
     if (tasks && tasks.taskListSectionsName) {
@@ -154,7 +149,7 @@ const TaskBoard = () => {
   //taskDeleteHandler
   const taskSectionDeleteHandler = (taskSectionId, noOfTasks) => modals.openConfirmModal({
     title: (
-        <Title order={5}>Are you sure this section delete?</Title>
+        <Title order={5}>You are parmanently deleting this section</Title>
     ),
     centered: true,
     size: 'sm',
@@ -162,8 +157,7 @@ const TaskBoard = () => {
     withCloseButton: false,
     children: (
         <Text size="sm">
-          This action is so important that you are required to confirm it with a modal. Please click
-          one of these buttons to proceed.
+          Are you sure you want to delete this section?
         </Text>
     ),
     labels: { confirm: 'Confirm', cancel: 'Cancel' },

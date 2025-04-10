@@ -13,26 +13,20 @@ const TaskActivity = ({task, selectedValue}) => {
 
   return (
     <Fragment>
-      <Timeline>
+      <Timeline color="white" bulletSize={32}>
         {task.logActivities && task.logActivities.length > 0 ? (
             task.logActivities && task.logActivities.length > 0 && task.logActivities.map((activity, index) => (
 
                 <Timeline.Item
-                    key={activity.id + index} title={
-                  <Flex
-                      gap="xs"
-                      justify="flex-start"
-                      align="center"
-                      direction="row"
-                  >
+                  key={activity.id + index} title={activity.user_name}
+                  bullet={
                     <Avatar size={32} src={activity.avatar} alt={activity.user_name} />
-                    <Text fw={500} fz={14} c="#202020">{activity.user_name}</Text>
-                    <Text fw={400} fz={12} c="#39758D"><IconPointFilled size={14} /></Text>
-                    <Text fw={400} fz={12} c={`#39758D`}>{activity.created_at ? dayjs(activity.created_at).format(dateTimeFormat) : ''}</Text>
-                  </Flex>
-                }
+                  }
                 >
-                  <ActivityLogs activity={activity}/>
+                  <Text c="dimmed" size="sm">
+                    <ActivityLogs activity={activity}/>
+                  </Text>
+                  <Text fw={400} fz={12} c={`#39758D`} style={{marginLeft: '3px',marginTop: '3px'}}>{activity.created_at ? dayjs(activity.created_at).format(dateTimeFormat) : ''}</Text>
                 </Timeline.Item>
             ))
         ) : (

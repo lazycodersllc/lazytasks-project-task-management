@@ -1,6 +1,6 @@
 import { IconUserCircle } from '@tabler/icons-react';
 import React, {useState, useRef, useEffect, Fragment} from 'react';
-import { Avatar, ScrollArea, Text } from '@mantine/core';
+import { Popover, Avatar, ScrollArea, Text } from '@mantine/core';
 import {useDispatch, useSelector} from 'react-redux';
 import {editMyTask} from "../../Settings/store/myTaskSlice";
 import {hasPermission} from "../../ui/permissions";
@@ -42,12 +42,26 @@ const TaskAssignTo = ({ task, assigned }) => {
         setSelectedMember(member);
         setShowMembersList(false);
         if (task && task.id && task.id !== 'undefined' && member) {
-            dispatch(editMyTask({id: task.id, data: {assigned_to: member, 'updated_by': loggedUserId}}))
+            dispatch(editMyTask({id: task.id, data: {assigned_to: member, 'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId}}))
         }
     };
 
+    // Check permission
+    const hasAccess = hasPermission(
+        loggedInUser && loggedInUser.llc_permissions,
+        ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']
+    );
+
     return (
-        <Fragment>
+        <Popover
+                    opened={showMembersList && hasAccess}
+                    onClose={() => setShowMembersList(false)}
+                    width={348}
+                    position="bottom"
+                    withArrow
+                    shadow="md"
+                >
+                    <Popover.Target>
             <div onClick={handleAssignedToButtonClick} className="assignto-btn">
                 {selectedMember ? (
                     <div className="flex items-center gap-2">
@@ -65,12 +79,10 @@ const TaskAssignTo = ({ task, assigned }) => {
                     </div>
                 )}
             </div>
+            </Popover.Target>
 
-            {showMembersList && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (
-                <div
-                    ref={membersListRef}
-                    className="shadow-lg members-lists absolute w-[368px] bg-white mt-1 border border-solid border-[#ffffff] rounded-lg z-[9]"
-                > 
+            <Popover.Dropdown>
+                <div ref={membersListRef}> 
                     <ScrollArea h={272}>
                         <div className="p-3">
                             <Text size="sm" fw={700} c="#202020">
@@ -104,8 +116,8 @@ const TaskAssignTo = ({ task, assigned }) => {
                         </div>
                     </ScrollArea>
                 </div>
-            )}
-        </Fragment>
+            </Popover.Dropdown>
+        </Popover>
     );
 };
 

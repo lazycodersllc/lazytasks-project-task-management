@@ -18,7 +18,7 @@ import {createCompany} from "../Settings/store/companySlice";
 import {showNotification} from "@mantine/notifications";
 import {createProject, editProject, fetchAllProjects, fetchProjectTaskSections} from "../Settings/store/projectSlice";
 import {editLazytasksConfig} from "../Settings/store/settingSlice";
-import {fetchAllMembers} from "../../store/auth/userSlice";
+import {createUser, fetchAllMembers} from "../../store/auth/userSlice";
 import {IconPlus, IconSearch, IconTrash, IconX} from "@tabler/icons-react";
 import {createTask, createTaskSection} from "../Settings/store/taskSlice";
 import UserAvatarSingle from "../ui/UserAvatarSingle";
@@ -27,6 +27,7 @@ const OnboardingForm = () => {
     const navigate = useNavigate()
     const dispatch = useDispatch();
     const {loggedUserId} = useSelector((state) => state.auth.user)
+    const {loggedInUser} = useSelector((state) => state.auth.session)
     const [active, setActive] = useState(0);
     const [workspaceName, setWorkspaceName] = useState('');
     const [workspaceError, setWorkspaceError] = useState(false);
@@ -41,6 +42,13 @@ const OnboardingForm = () => {
     const [ taskSectionError, setTaskSectionError ] = useState( '' );
 
     const [ projectSections, setProjectSections ] = useState([]);
+
+    const [isEmailValid, setIsEmailValid] = useState(false);
+
+    const validateEmail = (email) => {
+        const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return regex.test(email);
+    };
 
     useEffect(() => {
         dispatch(fetchAllMembers())
@@ -57,6 +65,7 @@ const OnboardingForm = () => {
     const handleSearchInputChange = (e) => {
         const inputValue = e.target.value;
         setSearchValue(inputValue);
+        setIsEmailValid(validateEmail(inputValue));
     };
     const [addedMembers, setAddedMembers] = useState([]);
     const [currentMemberData, setCurrentMemberData] = useState([]);
@@ -117,7 +126,7 @@ const OnboardingForm = () => {
                 name: value,
                 project_id: projectId,
                 sort_order: index + 1,
-                created_by: loggedUserId
+                created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
             }
             dispatch(createTaskSection(newSection)).then((response) => {
 
@@ -305,11 +314,11 @@ const OnboardingForm = () => {
             name: taskName,
             project_id: projectId,
             task_section_id: taskSectionId,
-            created_by: loggedUserId,
+            created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
             type:'task',
             status: 'ACTIVE',
         };
-        if( newTaskData.name!=='' ){
+        if( newTaskData.name!=='' && newTaskData.created_by ){
             dispatch(createTask(newTaskData)).then( (response) => {
                 if(response.payload && response.payload.status && response.payload.status === 200){
 
@@ -340,8 +349,45 @@ const OnboardingForm = () => {
         'Create Section',
         'Create Task',
     ];
+
+    //handleSendInvite
+    const handleSendInvite = (email) => {
+
+        const values= {
+            email: email,
+            loggedInUserId : loggedUserId
+        }
+        dispatch(createUser(values)).then((response) => {
+            if(response.payload && response.payload.status && response.payload.status === 200){
+                const members = [response.payload.data];
+                dispatch(editProject({id: projectId, data: {'members': members, 'updated_by': loggedUserId}})).then((response) => {
+                    if(response.payload && response.payload.status && response.payload.status === 200){
+                        setProjectName( response.payload.data?.name )
+
+                        dispatch(editLazytasksConfig({ data: { 'step_completed': 2 } } ) ).then((response) => {
+
+                            setActive(2)
+
+                        });
+                    }
+                });
+
+
+                showNotification({
+                    id: 'load-data',
+                    loading: true,
+                    title: 'User',
+                    message: response.payload && response.payload.message && response.payload.message,
+                    autoClose: 2000,
+                    disallowClose: true,
+                    color: 'green',
+                });
+            }
+        });
+    }
+
     return (
-        <>
+        <Fragment>
             <div
                 style={{
                     display: 'flex',
@@ -433,7 +479,7 @@ const OnboardingForm = () => {
                                         <div key={user.id}
                                              className="ml-single flex items-center border-b border-solid border-[#C2D4DC] py-3 justify-between">
                                             {/*<Avatar src={user.name} size={32} radius={32} />*/}
-                                             <UserAvatarSingle user={user} size={32} />
+                                            <UserAvatarSingle user={user} size={32} />
                                             <div className="mls-ne ml-2 w-full">
                                                 <Text size="sm" fw={700} c="#202020">{user.name}</Text>
                                                 <Text size="sm" fw={100} c="#202020">{user.email}</Text>
@@ -473,6 +519,31 @@ const OnboardingForm = () => {
 
                                         </div>
                                     ))}
+                                    { filteredMembers && filteredMembers.length === 0 && isEmailValid &&
+                                        <div className="ml-single flex items-center border-b border-solid border-[#C2D4DC] py-3 justify-between">
+                                            <Avatar size={32} radius={32} />
+                                            <div className="mls-ne ml-2 w-full">
+                                                <Text size="sm" fw={100} c="#202020">{searchValue}</Text>
+                                            </div>
+                                            <Button
+                                                radius="sm"
+                                                height={24}
+                                                style={{
+                                                    backgroundColor: "#39758D", // Conditional background color
+                                                    color: "#fff",
+                                                    fontWeight: 400,
+                                                    padding: "5px 0px",
+                                                    width: "100px",
+                                                }}
+                                                size="sm"
+                                                marginLeft={2}
+                                                onClick={() => handleSendInvite(searchValue)}
+                                            >
+                                                Send Invite
+                                            </Button>
+
+                                        </div>
+                                    }
                                 </ScrollArea>
                             </Card>
                         </Stepper.Step>
@@ -588,7 +659,7 @@ const OnboardingForm = () => {
 
                 </Card>
             </div>
-        </>
+        </Fragment>
     );
 
 };

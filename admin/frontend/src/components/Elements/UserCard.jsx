@@ -54,7 +54,7 @@ const UserCard = (props) => {
                             />
                         </Link>
                     </button>
-                    <button className="text-center"
+                    {/*<button className="text-center"
                             // onClick={onDeleteClick}
                     >
                         <IconTrash
@@ -62,7 +62,7 @@ const UserCard = (props) => {
                             stroke={1.25}
                             color="red"
                         />
-                    </button>
+                    </button>*/}
                 </div>
             }
         </Paper>

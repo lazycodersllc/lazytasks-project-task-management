@@ -35,7 +35,7 @@ const MyZenButton = ({ task, taskId, isSubtask }) => {
                 const submitData = {
                     project_id: task && task.project_id,
                     task_id:  task ? task.id : taskId,
-                    user_id: loggedUserId,
+                    user_id: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
                     name:  task && task.name,
                     slug:  task && task.slug
                 }

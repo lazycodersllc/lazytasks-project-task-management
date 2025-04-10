@@ -5,7 +5,7 @@ import MainTask from './MainTask';
 import { useSelector, useDispatch } from 'react-redux';
 import {createTask, deleteTask} from "../../../../Settings/store/taskSlice";
 import {Draggable, Droppable} from "react-beautiful-dnd";
-import {Accordion, Button, Pill, Text, Title, Tooltip} from "@mantine/core";
+import {Accordion, Button, Flex, Pill, Text, Title, Tooltip} from "@mantine/core";
 import {hasPermission} from "../../../../ui/permissions";
 import {IconChevronDown, IconPlus, IconTrash} from "@tabler/icons-react";
 import {modals} from "@mantine/modals";
@@ -34,13 +34,32 @@ const TaskContent = ({ view, taskData }) => {
     const addSubtask = () => {
       setSubtasks([...subtasks, subtasks.length]);
 
+      //check if childColumns && childColumns[taskData.slug] name is 'Type task name here' using some
+        if (childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].some(subtask => subtask.name === 'Type task name here')) {
+            // /how to get the index of the first element that matches the condition
+            const index = childColumns[taskData.slug].findIndex(subtask => subtask.name === 'Type task name here');
+            //index element tag editable
+            const subtask = childColumns[taskData.slug][index];
+
+            //check if subtask is not undefined
+            if (subtask !== undefined) {
+                //focus on the subtask
+                const subtaskElement = document.querySelector(`[data-id="${subtask.id}"]`);
+                if (subtaskElement) {
+                    subtaskElement.focus();
+                }
+            }
+
+            return false;
+        }
+
       const newTaskData = {
           name: 'Type task name here',
           parent: taskData,
           task_section_id: taskData.task_section_id,
           project_id: taskData.project_id,
           type:'sub-task',
-          created_by: loggedUserId,
+          created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
           status: 'ACTIVE'
       }
       dispatch(createTask(newTaskData));
@@ -70,7 +89,7 @@ const TaskContent = ({ view, taskData }) => {
                          chevron={<IconChevronDown size={30} stroke={2} />}
                          classNames={{
                               control: '!p-0 !w-auto',
-                              content: '!pr-0 !pb-3 drop-shadow-md',
+                              content: '!pl-[30px] !pr-0 !pb-2',
                               label: '!py-0 !pt-1',
                               chevron: '!mx-0 !ml-1',
                               // chevron: classes.chevron
@@ -78,6 +97,13 @@ const TaskContent = ({ view, taskData }) => {
               >
                   <Accordion.Item value={taskData && taskData.slug}>
                       <div className="flex w-full items-center py-1">
+                          <div className={`min-w-[19px] min-h-[30px]`}>
+                              {childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 &&
+                                  <Accordion.Control>
+
+                                  </Accordion.Control>
+                              }
+                          </div>
                           <div className="flex w-full items-center">
                               {/*<Pill className="!bg-[#ED7D31] !text-white !px-2">{childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 ? childColumns[taskData.slug].length : 0 }</Pill>*/}
                               <MainTask addSubtask={addSubtask} taskData={ task }/>
@@ -102,9 +128,7 @@ const TaskContent = ({ view, taskData }) => {
                                   </div>
                               }
                               <TaskDelete task={taskData} taskId={taskData && taskData.id} />
-                              <Accordion.Control>
 
-                              </Accordion.Control>
                           </div>
 
                       </div>
@@ -118,7 +142,7 @@ const TaskContent = ({ view, taskData }) => {
                                   {(dropProvided, snapshot) => (
                                       <div
                                           style={{transition: 'background-color 0.3s ease'}}
-                                          className={`w-full h-full min-h-[20px] ${childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 ? 'py-1 bg-[#F0F8FF] rounded-lg' : ''}`}
+                                          className={`w-full h-full min-h-[20px] !shadow-md mb-2 ${childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 ? 'py-1 bg-[#F0F8FF] rounded-lg' : ''}`}
                                           ref={dropProvided.innerRef}
                                           {...dropProvided.droppableProps}
                                       >
@@ -144,11 +168,26 @@ const TaskContent = ({ view, taskData }) => {
 
                                               </Draggable>
                                           ))}
+
                                           {dropProvided.placeholder}
+
                                       </div>
                                   )}
 
                               </Droppable>
+                          <Flex
+                              justify="center"
+                              align="center"
+                              direction="row"
+                          >
+                              <Button
+                                  onClick={()=>{
+                                  toggleSection(taskData.slug);
+                                  addSubtask();
+                                }}
+                                  variant="filled" color={`#ED7D31`} size={`xs`}> <IconPlus size={`18`} stroke={1.5} /> Add Sub Task</Button>
+                          </Flex>
+
                           </Accordion.Panel>
                   </Accordion.Item>
               </Accordion>

@@ -97,8 +97,8 @@ final class Lazytask_NotificationController {
 				'notification_action_name' => isset($data['notification_action_name']) && $data['notification_action_name'] ? $data['notification_action_name'] : null,
 				'email_subject' => isset($data['email_subject']) && $data['email_subject'] ? $data['email_subject'] : null,
 				'status' => 1,
-				'created_at' => gmdate('Y-m-d H:i:s'),
-				'updated_at' => gmdate('Y-m-d H:i:s'),
+				'created_at' => current_time('mysql'),
+				'updated_at' => current_time('mysql'),
 				'mobile_notification_title' => isset($data['mobile_notification_title']) && $data['mobile_notification_title']!='' ? sanitize_text_field($data['mobile_notification_title']) : null,
 			];
 			$notificationTemplateInsert = $db->insert($notificationTemplateTable, $notificationTemplateData);
@@ -165,7 +165,7 @@ final class Lazytask_NotificationController {
 				'content' => isset($data['content']) && $data['content'] ? wp_json_encode($data['content']) : null,
 				'notification_action_name' => isset($data['notification_action_name']) && $data['notification_action_name'] ? $data['notification_action_name'] : null,
 				'email_subject' => isset($data['email_subject']) && $data['email_subject'] ? $data['email_subject'] : null,
-				'updated_at' => gmdate('Y-m-d H:i:s'),
+				'updated_at' => current_time('mysql'),
 				'mobile_notification_title' => isset($data['mobile_notification_title']) && $data['mobile_notification_title']!='' ? sanitize_text_field($data['mobile_notification_title']) : null,
 			];
 			$notificationTemplateUpdate = $db->update($notificationTemplateTable, $notificationTemplateData, ['id'=>$templateId]);

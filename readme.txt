@@ -1,10 +1,10 @@
 === LazyTasks - Project & Task Management with Collaboration, Kanban and Gantt Chart ===
-Contributors: lazycoders,nmkhan,phpfour,rakeybul1984,nusrat001,theweblab
+Contributors: lazycoders,nmkhan,phpfour,rakeybul1984,nusrat001,theweblab,syedmahdi
 Donate link: https://lazycoders.co
 Tags: Project management, bug tracking, swimlane, calendar, collaboration
 Requires at least: 6.2
 Tested up to: 6.7.2
-Stable tag: 1.0.9
+Stable tag: 1.0.11
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
@@ -13,19 +13,23 @@ Text Domain: lazytasks-project-task-management
 Your Comprehensive Task Management System
 
 == Description ==
+
 **Notice:** *Note that we are still in Beta phase and constantly improving the plugin. If you find any issues or want to suggest a new feature, please feel free to reach out to us.*
 
 *LazyTasks* brings to WordPress an unparalleled task management experience, seamlessly integrating your project workflows into your WordPress environment. Crafted with efficiency in mind, LazyTasks is more than just a plugin; it's a robust solution that catishes the foundation for managing tasks, projects, and teams directly from your WordPress dashboard. Best of all, it comes with native mobile applications for both iOS and Android platforms and maintains its commitment to excellence by being entirely free.
 
-## Why Choose LazyTasks? ##
+## Why Choose LazyTasks?
 - **Comprehensive Task and Project Management:**
 Create, assign, follow, and comment on tasks with ease. Our user-friendly interface ensures your projects are always on track and accessible.
+
 - **Kanban Board:**
 Visually manage your workflow with our intuitive Kanban board. Drag and drop tasks through different stages, from inception to completion.
+
 - **Enhanced Productivity:**
 Boost your team’s productivity by managing tasks and projects faster than ever before.
 - **Mobile Access: (upcoming in April 2025)**
 With native iOS and Android apps, manage your tasks on the go. Our mobile applications are designed to keep you connected and productive, no matter where you are.
+
 - **Always Free:**
 We believe powerful project management should be accessible to everyone. LazyTasks WP plugin are completely free, forever!
 
@@ -40,16 +44,16 @@ We believe powerful project management should be accessible to everyone. LazyTas
 - **Notification templets to notify**
 
 ## Upcoming Features ##
-*April 2025*
-- **Gantt Charts for project planning**
-- **Android Mobile Apps for on-the-go project management**
--**Task Notification inside the plugin**
--**Updated Kanban Board** 
+**April 2025**
+- *Gantt Charts for project planning*
+- *Android Mobile App for on-the-go project management*
+-*Task Notification inside the plugin*
+-*Updated Kanban Board*
 
-*May 2025*
-- **Swimlanes for advanced task organization**
-- **iOS Mobile Apps for on-the-go project management**
--**Task Notification on the mobile app**
+**May 2025**
+- *Swimlanes for advanced task organization*
+- *iOS Mobile App for on-the-go project management*
+-*Task Notification on the mobile app*
 
 **And much more!**
 
@@ -59,20 +63,20 @@ Transform your WordPress site into a powerful project management hub with LazyTa
 
 == LazyTasks Mobile App ==
 
-**Free Mobile app** 
+**Free Mobile app**
 
-LazyTasks Free mobile app will be available from May 2025 for both iOS and Android with limited features, support will be limited.
+LazyTasks Free mobile app will be available from May 2025 for both iOS and Android with limited features.
 
-**Paid Mobile App**
+**Premium Mobile App**
 
-LazyTasks Paid mobile app will be available from May 2025 for both iOS and Android with robust features and full  support
+LazyTasks premium mobile app will be available from May 2025 for both iOS and Android with robust features and full  support
 
 
 **White label Mobile App for Your Organization**
 
-For building white lable mobile app for your organization , you must have to buy a license of the plugin.You can buy license from our website [ https://lazycoders.co/ ] . We need some basic & necessary information to build an app. Website URL / Domain name, App Name, Email, App LOGO, Splash Screen, License Key (must be valid). We access 2 types of app building Android & IOS.
+For building white lable mobile app for your organization , you have to buy a license of the plugin.You can buy license from our website [ https://www.lazycoders.co/ ] . We need some basic & necessary information to build an app. Website URL / Domain name, App Name, Email, App LOGO, Splash Screen, License Key (must be valid). We access 2 types of app building Android & IOS.
 
-We provide you with the whitelable App on the fly as soon as you build it using our plugin!
+We provide you with the whitelabled App on the fly as soon as you build it using our plugin!
 
 - **Android App**
 When you build an android app it will provide you 2 types of file extensions. They are: .apk & .aab. Those files are ready for publishing on the Play store.
@@ -90,18 +94,23 @@ We give you the facility to build your IOS App , which is ready for publication.
 == Milestone ==
 - **My Zen integration:**
 Stay ahead of own schedule with our integrated My Zen, ensuring you never miss a due date or any meetings.
+
 - **Swimlane Views:**
 Organize tasks in swimlane format for an additional layer of categorization, perfect for managing multiple projects or teams simultaneously.
+
 - **Gantt Chart Visualization:**
 Plan your projects precisely using our Gantt chart feature, allowing you to see the bigger picture of your project timelines and dependencies.
+
 - **iOS and Android Mobile App**
-Mobile app for both iOS and Android to manage all your tasks, project and workspace on the go 
+Mobile app for both iOS and Android to manage all your tasks, project and workspace on the go
 
 == Frequently Asked Question ==
 **Q: Is LazyTasks compatible with any theme?**
 **A:** Yes, LazyTasks is designed to be compatible with most WordPress themes.
+
 **Q: How do I update the plugin?**
 **A:** Updates can be performed directly through your WordPress dashboard. You will receive a notification when an update is available.
+
 **Q: Can I suggest new features or improvements?**
 **A:** Certainly! We highly value community feedback to enhance LazyTasks. Please contact us through our support page or directly via our website.
 
@@ -115,6 +124,27 @@ Mobile app for both iOS and Android to manage all your tasks, project and worksp
 
 == ChangeLog==
 
+= 1.0.11 - 2025-04-10 =
+* Bug fixed: Priority Color selection Issue fixed
+* Bug fixed: Subtask title fixed when position change
+* Bug fixed: Assign and Follow overlapping bug fixed
+* Bug fixed: Date & time issue Fixed.
+* Bug fixed: Cannot add blank subtask anymore
+* Improved: Task title in list view now improved
+* Improved: Task title alt tag added
+* Improved: Subtask UX updated
+* Improved: Accordion arrow bug fixed for subtask
+* Improved: "add subtask" button added at the bottom for better accessibility
+* Improved: Entire UX for activities updated for task drawer
+* Improved: Popup messages for deleting and editing updated to display relevant message
+* Improved: Mytask page UI/UX improved
+* Added: User adding process made easy. User can directly be added to projects not
+* Added: If non WP user email is entered, invitation can now be sent to them to join the project
+* Added: Priority can be reposition with drag and drop
+* Added: All task tab added to dashboard my task container
+* Added: All task tab added to my task page
+
+
 = 1.0.10 - 2025-03-27 =
 * Bug fixed: Task inline adding bugs fixed
 * Bug fixed: Pre generated password (for new users) security issue fixed
@@ -123,7 +153,7 @@ Mobile app for both iOS and Android to manage all your tasks, project and worksp
 * Improved: List view alignments
 * Improved: Subtask alignments in list view
 * Improved: New Tags can now be created on the fly
-* Improved: Tooltips added for better accessibility 
+* Improved: Tooltips added for better accessibility
 * Improved: Dropdown in breadcrumb is now improved
 * Improved: Table and Section header UI/UX
 * Improved: Dashboard project summary chart improved
@@ -132,7 +162,7 @@ Mobile app for both iOS and Android to manage all your tasks, project and worksp
 * Added: Onboarding process added after new installation of plugin
 * Added: User profile added as a drawer
 * Added: Comments & Activities added inside task drawer
-* Added: Completely new UI/UX for workspace drawer 
+* Added: Completely new UI/UX for workspace drawer
 * Added: Workspace adding option added inside drawer
 * Added: created by field added inside task drawer
 * Added: Refresh Icon Added

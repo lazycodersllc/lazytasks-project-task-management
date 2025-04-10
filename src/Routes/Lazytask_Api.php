@@ -634,6 +634,20 @@ class Lazytask_Api {
 				'args' => array()
 			)
 		);
+		
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
+			'/priorities/sortOrder/update',
+			array(
+				'methods' => WP_REST_Server::EDITABLE,
+				'callback' => array(new Lazytask_ProjectController(), 'updateProjectPrioritySortOrder'),
+				'permission_callback' => function($request) {
+					$userController = new Lazytask_UserController();
+					return $userController->permission_check($request, ['superadmin', 'admin', 'director']);
+				},
+				'args' => array()
+			)
+		);
 
 		//task section start
 

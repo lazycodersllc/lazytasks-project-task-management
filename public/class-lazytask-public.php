@@ -101,7 +101,7 @@ class Lazytask_Public {
 
 		if (is_page('lazytasks')) {
 			// phpcs:ignore WordPress.WP.EnqueuedScriptsScope
-			wp_enqueue_script('lazytasks-script', plugin_dir_url( __DIR__ ) . 'admin/frontend/build/index.js', array('jquery', 'wp-element'), '1.0.10', true);
+			wp_enqueue_script('lazytasks-script', plugin_dir_url( __DIR__ ) . 'admin/frontend/build/index.js', array('jquery', 'wp-element'), LAZYTASK_VERSION, true);
 			wp_localize_script('lazytasks-script', 'appLocalizer', [
 				'apiUrl' => home_url('/wp-json'),
 				'homeUrl' => home_url(''),

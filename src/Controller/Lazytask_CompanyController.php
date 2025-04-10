@@ -92,7 +92,7 @@ final class Lazytask_CompanyController {
 			$submittedData['owner_id'] = $requestData['owner_id']!="" ? $requestData['owner_id'] : null;
 		}
 		$submittedData['created_by'] = isset($requestData['created_by']) && $requestData['created_by']!='' ? $requestData['created_by'] : null;
-		$submittedData['created_at'] = gmdate('Y-m-d H:i:s');
+		$submittedData['created_at'] = current_time('mysql');
 		$members = isset($requestData['members']) && sizeof($requestData['members'])> 0 ? $requestData['members'] : [];
 		$companyTableName = LAZYTASK_TABLE_PREFIX . 'companies';
 		$db->insert(
@@ -139,7 +139,7 @@ final class Lazytask_CompanyController {
 				"subject_type" => 'company',
 				"event" => 'created',
 				"properties" => wp_json_encode($properties),
-				"created_at" => gmdate('Y-m-d H:i:s'),
+				"created_at" => current_time('mysql'),
 			];
 			$activityLogTable = LAZYTASK_TABLE_PREFIX . 'activity_log';
 			$db->insert($activityLogTable, $activityLogArg);
@@ -206,7 +206,7 @@ final class Lazytask_CompanyController {
 			$submittedData['owner_id'] = $requestData['owner_id']!="" ? $requestData['owner_id'] : null;
 		}
 
-		$updated_at = gmdate('Y-m-d H:i:s');
+		$updated_at = current_time('mysql');
 		$members = isset($requestData['members']) && sizeof($requestData['members'])> 0 ? $requestData['members'] : [];
 
 		// Update the company in the database
@@ -356,7 +356,7 @@ final class Lazytask_CompanyController {
 		$requestData = $request->get_json_params();
 		$deletedBy = isset($requestData['deleted_by']) && $requestData['deleted_by']!="" ? $requestData['deleted_by'] : null;
 
-		$deleted_at = gmdate('Y-m-d H:i:s');
+		$deleted_at = current_time('mysql');
 		// Update the deleted_at field in the database for the company with the provided ID
 		$db->query('START TRANSACTION');
 		$companyTableName = LAZYTASK_TABLE_PREFIX . 'companies';

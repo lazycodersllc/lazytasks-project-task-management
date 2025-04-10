@@ -85,7 +85,7 @@ const SubtaskContent = ({taskData, subtask, view}) => {
                         <TaskTag taskId={subtask && subtask.id} taskTags={subtask && subtask.tags ? subtask.tags : null} />
                       </div>
                     </Grid.Col>
-                    <Grid.Col className={`w-full flex items-center justify-end`} span={1} style={{paddingRight: '23px'}}>
+                    <Grid.Col className={`w-full flex items-center justify-end !pr-0`} span={1}>
                       <TaskDelete task={subtask} taskId={subtask && subtask.id} isSubtask />
                     </Grid.Col>
 

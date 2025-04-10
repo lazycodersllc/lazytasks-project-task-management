@@ -27,14 +27,18 @@ const TaskName = ({ task, taskId, isSubtask, nameOfTask, view }) => {
 
     const [taskName, setTaskName] = useState(defaultTaskName);
     const [isFocused, setIsFocused] = useState(inputFieldIsFocused || false);
+    const [openedTooltip, setOpenedTooltip] = useState(false );
+
     // const [isTaskNameFull, setIsTaskNameFull] = useState(false);
 
     const handleFocus = () => {
         setIsFocused(true);
+        setOpenedTooltip( false );
     };
 
     const handleBlur = () => {
         setIsFocused(false);
+        setOpenedTooltip( false );
         dispatch(updateInputFieldFocus(false));
     };
 
@@ -44,13 +48,13 @@ const TaskName = ({ task, taskId, isSubtask, nameOfTask, view }) => {
 
     const handlerBlur = () => {
         const taskEditableName = contentEditableRef.current.innerHTML;
-        console.log('Task Editable Name:', taskEditableName);
+
         if( taskId && taskId!=='undefined'){
             if (taskEditableName === 'Type task name here' || taskEditableName === '') {
                 // Clear the subtask name and show placeholder
                 setTaskName('Type task name here');
             }else if(taskEditableName !== taskName){
-                dispatch(editTask({id: taskId, data: {name: taskEditableName, 'updated_by': loggedUserId}})).then((response) => {
+                dispatch(editTask({id: taskId, data: {name: taskEditableName, 'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId }})).then((response) => {
                     if( response.payload && response.payload.status === 200 ){
                         const newTaskName = response.payload.data.name;
 
@@ -86,6 +90,7 @@ const TaskName = ({ task, taskId, isSubtask, nameOfTask, view }) => {
 
     const handleFocusSubtask = () => {
         setIsFocused(true);
+        setOpenedTooltip( false );
     
         // Clear the task name and show placeholder if it matches the default placeholder
         if (taskName === 'Type task name here') {
@@ -96,6 +101,16 @@ const TaskName = ({ task, taskId, isSubtask, nameOfTask, view }) => {
     const [isShown, setIsShown] = useState(false);
 
     useEffect(() => {
+        if (isSubtask && contentEditableRef.current) {
+            setTaskName('');
+            
+            setTimeout(() => {
+                contentEditableRef.current.focus();
+            }, 0);
+        }
+    }, [isSubtask]);
+
+    useEffect(() => {
         setTaskName(defaultTaskName);
     }, [ nameOfTask ]);
     const previewTextLength = view === 'cardView' ? 30 : 40; // Adjust the number of characters to show
@@ -103,54 +118,66 @@ const TaskName = ({ task, taskId, isSubtask, nameOfTask, view }) => {
     const previewText = isLongText ? taskName.slice(0, previewTextLength) + ' ...' : taskName;
 
     return (
-        <>
+        <Fragment>
             <div className={`flex items-center gap-1 w-full`}
                 onFocus={handleFocus} onBlur={handleBlur}
                  onMouseEnter={() => {
                      setIsShown(true)
-                 }
-            }
-                 onMouseLeave={() => setIsShown(false)}
+                     setOpenedTooltip(true )
+                 }}
+                 onMouseLeave={() => {
+                     setIsShown(false)
+                     setOpenedTooltip(false)
+                 } }
+
             >
                 {!(view === 'cardView') && (
-                    <>
+                    <Fragment>
                         <div className="!min-w-[18px] w-[18px]">
 
                             {(isShown || isFocused) &&
-                                <>
+                                <Fragment>
                                     <IconGripVertical size={20} stroke={1.25} />
-                                </>
+                                </Fragment>
                             }
 
                         </div>
                         {!isSubtask &&
                             <Pill className="!bg-[#ED7D31] !text-white !px-2">{childColumns && childColumns[task.slug] && childColumns[task.slug].length > 0 ? childColumns[task.slug].length : 0 }</Pill>
                         }
-                    </>
-                )} 
-                <div className={`${isFocused ? 'border border-solid border-[#bababa] rounded-md min-w-[150px] w-full' : 'w-full'} 
-              ${isSubtask ? 'pl-3.5' : ''}`} >
-                    {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) ?
-                        <ContentEditable
-                            // disabled={false}
-                            innerRef={contentEditableRef}
-                            html={isFocused ? taskName : previewText} // Inner HTML content
-                            onChange={handleChange} // Handle changes
-                            onBlur={handlerBlur} // Handle changes
-                            onFocus={handleFocusSubtask} // Handle Focus Changes
-                            onKeyDown={handleKeyDown}
-                            tagName="p" // Use a paragraph tag
-                            className={`text-[#000000] font-medium text-[14px] p-1 cursor-pointer !outline-none pr-1 w-full ${isFocused && taskName === 'Type task name here' ? 'text-gray-400' : ''}`}
-                            style={{'lineHeight':'normal'}}
-                            lineClamp={1}
-                        />
-                        :
-                        <Text lineClamp={1} size="sm" className="text-[#000000] font-medium text-[14px] px-0 !outline-none pr-1">avijit</Text>
-                    }
+                    </Fragment>
+                )}
+                {/*isFocused is true tooltip opened false */}
 
-                </div>
+                <Tooltip arrowPosition="side" arrowOffset={24} arrowSize={4} label={defaultTaskName} position="top-start" withArrow opened={openedTooltip && isShown} >
+
+                    <div className={`${isFocused ? 'border border-solid border-[#bababa] rounded-md min-w-[150px] w-full' : 'w-full'} 
+              ${isSubtask ? 'pl-3.5' : ''}`} >
+                        {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) ?
+                            <ContentEditable
+                                key={task.id}
+                                data-id={task.id}
+                                // disabled={false}
+                                innerRef={contentEditableRef}
+                                html={isFocused ? taskName : previewText} // Inner HTML content
+                                onChange={handleChange} // Handle changes
+                                onBlur={handlerBlur} // Handle changes
+                                onFocus={handleFocusSubtask} // Handle Focus Changes
+                                onKeyDown={handleKeyDown}
+                                tagName="p" // Use a paragraph tag
+                                className={`text-[#000000] font-medium text-[14px] p-1 cursor-pointer !outline-none pr-1 w-full ${isFocused && taskName === 'Type task name here' ? 'text-gray-400' : ''}`}
+                                style={{'lineHeight':'normal'}}
+                                lineClamp={1}
+                            />
+                            :
+                            <Text lineClamp={1} size="sm" className="text-[#000000] font-medium text-[14px] px-0 !outline-none pr-1">{taskName}</Text>
+                        }
+
+                    </div>
+
+                </Tooltip>
             </div>
-        </>
+        </Fragment>
     );
 };
 

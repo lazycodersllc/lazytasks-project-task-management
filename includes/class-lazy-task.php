@@ -71,7 +71,7 @@ class Lazytask_Lazy_Task {
 		if ( defined( 'LAZYTASK_VERSION' ) ) {
 			$this->version = LAZYTASK_VERSION;
 		} else {
-			$this->version = '1.0.10';
+			$this->version = '1.0.11';
 		}
 		$this->plugin_name = 'lazytasks-project-task-management';
 
@@ -173,6 +173,7 @@ class Lazytask_Lazy_Task {
         $this->loader->add_filter( 'theme_page_templates', $this, 'lazytask_add_page_template_to_dropdown' );
         $this->loader->add_filter( 'template_include', $this, 'lazytask_load_plugin_template' );
         $this->loader->add_filter( 'show_admin_bar', $this, 'lazytask_hide_admin_bar' );
+        //$this->loader->add_action( 'upgrader_process_complete', $this, 'lazytask_detect_plugin_overwrite' );
     }
     function lazytask_hide_admin_bar(){ return false; }
 
@@ -205,6 +206,29 @@ class Lazytask_Lazy_Task {
 
         return $template;
     }
+
+	/*public function lazytask_detect_plugin_overwrite( $upgrader, $hook_extra )
+	{
+
+        if ($hook_extra['type'] === 'plugin' && in_array($hook_extra['action'], ['install', 'update'])) {
+	        require_once( ABSPATH . 'wp-admin/includes/plugin.php' );
+
+            if (is_plugin_active('lazytasks-project-task-management/lazytask.php')) {
+	            $allProjects = \Lazytask\Helper\Lazytask_DatabaseQuerySchema::getAllProjects();
+
+	            $lazytasksConfig = [
+		            'lazytasks_version' => LAZYTASK_VERSION,
+		            'lazytasks_basic_info_guide_modal' => ! ( sizeof( $allProjects ) > 0 ),
+		            'step_completed' => sizeof( $allProjects ) > 0 ? 4 : 0,
+	            ];
+
+	            update_option('lazytasks_config', wp_json_encode($lazytasksConfig));
+
+	            update_option('lazytask_do_activation_redirect', 1);
+
+            }
+        }
+	}*/
 
 
     /**

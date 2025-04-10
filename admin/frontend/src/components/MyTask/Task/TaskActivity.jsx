@@ -14,6 +14,8 @@ const TaskActivity = ({task, selectedValue}) => {
   const [comments, setComments] = useState(task && task.comments ? task.comments : []);
   const [commentText, setCommentText] = useState('');
   const {loggedUserId, name} = useSelector((state) => state.auth.user)
+  const {loggedInUser} = useSelector((state) => state.auth.session)
+
   const dateTimeFormat = 'DD MMM YYYY hh:mm A'
 
   const formatTimestamp = (timestamp) => {
@@ -37,8 +39,8 @@ const TaskActivity = ({task, selectedValue}) => {
   const handleAddComment = () => {
     const timestamp = new Date().toISOString();
     const newComment = {
-      user_id: loggedUserId,
-      user_name: name,
+      user_id: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
+      user_name: loggedInUser ? loggedInUser.name : '',
       commentable_id: task && task.id ? task.id : null,
       commentable_type: 'task',
       content: commentText,

@@ -28,9 +28,9 @@ const dbdateFormate = (date) => {
  
 
 
-const inputDate = new Date("2024-02-05");
-const options = { day: 'numeric', month: 'short', year: 'numeric' };
-const formattedDate = inputDate.toLocaleDateString('en-US', options);
+// const inputDate = new Date("2024-02-05");
+// const options = { day: 'numeric', month: 'short', year: 'numeric' };
+// const formattedDate = inputDate.toLocaleDateString('en-US', options);
 
 // console.log(formattedDate); // Output: 5-Feb-2024
 
@@ -38,7 +38,7 @@ const formattedDate = inputDate.toLocaleDateString('en-US', options);
 const DueDate = ({ editHandler, dueDate}) => {
   const dispatch = useDispatch();
 
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedDates, setSelectedDates] = useState([]);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const calendarRef = useRef(null);
 
@@ -49,11 +49,31 @@ const DueDate = ({ editHandler, dueDate}) => {
     };
   }, []);
 
-  const handleSelect = (date) => {
-    editHandler(date);
-    setSelectedDate(date);
-    setCalendarVisible(false); // Hide calendar after selecting a date 
+  // const handleSelect = (date) => {
+  //   editHandler(date);
+  //   setSelectedDates(date);
+  //   setCalendarVisible(false); // Hide calendar after selecting a date 
      
+  // };
+
+  useEffect(() => {
+      if (dueDate) {
+        setSelectedDates([new Date(dueDate)]);
+      }
+    }, [dueDate]);
+
+  const handleSelect = (date) => {
+    const isSelected = selectedDates.some((selectedDate) => dayjs(date).isSame(selectedDate, 'date'));
+        
+    if (isSelected) {
+        setSelectedDates([]);
+        editHandler(null);
+    } else {
+        setSelectedDates([date]);
+        editHandler(date);
+    }
+
+    setCalendarVisible(false);
   };
 
   const handleClickOutside = (event) => {
@@ -71,9 +91,9 @@ const DueDate = ({ editHandler, dueDate}) => {
   };
   return (
     <div className="due-select-btn cursor-pointer inline-block" onClick={toggleCalendar}>
-      {selectedDate ? (
+      {selectedDates.length > 0 ? (
           <div className="due-selected text-[#4d4d4d] font-semibold text-[14px]">
-              {formatDate(selectedDate)} {/* Render formatted date */}
+              {selectedDates.length > 0 && formatDate(selectedDates[0])} {/* Render formatted date */}
           </div>
       ) : (
           dueDate === null ? (
@@ -91,6 +111,7 @@ const DueDate = ({ editHandler, dueDate}) => {
         <div ref={calendarRef} className="absolute bg-white border border-solid border-[#6191A4] rounded-sm p-2 z-[9]" onClick={handleCalendarClick}>
           <Calendar
             getDayProps={(date) => ({ 
+              selected: selectedDates.some((selectedDate) => dayjs(date).isSame(selectedDate, 'date')),
               onClick: () => handleSelect(date),
             })}
           />

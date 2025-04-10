@@ -38,7 +38,7 @@ const TaskComment = ({task, selectedValue}) => {
   const handleAddComment = () => {
     const timestamp = new Date().toISOString();
     const newComment = {
-      user_id: loggedUserId,
+      user_id: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
       user_name: name,
       commentable_id: task && task.id ? task.id : null,
       commentable_type: 'task',
@@ -74,7 +74,7 @@ const TaskComment = ({task, selectedValue}) => {
     onCancel: () => console.log('Cancel'),
     onConfirm: () => {
       if(commentId && commentId!=='undefined'){
-        dispatch(deleteComment({id: commentId, data: {'deleted_by': loggedUserId}})).then((response) => {
+        dispatch(deleteComment({id: commentId, data: {'deleted_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId }})).then((response) => {
           if(response.payload && response.payload.data){
             setComments(comments.filter(comment => comment.id !== response.payload.data.id));
           }

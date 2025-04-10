@@ -2,11 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Calendar } from '@mantine/dates';
 import { IconCalendarEvent } from '@tabler/icons-react';
 import '@mantine/dates/styles.css';
-import {useDispatch, useSelector} from "react-redux";
-import {editTask} from "../../../../Settings/store/taskSlice";
+import { useDispatch, useSelector } from "react-redux";
+import { editTask } from "../../../../Settings/store/taskSlice";
 import dayjs from "dayjs";
-import {hasPermission} from "../../../../ui/permissions";
-import {Tooltip} from "@mantine/core";
+import { hasPermission } from "../../../../ui/permissions";
+import { Tooltip } from "@mantine/core";
 
 const formatDate = (date) => {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -27,27 +27,18 @@ const dbdateFormate = (date) => {
   return `${day}-${month}-${year}`;
 };
 
- 
+// const inputDate = new Date("2024-02-05");
+// const options = { day: 'numeric', month: 'short', year: 'numeric' };
+// const formattedDate = inputDate.toLocaleDateString('en-US', options);
 
-
-const inputDate = new Date("2024-02-05");
-const options = { day: 'numeric', month: 'short', year: 'numeric' };
-const formattedDate = inputDate.toLocaleDateString('en-US', options);
-
-// console.log(formattedDate); // Output: 5-Feb-2024
-
-
-const TaskDueDate = ({ taskId, dueDate}) => {
+const TaskDueDate = ({ taskId, dueDate }) => {
   const dispatch = useDispatch();
 
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedDates, setSelectedDates] = useState([]);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const calendarRef = useRef(null);
-  const {loggedUserId} = useSelector((state) => state.auth.user)
-  const {loggedInUser} = useSelector((state) => state.auth.session)
-
-
-  
+  const { loggedUserId } = useSelector((state) => state.auth.user);
+  const { loggedInUser } = useSelector((state) => state.auth.session);
 
   useEffect(() => {
     document.addEventListener('mousedown', handleClickOutside);
@@ -56,14 +47,37 @@ const TaskDueDate = ({ taskId, dueDate}) => {
     };
   }, []);
 
-  const handleSelect = (date) => {
-    if(taskId && taskId !== 'undefined' && date){
-      var formatedDate = dayjs(date).format('YYYY-MM-DD');
-      dispatch(editTask({id: taskId, data: {start_date: formatedDate, end_date: formatedDate, 'updated_by': loggedUserId }}))
+  // Initialize selectedDates with dueDate
+  useEffect(() => {
+    if (dueDate) {
+      setSelectedDates([new Date(dueDate)]);
     }
-    setSelectedDate(date);
-    setCalendarVisible(false); // Hide calendar after selecting a date 
-     
+  }, [dueDate]);
+
+  const handleSelect = (date) => {
+    const isSelected = selectedDates.some((selectedDate) => dayjs(date).isSame(selectedDate, 'date'));
+    
+    // Toggle selection
+    if (isSelected) {
+      setSelectedDates([]);
+    } else {
+      setSelectedDates([date]);
+    }
+
+    // Update the task's due date in the store
+    if (taskId && taskId !== 'undefined') {
+      const formattedDate = isSelected ? null : dayjs(date).format('YYYY-MM-DD');
+      console.log(formattedDate);
+      dispatch(editTask({
+        id: taskId,
+        data: {
+          start_date: formattedDate,
+          end_date: formattedDate,
+          'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
+        },
+      }));
+    }
+    setCalendarVisible(false);
   };
 
   const handleClickOutside = (event) => {
@@ -83,28 +97,28 @@ const TaskDueDate = ({ taskId, dueDate}) => {
   return (
     <div className="due-select-btn">
       <Tooltip label={`Due Date`} position="top" withArrow>
-        {selectedDate ? (
-            <div className="due-selected text-[#202020] font-medium text-[14px] cursor-pointer" onClick={toggleCalendar}>
-              {formatDate(selectedDate)} {/* Render formatted date */}
-            </div>
+        {selectedDates.length > 0 ? (
+          <div className="due-selected text-[#202020] font-medium text-[14px] cursor-pointer" onClick={toggleCalendar}>
+            {selectedDates.length > 0 && formatDate(selectedDates[0])} {/* Render formatted dates */}
+          </div>
         ) : (
-            dueDate === null ? (
-                <div className="h-[30px] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer" onClick={toggleCalendar}>
-                  <IconCalendarEvent color="#4d4d4d" size="20" stroke={1.25} />
-                </div>
-            ) : (
-                <div className="due-selected text-[#202020] font-medium text-[14px] cursor-pointer" onClick={toggleCalendar}>
-                  {dbdateFormate(dueDate)}
-                </div>
-            )
+          dueDate === null ? (
+            <div className="h-[30px] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer" onClick={toggleCalendar}>
+              <IconCalendarEvent color="#4d4d4d" size="20" stroke={1.25} />
+            </div>
+          ) : (
+            <div className="due-selected text-[#202020] font-medium text-[14px] cursor-pointer" onClick={toggleCalendar}>
+              {dbdateFormate(dueDate)}
+            </div>
+          )
         )}
       </Tooltip>
-
 
       {calendarVisible && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (
         <div ref={calendarRef} className="absolute bg-white border border-solid border-[#6191A4] rounded-sm p-2 z-[9]" onClick={handleCalendarClick}>
           <Calendar
-            getDayProps={(date) => ({ 
+            getDayProps={(date) => ({
+              selected: selectedDates.some((selectedDate) => dayjs(date).isSame(selectedDate, 'date')),
               onClick: () => handleSelect(date),
             })}
           />

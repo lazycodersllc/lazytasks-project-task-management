@@ -1,19 +1,19 @@
-import {ActionIcon, Avatar, Button, Flex, Select, Text, Textarea, Title} from '@mantine/core';
-import {IconChevronDown, IconPointFilled, IconTrash, IconTrashX} from '@tabler/icons-react';
-import React, {Fragment, useEffect, useState} from 'react';
-import {useDispatch, useSelector} from "react-redux";
-import {createComment, deleteComment} from "../../../Settings/store/taskSlice";
+import { ActionIcon, Avatar, Button, Flex, Select, Text, Textarea, Title, Timeline, ThemeIcon } from '@mantine/core';
+import { IconChevronDown, IconPointFilled, IconTrash, IconTrashX, IconSun, IconVideo } from '@tabler/icons-react';
+import React, { Fragment, useEffect, useState } from 'react';
+import { useDispatch, useSelector } from "react-redux";
+import { createComment, deleteComment } from "../../../Settings/store/taskSlice";
 import dayjs from "dayjs";
 import ActivityLogs from "./ActivityLogs";
 
-const TaskCommentAndActivity = ({task, selectedValue}) => {
+const TaskCommentAndActivity = ({ task, selectedValue }) => {
 
   const dispatch = useDispatch();
 
   const [comments, setComments] = useState(task && task.commentsAndLogActivities ? task.commentsAndLogActivities : []);
   const [commentText, setCommentText] = useState('');
-  const {loggedUserId, name} = useSelector((state) => state.auth.user)
-  const {loggedInUser} = useSelector((state) => state.auth.session)
+  const { loggedUserId, name } = useSelector((state) => state.auth.user)
+  const { loggedInUser } = useSelector((state) => state.auth.session)
   const dateTimeFormat = 'DD MMM YYYY hh:mm A'
 
   const formatTimestamp = (timestamp) => {
@@ -45,48 +45,49 @@ const TaskCommentAndActivity = ({task, selectedValue}) => {
       created_at: formatTimestamp(timestamp)
     };
     dispatch(createComment(newComment)).then((response) => {
-        if(response.payload && response.payload.data){
-          setComments( response.payload.task.commentsAndLogActivities );
-        }
+      if (response.payload && response.payload.data) {
+        setComments(response.payload.task.commentsAndLogActivities);
+      }
     });
     setCommentText(''); // Clear textarea
   };
   useEffect(() => {
     setComments(task && task.commentsAndLogActivities ? task.commentsAndLogActivities : []);
-  } , [task.commentsAndLogActivities]);
+  }, [task.commentsAndLogActivities]);
 
   return (
-    <Fragment>
-      { selectedValue === 'Comments & Activities' &&
+    <>
+      <Fragment>
+        {selectedValue === 'Comments & Activities' &&
           <div className="write-comments pb-4">
             <div className="flex gap-2 mb-2">
               <Avatar size={32}
-                      src={loggedInUser && loggedInUser.avatar ? loggedInUser.avatar : ''}
-                      alt={loggedInUser && loggedInUser.name}/>
+                src={loggedInUser && loggedInUser.avatar ? loggedInUser.avatar : ''}
+                alt={loggedInUser && loggedInUser.name} />
               <Textarea
-                  description=""
-                  style={{width: '100%'}}
-                  autosize
-                  minRows={4}
-                  placeholder="Type your comment here"
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
+                description=""
+                style={{ width: '100%' }}
+                autosize
+                minRows={4}
+                placeholder="Type your comment here"
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
               />
             </div>
             <div className="flex justify-end">
               <Button variant="filled" color="#39758D" size="md" onClick={handleAddComment}>Comment</Button>
             </div>
           </div>
-      }
+        }
 
-      <div className="comments-lists max-h-[400px] overflow-y-scroll scrollbar-width-thin">
-        {selectedValue==='Comments & Activities' && comments && comments.length>0 && comments.map((comment, index) => (
+        {/* <div className="comments-lists max-h-[400px] overflow-y-scroll scrollbar-width-thin">
+          {selectedValue === 'Comments & Activities' && comments && comments.length > 0 && comments.map((comment, index) => (
             <div key={index} className="single-comment mb-4">
               <Flex
-                  gap="xs"
-                  justify="flex-start"
-                  align="center"
-                  direction="row"
+                gap="xs"
+                justify="flex-start"
+                align="center"
+                direction="row"
               >
                 <Avatar size={32} src={comment.avatar} alt={comment.user_name} />
                 <Text fw={500} fz={14} c="#202020">{comment.user_name}</Text>
@@ -94,19 +95,44 @@ const TaskCommentAndActivity = ({task, selectedValue}) => {
                 <Text fw={400} fz={12} c="#39758D">{comment.created_at ? dayjs(comment.created_at).format(dateTimeFormat) : ''}</Text>
               </Flex>
               <div className="comment-body pl-[40px]">
-                { comment.content &&
-                    <Text fw={400} fz={14} c="#4D4D4D" style={{ whiteSpace: 'pre-line' }}>{comment.content || '' }</Text>
+                {comment.content &&
+                  <Text fw={400} fz={14} c="#4D4D4D" style={{ whiteSpace: 'pre-line' }}>{comment.content || ''}</Text>
                 }
-                { comment.properties &&
-                    <ActivityLogs activity={comment}  />
+                {comment.properties &&
+                  <ActivityLogs activity={comment} />
                 }
               </div>
             </div>
+          ))}
+        </div> */}
+
+
+      </Fragment>
+
+      <Timeline color="white" bulletSize={32} style={{ textAlign: 'left' }}>
+        {selectedValue === 'Comments & Activities' && comments && comments.length > 0 && comments.map((comment, index) => (
+          <Timeline.Item
+            title={<Text fw={700}>{comment.user_name}</Text>}
+            bullet={
+              <Avatar size={32} src={comment.avatar} alt={comment.user_name} />
+            }
+          >
+            <Text c="dimmed" size="sm" style={{marginLeft: '0px'}}>
+              {comment.content &&
+                <Text ta="left" fw={400} fz={14} c="#4D4D4D" style={{ whiteSpace: 'pre-line' }}>{comment.content || ''}</Text>
+              }
+              {comment.properties &&
+                <ActivityLogs activity={comment} />
+              }
+            </Text>
+            
+              {/* <Text fw={400} fz={12} c="#39758D"><IconPointFilled size={14} /></Text> */}
+            <Text ta="left" size="sm" fw={400} fz={12} c="#39758D" style={{marginLeft: '0px'}}>{comment.created_at ? dayjs(comment.created_at).format(dateTimeFormat) : ''}</Text>
+            
+          </Timeline.Item>
         ))}
-      </div>
-
-
-    </Fragment>
+      </Timeline>
+    </>
   );
 };
 

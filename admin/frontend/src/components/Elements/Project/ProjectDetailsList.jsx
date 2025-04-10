@@ -9,7 +9,7 @@ const ProjectDetailsList = (props) => {
 
     return (
         <Fragment>
-            <div className="border rounded-t-lg px-2 py-1 bg-[#39758D]">
+            <div className="border rounded-t-lg px-2 py-1 bg-[#39758D] !pl-[25px]">
                 <Grid gutter="0" columns={24}>
                     <Grid.Col span={22}>
                         <Grid columns={24}>
@@ -17,7 +17,7 @@ const ProjectDetailsList = (props) => {
                                 <Text c={`#ffffff`} className={`!pl-[30px]`} fz="md" fw={700}>Task Title</Text>
                             </Grid.Col>
                             <Grid.Col span={2.5}>
-                                <Text c={`#ffffff`} className={`!pl-[4px]`} fz="md" fw={700}>Assigned</Text>
+                                <Text c={`#ffffff`} className={`!pl-[0px]`} fz="md" fw={700}>Assigned</Text>
                             </Grid.Col>
                             <Grid.Col span={2.5}>
                                 <Text c={`#ffffff`} ta="center" fz="md" fw={700}>Following</Text>
@@ -37,7 +37,7 @@ const ProjectDetailsList = (props) => {
                 </Grid>
 
             </div>
-            <ScrollArea className="h-[calc(100vh-300px)] pb-[1px]" scrollbarSize={4}>
+            <ScrollArea scrollbars={`y`} className="h-[calc(100vh-300px)] pb-[1px] !pr-1" scrollbarSize={4}>
                 <LoadingOverlay
                     visible={isLoading}
                     zIndex={1000}

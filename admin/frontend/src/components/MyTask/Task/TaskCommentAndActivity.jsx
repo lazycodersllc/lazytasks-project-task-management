@@ -37,8 +37,8 @@ const TaskCommentAndActivity = ({task, selectedValue}) => {
   const handleAddComment = () => {
     const timestamp = new Date().toISOString();
     const newComment = {
-      user_id: loggedUserId,
-      user_name: name,
+      user_id: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
+      user_name: loggedInUser ? loggedInUser.name : '',
       commentable_id: task && task.id ? task.id : null,
       commentable_type: 'task',
       content: commentText,

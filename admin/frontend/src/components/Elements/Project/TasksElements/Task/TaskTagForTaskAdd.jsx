@@ -11,6 +11,7 @@ const TaskTagForTaskAdd = (props) => {
 
     const dispatch = useDispatch();
     const {loggedUserId} = useSelector((state) => state.auth.user)
+    const {loggedInUser} = useSelector((state) => state.auth.session)
 
     const {tags} = useSelector((state) => state.settings.tag);
     const [showTagsList, setShowTagsList] = useState(false);
@@ -40,7 +41,7 @@ const TaskTagForTaskAdd = (props) => {
         if(removedTag){
             const data= {
                 'name': removedTag,
-                'user_id': loggedUserId,
+                'user_id': loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
                 'task_id': null
             };
             dispatch(deleteTagFromTask(data))

@@ -48,6 +48,7 @@ export const deleteTagFromMyTask = createAsyncThunk('myTasks/deleteTagFromMyTask
 
 const initialState = {
     tasks: [],
+    allTasks: [],
     userTaskListSections: {},
     userTaskColumns: {},
     userTaskOrdered: [],
@@ -108,6 +109,7 @@ const taskSlice = createSlice({
                 state.userTaskOrdered = action.payload.data && action.payload.data.orders ? action.payload.data.orders : []
                 state.userTaskColumns = action.payload.data && action.payload.data.tasks ? action.payload.data.tasks : {}
                 state.userTaskListSections = action.payload.data && action.payload.data.taskSections ? action.payload.data.taskSections : {}
+                state.allTasks = action.payload.data && action.payload.data.allTasks ? action.payload.data.allTasks : {}
                 state.userTaskChildColumns = action.payload.data && action.payload.data.childTasks ? action.payload.data.childTasks : {}
                 state.userProjects = action.payload.data && action.payload.data.userProjects ? action.payload.data.userProjects : []
                 state.taskStatus = action.payload.data && action.payload.data.taskStatus ? action.payload.data.taskStatus : []

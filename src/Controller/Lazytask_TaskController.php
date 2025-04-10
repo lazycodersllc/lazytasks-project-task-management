@@ -45,7 +45,7 @@ final class Lazytask_TaskController {
 
 		$description = sanitize_textarea_field($requestData['description']);
 		$status = sanitize_text_field($requestData['status']);
-		$created_at = gmdate('Y-m-d H:i:s');
+		$created_at = current_time('mysql');
 		$members = isset($requestData['members']) && sizeof($requestData['members'])> 0 ? $requestData['members'] : [];
 		$tags = isset($requestData['tags']) && sizeof($requestData['tags'])> 0 ? $requestData['tags'] : [];
 
@@ -169,7 +169,7 @@ final class Lazytask_TaskController {
 							"subject_name" => 'task',
 							"subject_type"=>'task',
 							"user_id" => $createdBy,
-							"created_at" => gmdate('Y-m-d H:i:s'),
+							"created_at" => current_time('mysql'),
 						)
 					);
 					$attachmentArg[] = $attachment_id;
@@ -319,6 +319,7 @@ final class Lazytask_TaskController {
 		// Sanitize and validate the input data
 		$id = $request->get_param('id');
 		$requestData = $request->get_json_params();
+		
 		$members = $requestData['members'];
 
 		if($id == null || $id == ''){
@@ -405,17 +406,17 @@ final class Lazytask_TaskController {
 		if(isset($requestData['status'])){
 			$submittedData['status'] = sanitize_text_field($requestData['status']);
 		}
-		if(isset($requestData['start_date'])){
+		// if(isset($requestData['start_date'])){
 			$submittedData['start_date'] = $requestData['start_date']!=''? gmdate('Y-m-d H:i:s', strtotime($requestData['start_date'])): null;
-		}
-		if(isset($requestData['end_date'])){
+		// }
+		// if(isset($requestData['end_date'])){
 			$submittedData['end_date'] = $requestData['end_date']!=''? gmdate('Y-m-d', strtotime($requestData['end_date'])): null;
 
 			if($prevTask['end_date'] != $submittedData['end_date']){
 				$properties['old']['end_date'] = $prevTask['end_date'];
 				$properties['attributes']['end_date'] = $submittedData['end_date'];
 			}
-		}
+		// }
 
 
 
@@ -424,7 +425,7 @@ final class Lazytask_TaskController {
 			if(isset($requestData['updated_by'])){
 				$submittedData['updated_by'] = isset($requestData['updated_by']) && $requestData['updated_by'] != "" ? (int)$requestData['updated_by'] : null;
 			}
-			$submittedData['updated_at'] = gmdate('Y-m-d H:i:s');
+			$submittedData['updated_at'] = current_time('mysql');
 
 			$taskTable = LAZYTASK_TABLE_PREFIX . 'tasks';
 			$taskUpdated = $db->update(
@@ -448,8 +449,8 @@ final class Lazytask_TaskController {
 
 			$taskMembersTable = LAZYTASK_TABLE_PREFIX . 'task_members';
 			$db->delete($taskMembersTable, array('task_id' => $id));
-			$updatedAt = gmdate('Y-m-d H:i:s');
-			$createdAt = gmdate('Y-m-d H:i:s');
+			$updatedAt = current_time('mysql');
+			$createdAt = current_time('mysql');
 			if ( $members > 0){
 				foreach ( $members as $member ) {
 
@@ -494,7 +495,7 @@ final class Lazytask_TaskController {
 		}
 
 		$createdBy = isset($requestData['updated_by']) && $requestData['updated_by'] != "" ? (int)$requestData['updated_by'] : null;
-		$created_at = gmdate('Y-m-d H:i:s');
+		$created_at = current_time('mysql');
 
 		if( sizeof($properties) > 0 ) {
 			$activityLogArg = [
@@ -596,7 +597,7 @@ final class Lazytask_TaskController {
 
 		$project_id = $requestData['project_id'];
 		$orderedList = $requestData['orderedList'];
-		$updated_at = gmdate('Y-m-d H:i:s');
+		$updated_at = current_time('mysql');
 		$updated_by = isset($requestData['updated_by']) && $requestData['updated_by'] != "" ? (int)$requestData['updated_by'] : null;
 
 		$entityId = $orderedList && isset($orderedList['draggableId'])?$orderedList['draggableId']:null;
@@ -655,7 +656,7 @@ final class Lazytask_TaskController {
 						);
 
 						$createdBy = isset($requestData['updated_by']) && $requestData['updated_by'] != "" ? (int)$requestData['updated_by'] : null;
-						$created_at = gmdate('Y-m-d H:i:s');
+						$created_at = current_time('mysql');
 
 						$properties = [];
 
@@ -1078,7 +1079,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		$requestData = $request->get_json_params();
 
 		$type = isset($requestData['type']) && $requestData['type'] ? $requestData['type']:'task';
-		$deleted_at = gmdate('Y-m-d H:i:s');
+		$deleted_at = current_time('mysql');
 		$deleted_by = isset($requestData['deleted_by']) && $requestData['deleted_by'] != "" ? (int)$requestData['deleted_by'] : null;
 
 		$tableTasks = LAZYTASK_TABLE_PREFIX . 'tasks';
@@ -1387,8 +1388,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		$submittedData['name'] = sanitize_text_field($requestData['name']);
 		$submittedData['project_id'] = isset($requestData['project_id']) && $requestData['project_id'] != "" ? (int)$requestData['project_id'] : null;
 		$submittedData['sort_order'] = isset($requestData['sort_order']) && $requestData['sort_order'] != "" ? (int)$requestData['sort_order'] : 999;
-		$submittedData['created_at'] = gmdate('Y-m-d H:i:s');
-		$submittedData['updated_at'] = gmdate('Y-m-d H:i:s');
+		$submittedData['created_at'] = current_time('mysql');
+		$submittedData['updated_at'] = current_time('mysql');
 		$submittedData['created_by'] = isset($requestData['created_by']) && $requestData['created_by'] != "" ? (int)$requestData['created_by'] : null;
 
 
@@ -1426,7 +1427,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		$requestData = $request->get_json_params();
 		$id = $request->get_param('id');
 		$name = sanitize_text_field($requestData['name']);
-		$updated_at = gmdate('Y-m-d H:i:s');
+		$updated_at = current_time('mysql');
 		$updated_by = isset($requestData['updated_by']) && $requestData['updated_by'] != "" ? (int)$requestData['updated_by'] : null;
 
 		$tableTaskSection = LAZYTASK_TABLE_PREFIX . 'task_sections';
@@ -1468,7 +1469,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 		$requestData = $request->get_json_params();
 		$id = $request->get_param('id');
-		$updated_at = gmdate('Y-m-d H:i:s');
+		$updated_at = current_time('mysql');
 		$updated_by = isset($requestData['updated_by']) && $requestData['updated_by'] != "" ? (int)$requestData['updated_by'] : null;
 
 		$project_id = isset($requestData['project_id']) && $requestData['project_id'] != "" ? (int)$requestData['project_id'] : null;
@@ -1534,7 +1535,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 		$requestData = $request->get_json_params();
 		$id = $request->get_param('id');
-		$deleted_at = gmdate('Y-m-d H:i:s');
+		$deleted_at = current_time('mysql');
 		$deleted_by = isset($requestData['deleted_by']) && $requestData['deleted_by'] != "" ? (int)$requestData['deleted_by'] : null;
 
 		$tableTaskSection = LAZYTASK_TABLE_PREFIX . 'task_sections';
@@ -1597,7 +1598,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 		$project_id = $requestData['project_id'];
 		$orderedList = $requestData['orderedList'];
-		$updated_at = gmdate('Y-m-d H:i:s');
+		$updated_at = current_time('mysql');
 		$updated_by = isset($requestData['updated_by']) && $requestData['updated_by'] != "" ? (int)$requestData['updated_by'] : null;
 
 		$tableTaskSection = LAZYTASK_TABLE_PREFIX . 'task_sections';
@@ -1653,7 +1654,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		$commentableId = isset($requestData['commentable_id']) && $requestData['commentable_id'] != "" ? (int)$requestData['commentable_id'] : null;
 		$userId = isset($requestData['user_id']) && $requestData['user_id'] != "" ? (int)$requestData['user_id'] : null;
 		$commentableType = isset($requestData['commentable_type']) && $requestData['commentable_type'] != "" ? $requestData['commentable_type'] : null;
-		$created_at = gmdate('Y-m-d H:i:s');
+		$created_at = current_time('mysql');
 		if (empty($content)) {
 			return new WP_Error('required_fields', 'Please ensure all required fields are provided.', array('status' => 400));
 		}
@@ -1748,7 +1749,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		$commentId = $request->get_param('id');
 		$requestData = $request->get_json_params();
 
-		$deleted_at = gmdate('Y-m-d H:i:s');
+		$deleted_at = current_time('mysql');
 		$deleted_by = isset($requestData['deleted_by']) && $requestData['deleted_by'] != "" ? (int)$requestData['deleted_by'] : null;
 
 		$tableComments = LAZYTASK_TABLE_PREFIX . 'comments';
@@ -1932,7 +1933,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 		$sql = "SELECT activityLog.id, activityLog.properties, activityLog.subject_id, activityLog.subject_name, activityLog.subject_type, activityLog.user_id, activityLog.event, activityLog.created_at, activityLog.updated_at, users.display_name as user_name, users.user_email as user_email FROM `{$activityLogTable}` as activityLog
 		 JOIN `{$usersTable}` as users ON activityLog.user_id = users.ID
-		 WHERE activityLog.subject_id IN ($ids) and activityLog.subject_name = '{$subjectName}' order by activityLog.id ASC";
+		 WHERE activityLog.subject_id IN ($ids) and activityLog.subject_name = '{$subjectName}' order by activityLog.id DESC";
 
 		$query = call_user_func_array(array($wpdb, 'prepare'), array_merge(array($sql), $subjectId));
 
@@ -2014,7 +2015,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 									"subject_name" => 'task',
 									"subject_type"=>'task',
 									"user_id" => $userId,
-									"created_at" => gmdate('Y-m-d H:i:s'),
+									"created_at" => current_time('mysql'),
 								)
 							);
 
@@ -2029,7 +2030,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 				$argTask['name'] = implode(', ', $uploadedFiles);
 				$argTask['message'] = 'Attachment upload';
 				$properties['attributes'] = $argTask;
-				$created_at= gmdate('Y-m-d H:i:s');
+				$created_at= current_time('mysql');
 
 				$activityLogArg = [
 					"user_id" => $userId,
@@ -2095,7 +2096,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 			$argTask['name'] = $attachment['name'];
 			$argTask['message'] = 'Attachment removed';
 			$properties['attributes'] = $argTask;
-			$created_at= gmdate('Y-m-d H:i:s');
+			$created_at= current_time('mysql');
 
 			$activityLogArg = [
 				"user_id" => $userId,
@@ -2241,7 +2242,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 					$submittedData['tag_id']=$tag['id'];
 					$submittedData['task_id']=$taskId;
 					$submittedData['user_id']=$userId;
-					$submittedData['created_at']=gmdate('Y-m-d H:i:s');
+					$submittedData['created_at']=current_time('mysql');
 					$db->insert($taskTagsTable, $submittedData);
 				}
 				$task = $this->getTaskById($taskId);
@@ -2298,7 +2299,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 					$db->update(
 						$taskTagsTable,
 						array(
-							"deleted_at" => gmdate('Y-m-d H:i:s'),
+							"deleted_at" => current_time('mysql'),
 							"deleted_by" => $userId,
 						),
 						array( 'id' => (int)$existingTaskTag['id'] )
@@ -2619,7 +2620,7 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 		$requestData = $request->get_json_params();
 		$name = sanitize_text_field($requestData['name']);
 		$userId = isset($requestData['user_id']) && $requestData['user_id'] != "" ? (int)$requestData['user_id'] : null;
-		$created_at = gmdate('Y-m-d H:i:s');
+		$created_at = current_time('mysql');
 //		return new WP_REST_Response(['status'=>200, 'message'=>'Quick task created successfully', 'data'=>$requestData ], 200);
 
 		if (empty($name)) {
@@ -2761,8 +2762,8 @@ FROM {$wpdb->prefix}pms_tasks as tasks
 
 		$mergedArray = array_merge($comments, $logActivities);
 
-	   usort($mergedArray, function ($a, $b) {
-			return strtotime($a['created_at']) - strtotime($b['created_at']);
+	    usort($mergedArray, function ($a, $b) {
+			return strtotime($b['created_at']) - strtotime($a['created_at']);	
 		});
 
 	   return $mergedArray;

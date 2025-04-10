@@ -47,18 +47,25 @@ class Lazytask_Activator {
 
 		if( !$getLazytasksConfig ){
 
-			$allProjects = \Lazytask\Helper\Lazytask_DatabaseQuerySchema::getAllProjects();
+			self::lazytaskConfig();
 
-			$lazytasksConfig = [
-				'lazytasks_version' => LAZYTASK_VERSION,
-				'lazytasks_basic_info_guide_modal' => ! ( sizeof( $allProjects ) > 0 ),
-				'step_completed' => 0,
-			];
-
-			update_option('lazytasks_config', wp_json_encode($lazytasksConfig));
-
-			update_option('lazytask_do_activation_redirect', 1);
 		}
+
+	}
+
+	public static function lazytaskConfig()
+	{
+		$allProjects = \Lazytask\Helper\Lazytask_DatabaseQuerySchema::getAllProjects();
+
+		$lazytasksConfig = [
+			'lazytasks_version' => LAZYTASK_VERSION,
+			'lazytasks_basic_info_guide_modal' => ! ( sizeof( $allProjects ) > 0 ),
+			'step_completed' => sizeof( $allProjects ) > 0 ? 4 : 0,
+		];
+
+		update_option('lazytasks_config', wp_json_encode($lazytasksConfig));
+
+		update_option('lazytask_do_activation_redirect', 1);
 
 	}
 

@@ -5350,14 +5350,14 @@ const Dashboard = () => {
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Container, {
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "settings-page-card bg-white rounded-xl p-5 pt-3 my-5 mb-0"
+    className: "settings-page-card bg-white rounded-xl p-5 pt-3 mt-5 mb-5"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mt-2 mb-3"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Title, {
     order: 4
   }, "Dashboard")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.ScrollArea, {
     scrollbars: "y",
-    className: "w-full h-[calc(100vh-200px)] px-2",
+    className: "w-full h-[calc(100vh-186px)] px-2",
     scrollbarSize: 4
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Grid, {
     className: "mb-5",
@@ -5507,7 +5507,19 @@ const ProjectSummery = () => {
     lineClamp: 1
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_4__.NavLink, {
     to: `/project/task/list/${element.id}`
-  }, element.name))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Td, null, element.ACTIVE), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Td, null, element.COMPLETED), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Td, null, parseInt(element.ACTIVE ? element.ACTIVE : 0) + parseInt(element.COMPLETED ? element.COMPLETED : 0))));
+  }, element.name))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Td, {
+    style: {
+      textAlign: 'right'
+    }
+  }, element.ACTIVE), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Td, {
+    style: {
+      textAlign: 'right'
+    }
+  }, element.COMPLETED), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_2__.Table.Td, {
+    style: {
+      textAlign: 'right'
+    }
+  }, parseInt(element.ACTIVE ? element.ACTIVE : 0) + parseInt(element.COMPLETED ? element.COMPLETED : 0))));
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Card, {
     withBorder: true,
     radius: "sm"
@@ -5832,7 +5844,11 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tabs/Tabs.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
 /* harmony import */ var _MyTask_Partial_TaskHeader__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../MyTask/Partial/TaskHeader */ "./src/components/MyTask/Partial/TaskHeader.jsx");
 /* harmony import */ var _MyTask_MyTaskListContent__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../MyTask/MyTaskListContent */ "./src/components/MyTask/MyTaskListContent.jsx");
 /* harmony import */ var _TaskList__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./TaskList */ "./src/components/Dashboard/TaskList.jsx");
@@ -5848,7 +5864,8 @@ const TaskListTabs = () => {
   const {
     userTaskOrdered,
     userTaskListSections,
-    userTaskColumns
+    userTaskColumns,
+    allTasks
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useSelector)(state => state.settings.myTask);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Card, {
     withBorder: true,
@@ -5867,18 +5884,45 @@ const TaskListTabs = () => {
     color: "#39758D",
     variant: "pills",
     radius: "sm",
-    defaultValue: "today"
+    defaultValue: "all"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tabs.List, {
     className: "mb-3"
-  }, userTaskOrdered && userTaskOrdered.length > 0 && userTaskOrdered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tabs.Tab, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tabs.Tab, {
+    value: "all",
+    className: "font-bold"
+  }, "All"), userTaskOrdered && userTaskOrdered.length > 0 && userTaskOrdered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tabs.Tab, {
     value: taskListSection,
     className: "font-bold"
-  }, userTaskListSections && userTaskListSections[taskListSection] && userTaskListSections[taskListSection]))), userTaskOrdered && userTaskOrdered.length > 0 ? userTaskOrdered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tabs.Panel, {
+  }, userTaskListSections && userTaskListSections[taskListSection] && userTaskListSections[taskListSection]))), userTaskOrdered && userTaskOrdered.length > 0 ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, userTaskOrdered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tabs.Panel, {
+    key: index,
     value: taskListSection
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_TaskList__WEBPACK_IMPORTED_MODULE_3__["default"], {
     slug: taskListSection,
-    header: userTaskListSections && userTaskListSections[taskListSection] && userTaskListSections[taskListSection]
-  }))) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    header: userTaskListSections && userTaskListSections[taskListSection]
+  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tabs.Panel, {
+    value: "all"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.ScrollArea, {
+    className: "relative h-[280px] pb-[30px]",
+    scrollbarSize: 4
+  }, allTasks && allTasks.length > 0 ? allTasks.map((task, index) =>
+  // <TaskList key={index} slug={task.slug} header={task.name} />
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: `${index % 2 === 0 ? 'bg-[#f8f9fa]' : ''}`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "content px-2 py-2"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
+    fz: "sm"
+  }, task.name)))) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "text-center"
+  }, "No Tasks Found"), allTasks && allTasks.length > 5 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "absolute bottom-0 right-1 bg-white"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_11__.Link, {
+    to: `/my-task`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
+    color: "#ED7D31",
+    radius: "xl",
+    size: "compact-sm"
+  }, "More...")))))) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "text-center"
   }, "No Task Found"))));
 };
@@ -6552,14 +6596,14 @@ const DeleteProjectModal = props => {
   const deleteHandler = () => _mantine_modals__WEBPACK_IMPORTED_MODULE_6__.modals.openConfirmModal({
     title: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Title, {
       order: 5
-    }, "Are you sure this project delete?"),
+    }, "You are parmanently deleting this project"),
     size: 'sm',
     radius: 'md',
     withCloseButton: false,
     centered: true,
     children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Text, {
       size: "sm"
-    }, "This action is so important that you are required to confirm it with a modal. Please click one of these buttons to proceed."),
+    }, "Are you sure you want to delete this project?"),
     labels: {
       confirm: 'Confirm',
       cancel: 'Cancel'
@@ -7303,13 +7347,13 @@ const DeleteWorkspaceModal = props => {
   const deleteHandler = () => _mantine_modals__WEBPACK_IMPORTED_MODULE_5__.modals.openConfirmModal({
     title: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Title, {
       order: 5
-    }, "Are you sure this workspace delete?"),
+    }, "You are parmanently deleting this workspace"),
     size: 'sm',
     radius: 'md',
     withCloseButton: false,
     children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
       size: "sm"
-    }, "This action is so important that you are required to confirm it with a modal. Please click one of these buttons to proceed."),
+    }, "Are you sure you want to delete this workspace?"),
     labels: {
       confirm: 'Confirm',
       cancel: 'Cancel'
@@ -7915,7 +7959,7 @@ const ProjectDetails = () => {
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Container, {
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "settings-page-card bg-white rounded-xl p-6 pt-3 my-5 mb-0"
+    className: "settings-page-card bg-white rounded-xl p-6 pt-3 my-5 pb-[2.3rem]"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ProjectDetailsNav__WEBPACK_IMPORTED_MODULE_2__["default"], null), location.pathname === listPagePathName && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ProjectDetailsList__WEBPACK_IMPORTED_MODULE_3__["default"], null), location.pathname === boardPagePathName && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ProjectDetailsBorad__WEBPACK_IMPORTED_MODULE_4__["default"], null), location.pathname === calendarPagePathName && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ProjectDetailsCalendar__WEBPACK_IMPORTED_MODULE_7__["default"], null)))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (ProjectDetails);
@@ -8045,7 +8089,7 @@ const ProjectDetailsList = props => {
     isLoading
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_2__.useSelector)(state => state.settings.task);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "border rounded-t-lg px-2 py-1 bg-[#39758D]"
+    className: "border rounded-t-lg px-2 py-1 bg-[#39758D] !pl-[25px]"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Grid, {
     gutter: "0",
     columns: 24
@@ -8064,7 +8108,7 @@ const ProjectDetailsList = props => {
     span: 2.5
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Text, {
     c: `#ffffff`,
-    className: `!pl-[4px]`,
+    className: `!pl-[0px]`,
     fz: "md",
     fw: 700
   }, "Assigned")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_3__.Grid.Col, {
@@ -8096,7 +8140,8 @@ const ProjectDetailsList = props => {
     fz: "md",
     fw: 700
   }, "Tags")))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.ScrollArea, {
-    className: "h-[calc(100vh-300px)] pb-[1px]",
+    scrollbars: `y`,
+    className: "h-[calc(100vh-300px)] pb-[1px] !pr-1",
     scrollbarSize: 4
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.LoadingOverlay, {
     visible: isLoading,
@@ -8126,33 +8171,43 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Breadcrumbs/Breadcrumbs.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Popover/Popover.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Card/Card.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
-/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router/dist/index.js");
-/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconChevronRight.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCaretDownFilled.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconSearch.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconRefresh.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconFilter.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPlus.mjs");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Breadcrumbs/Breadcrumbs.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Popover/Popover.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Card/Card.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
+/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router/dist/index.js");
+/* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconChevronRight.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCaretDownFilled.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconSearch.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_30__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconRefresh.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_31__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconFilter.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_32__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPlus.mjs");
 /* harmony import */ var _ui_UsersAvatarGroup__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../ui/UsersAvatarGroup */ "./src/components/ui/UsersAvatarGroup.jsx");
 /* harmony import */ var _Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../Settings/store/projectSlice */ "./src/components/Settings/store/projectSlice.js");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../ui/permissions */ "./src/components/ui/permissions.jsx");
+/* harmony import */ var _store_auth_userSlice__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../../../store/auth/userSlice */ "./src/store/auth/userSlice.js");
+/* harmony import */ var _ui_UserAvatarSingle__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ../../ui/UserAvatarSingle */ "./src/components/ui/UserAvatarSingle.jsx");
+/* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
+/* harmony import */ var _Settings_store_settingSlice__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ../../Settings/store/settingSlice */ "./src/components/Settings/store/settingSlice.js");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+
+
+
+
+
 
 
 
@@ -8164,27 +8219,65 @@ __webpack_require__.r(__webpack_exports__);
 
 
 const ProjectDetailsNav = () => {
-  const location = (0,react_router_dom__WEBPACK_IMPORTED_MODULE_5__.useLocation)();
-  const navigate = (0,react_router_dom__WEBPACK_IMPORTED_MODULE_5__.useNavigate)();
+  const location = (0,react_router_dom__WEBPACK_IMPORTED_MODULE_8__.useLocation)();
+  const navigate = (0,react_router_dom__WEBPACK_IMPORTED_MODULE_8__.useNavigate)();
   const {
     loggedUserId
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_6__.useSelector)(state => state.auth.user);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.auth.user);
   const {
     loggedInUser
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_6__.useSelector)(state => state.auth.session);
-  const usersData = (0,react_redux__WEBPACK_IMPORTED_MODULE_6__.useSelector)(state => state.users);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.auth.session);
+  const usersData = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.users);
   const {
     boardMembers,
     projectInfo
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_6__.useSelector)(state => state.settings.task);
-  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_6__.useDispatch)();
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.settings.task);
+  const {
+    tasks
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.settings.task);
+  const [isOpenedMemberPopover, setIsOpenedMemberPopover] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    //isOpenedMemberPopover is true
+    if (isOpenedMemberPopover) {
+      console.log('ok');
+      dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_3__.fetchTasksByProject)({
+        id: id
+      }));
+      dispatch((0,_store_auth_userSlice__WEBPACK_IMPORTED_MODULE_5__.fetchAllMembers)());
+    }
+  }, [isOpenedMemberPopover]);
+  const [isEmailValid, setIsEmailValid] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
+  const validateEmail = email => {
+    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return regex.test(email);
+  };
+  const {
+    allMembers
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.auth.user);
+  const [searchValue, setSearchValue] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)('');
+  const [filteredMembers, setFilteredMembers] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (allMembers && allMembers.length > 0) {
+      const filtered = allMembers.filter(member => member.name.toLowerCase().includes(searchValue.toLowerCase()) || member.email.toLowerCase().includes(searchValue.toLowerCase()));
+      setFilteredMembers(filtered);
+    } else {
+      setFilteredMembers([]);
+    }
+  }, [allMembers, searchValue]);
+  const handleSearchInputChange = e => {
+    const inputValue = e.target.value;
+    setSearchValue(inputValue);
+    setIsEmailValid(validateEmail(inputValue));
+  };
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useDispatch)();
   const {
     id
-  } = (0,react_router_dom__WEBPACK_IMPORTED_MODULE_5__.useParams)();
+  } = (0,react_router_dom__WEBPACK_IMPORTED_MODULE_8__.useParams)();
   const listPagePathName = `/project/task/list/${id}`;
   const boardPagePathName = `/project/task/board/${id}`;
   const calendarPagePathName = `/project/task/calendar/${id}`;
   const [selectedMembers, setSelectedMembers] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(boardMembers || []);
+  const [addedMembers, setAddedMembers] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(boardMembers && boardMembers.length > 0 ? boardMembers.map(member => member.id) : []);
   const handleAssignButtonClick = member => {
     // Toggle between assigning and removing a member
     var updatedMembers = [];
@@ -8205,17 +8298,74 @@ const ProjectDetailsNav = () => {
           'members': updatedMembers,
           'updated_by': loggedUserId
         }
-      }));
-      dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_3__.updateBoardMembers)(updatedMembers));
+      })).then(response => {
+        if (response.payload.status === 200) {
+          console.log(response.payload.data.members);
+          dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_3__.updateBoardMembers)(response.payload.data.members || []));
+          setSelectedMembers(response.payload.data.members || []);
+          setAddedMembers(response.payload.data.members && response.payload.data.members.length > 0 ? response.payload.data.members.map(member => member.id) : []);
+        }
+      });
+    }
+  };
+  const handleRemoveButtonClick = member => {
+    const isMemberAssignedToTask = tasks && tasks.allTasks && Object.values(tasks.allTasks).length > 0 && Object.values(tasks.allTasks).some(task => task.assignedTo_id === member.id.toString());
+    const isMemberAssignedToSubTask = tasks && tasks.allTasks && Object.values(tasks.allTasks).length > 0 && Object.values(tasks.allTasks).some(task => task.children && task.children.length > 0 && task.children.some(subtask => subtask.assignedTo_id === member.id.toString()));
+    if (isMemberAssignedToTask || isMemberAssignedToSubTask) {
+      _mantine_modals__WEBPACK_IMPORTED_MODULE_10__.modals.open({
+        withCloseButton: false,
+        centered: true,
+        children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+          size: "sm"
+        }, "This member is assigned to a task. Please reassign the task before removing the member."), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+          className: "!grid w-full !justify-items-center"
+        }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
+          justify: "center",
+          onClick: () => {
+            setIsOpenedMemberPopover(true);
+            _mantine_modals__WEBPACK_IMPORTED_MODULE_10__.modals.closeAll();
+          },
+          mt: "md"
+        }, "Ok")))
+      });
+      return false;
+    }
+
+    // Toggle between assigning and removing a member
+    var updatedMembers = [];
+    const index = selectedMembers.findIndex(selectedMember => parseInt(selectedMember.id) === parseInt(member.id));
+    if (index === -1) {
+      const assignAfterMembers = [...selectedMembers, member];
+      updatedMembers = assignAfterMembers;
+      setSelectedMembers(assignAfterMembers);
+    } else {
+      const deletedAfterMembers = selectedMembers.filter(selectedMember => parseInt(selectedMember.id) !== parseInt(member.id));
+      updatedMembers = deletedAfterMembers;
+      setSelectedMembers(deletedAfterMembers);
+    }
+    if (id && id !== 'undefined' && updatedMembers) {
+      dispatch((0,_Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_2__.editProject)({
+        id: id,
+        data: {
+          'members': updatedMembers,
+          'updated_by': loggedUserId
+        }
+      })).then(response => {
+        if (response.payload.status === 200) {
+          console.log(response.payload.data.members);
+          dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_3__.updateBoardMembers)(response.payload.data.members || []));
+          setSelectedMembers(response.payload.data.members || []);
+          setAddedMembers(response.payload.data.members && response.payload.data.members.length > 0 ? response.payload.data.members.map(member => member.id) : []);
+        }
+      });
     }
   };
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     setSelectedMembers(boardMembers || []);
+    setAddedMembers(boardMembers && boardMembers.length > 0 ? boardMembers.map(member => member.id) : []);
   }, [projectInfo]);
   const goToTasksList = id => {
-    dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_3__.fetchTasksByProject)({
-      id: id
-    }));
+    // dispatch(fetchTasksByProject({ id: id }))
     navigate(`/project/task/list/${id}`);
   };
   //searchHandler
@@ -8232,37 +8382,75 @@ const ProjectDetailsNav = () => {
   const handleRefresh = () => {
     dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_3__.updateIsLoading)(true));
   };
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid, {
+  const handleSendInvite = email => {
+    const values = {
+      email: email,
+      loggedInUserId: loggedInUser ? loggedInUser.id : loggedUserId
+    };
+    dispatch((0,_store_auth_userSlice__WEBPACK_IMPORTED_MODULE_5__.createUser)(values)).then(response => {
+      if (response.payload && response.payload.status && response.payload.status === 200) {
+        const members = [...selectedMembers, response.payload.data];
+        dispatch((0,_Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_2__.editProject)({
+          id: projectInfo ? projectInfo.id : id,
+          data: {
+            'members': members,
+            'updated_by': loggedInUser ? loggedInUser.id : loggedUserId
+          }
+        })).then(res => {
+          if (res.payload && res.payload.status && res.payload.status === 200) {
+            dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_3__.updateBoardMembers)(res.payload.data.members || []));
+            setIsOpenedMemberPopover(false);
+            setSearchValue('');
+          }
+        });
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_13__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'User',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'green'
+        });
+      }
+    });
+  };
+  const projectCount = projectInfo?.parent?.projects?.length || 0;
+  const cardHeight = 80;
+  const maxVisibleCards = 3;
+  const scrollAreaHeight = projectCount > maxVisibleCards ? cardHeight * maxVisibleCards : 'auto';
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid, {
     className: "mt-2 mb-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid.Col, {
     span: 10
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Breadcrumbs, {
-    separator: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_9__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Breadcrumbs, {
+    separator: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__["default"], {
       size: 20,
       stroke: 1.25
     }),
     separatorMargin: "xs"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Title, {
     order: 4
-  }, projectInfo && projectInfo.parent && projectInfo.parent.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Popover, {
+  }, projectInfo && projectInfo.parent && projectInfo.parent.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Popover, {
     width: 300,
     position: "bottom-start",
     withArrow: true,
-    shadow: "md"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Flex, {
+    shadow: "md",
+    zIndex: 1000
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Flex, {
     className: `min-w-[200px] !justify-between border px-2 py-1 rounded-md cursor-pointer`,
     gap: "md",
     justify: "space-between",
     align: "center"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Title, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Title, {
     order: 4
-  }, projectInfo && projectInfo.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__["default"], {
+  }, projectInfo && projectInfo.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_20__["default"], {
     size: 20
-  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Popover.Dropdown, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.ScrollArea, {
-    h: 350,
+  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Popover.Dropdown, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.ScrollArea, {
+    h: scrollAreaHeight,
     offsetScrollbars: true,
     scrollbarSize: 6
-  }, projectInfo && projectInfo.parent && projectInfo.parent.projects && projectInfo.parent.projects.length > 0 && projectInfo.parent.projects.map((project, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Card, {
+  }, projectInfo && projectInfo.parent && projectInfo.parent.projects && projectInfo.parent.projects.length > 0 && projectInfo.parent.projects.map((project, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Card, {
     key: `${project.id}-${index}`,
     className: "mb-2 mt-0 cursor-pointer",
     shadow: "sm",
@@ -8275,16 +8463,16 @@ const ProjectDetailsNav = () => {
     }
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex justify-between items-center -mt-1"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
     size: "sm",
     weight: 700
-  }, project.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Avatar.Group, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_UsersAvatarGroup__WEBPACK_IMPORTED_MODULE_1__["default"], {
+  }, project.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_23__.Avatar.Group, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_UsersAvatarGroup__WEBPACK_IMPORTED_MODULE_1__["default"], {
     users: project.members,
     size: 30,
     maxCount: 2
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Group, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_24__.Group, {
     position: "apart"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Flex, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Flex, {
     align: "center",
     gap: "4"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("svg", {
@@ -8298,9 +8486,9 @@ const ProjectDetailsNav = () => {
     cy: "4",
     r: "4",
     fill: "#F1975A"
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Text, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
     size: "xs"
-  }, project.members && project.members.length, " users engaged")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Flex, {
+  }, project.members && project.members.length, " users engaged")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Flex, {
     align: "center",
     gap: "4"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("svg", {
@@ -8314,13 +8502,13 @@ const ProjectDetailsNav = () => {
     cy: "4",
     r: "4",
     fill: "#39758D"
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Text, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
     size: "xs"
-  }, project.total_tasks, " task")))))))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
+  }, project.total_tasks, " task")))))))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid.Col, {
     span: 2
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.TextInput, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_25__.TextInput, {
     rightSectionPointerEvents: "none",
-    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_20__["default"], {
+    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_26__["default"], {
       size: 24
     }),
     onChange: e => {
@@ -8331,11 +8519,11 @@ const ProjectDetailsNav = () => {
     className: "relative flex justify-between items-center"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "relative flex mb-3 space-x-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_21__.NavLink, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_27__.NavLink, {
     to: `/project/task/list/${id}`,
     className: "nav-link",
     activeClassName: "active-link"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Button, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
     size: "sm",
     color: location.pathname === listPagePathName ? "#39758D" : "#EBF1F4",
     styles: {
@@ -8343,11 +8531,11 @@ const ProjectDetailsNav = () => {
         color: location.pathname === listPagePathName ? "#fff" : "#000"
       }
     }
-  }, "List")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_21__.NavLink, {
+  }, "List")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_27__.NavLink, {
     to: `/project/task/board/${id}`,
     className: "nav-link",
     activeClassName: "active-link"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Button, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
     size: "sm",
     color: location.pathname === boardPagePathName ? "#39758D" : "#EBF1F4",
     styles: {
@@ -8355,11 +8543,11 @@ const ProjectDetailsNav = () => {
         color: location.pathname === boardPagePathName ? "#fff" : "#000"
       }
     }
-  }, "Board")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_21__.NavLink, {
+  }, "Board")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_27__.NavLink, {
     to: `/project/task/calendar/${id}`,
     className: "nav-link",
     activeClassName: "active-link"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Button, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
     size: "sm",
     color: location.pathname === calendarPagePathName ? "#39758D" : "#EBF1F4",
     styles: {
@@ -8367,11 +8555,11 @@ const ProjectDetailsNav = () => {
         color: location.pathname === calendarPagePathName ? "#fff" : "#000"
       }
     }
-  }, "Calendar")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_21__.NavLink, {
+  }, "Calendar")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_27__.NavLink, {
     to: "",
     className: "nav-link",
     activeClassName: "active-link"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_23__.Tooltip, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_28__.Tooltip, {
     className: "!py-0 !text-[10px] !z-30",
     label: "Coming soon",
     opened: true,
@@ -8379,7 +8567,7 @@ const ProjectDetailsNav = () => {
     offset: -8,
     color: "#ED7D31",
     size: "xs"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Button, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
     className: "!text-sm",
     size: "sm",
     color: "#EBF1F4",
@@ -8389,11 +8577,11 @@ const ProjectDetailsNav = () => {
       }
     },
     disabled: true
-  }, "Gantt chart"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_21__.NavLink, {
+  }, "Gantt chart"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_27__.NavLink, {
     to: "",
     className: "nav-link",
     activeClassName: "active-link"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_23__.Tooltip, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_28__.Tooltip, {
     className: "!py-0 !text-[10px] !z-30",
     label: "Coming soon",
     opened: true,
@@ -8401,7 +8589,7 @@ const ProjectDetailsNav = () => {
     offset: -8,
     color: "#ED7D31",
     size: "xs"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Button, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
     className: "!text-sm",
     size: "sm",
     color: "#EBF1F4",
@@ -8413,79 +8601,132 @@ const ProjectDetailsNav = () => {
     disabled: true
   }, "Swimlane")))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "relative filterandusers flex items-center gap-4 mb-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_24__.ActionIcon, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_29__.ActionIcon, {
     onClick: () => handleRefresh(),
     variant: "white",
     color: "yellow",
     radius: "xs",
     "aria-label": "Refresh"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_25__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_30__["default"], {
     size: 24,
     stroke: 1.5
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Button, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
     variant: "filled",
     color: "#39758D",
     style: {
       width: '40px',
       padding: '5px'
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_26__["default"], null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_31__["default"], null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex gap-1"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_UsersAvatarGroup__WEBPACK_IMPORTED_MODULE_1__["default"], {
     users: boardMembers,
     size: 40,
     maxCount: 50
-  }), (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_4__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Popover, {
+  }), (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_4__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Popover, {
     height: 150,
     position: "bottom",
     withArrow: true,
-    shadow: "md"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_23__.Tooltip, {
+    shadow: "md",
+    opened: isOpenedMemberPopover,
+    onChange: setIsOpenedMemberPopover
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_28__.Tooltip, {
     label: "Add Member",
     position: "top",
     withArrow: true
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Avatar
-  // onClick={onAddMember}
-  , {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_23__.Avatar, {
+    onClick: () => setIsOpenedMemberPopover(!isOpenedMemberPopover)
+    // onClick={onAddMember}
+    ,
     size: 40,
     bg: "#ED7D31",
     color: "#fff",
     className: `cursor-pointer`
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_27__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_32__["default"], {
     className: " hover:scale-110",
     size: 20
-  })))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Popover.Dropdown, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.ScrollArea, {
-    className: "h-[290px] min-w-[368px]",
+  })))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Popover.Dropdown, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_25__.TextInput, {
+    leftSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_26__["default"], {
+      size: 16
+    }),
+    placeholder: "Quick search member",
+    mb: "sm",
+    className: "!mb-2",
+    value: searchValue,
+    onChange: handleSearchInputChange
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+    className: `!mb-2`,
+    size: "sm",
+    fw: 700,
+    c: "#202020"
+  }, filteredMembers && filteredMembers.length > 0 ? filteredMembers.length : 0, " people available"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.ScrollArea, {
+    className: "h-[290px] min-w-[380px] max-w-[380px] !pr-1.5",
     scrollbarSize: 5
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "p-0"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "mt-2"
+  }, filteredMembers && filteredMembers.length > 0 && filteredMembers.map(member => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    key: member.id,
+    className: "ml-single flex items-center border-b border-solid border-[#ffffff] py-1.5 justify-between gap-1"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_UserAvatarSingle__WEBPACK_IMPORTED_MODULE_6__["default"], {
+    user: member,
+    size: 32
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "mls-ne ml-2 w-full"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+    lineClamp: 1,
     size: "sm",
     fw: 700,
     c: "#202020"
-  }, projectInfo.parent && projectInfo.parent.members && projectInfo.parent.members.length > 0 ? projectInfo.parent.members.length : 0, " people available"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "mt-2"
-  }, projectInfo.parent && projectInfo.parent.members && projectInfo.parent.members.length > 0 && projectInfo.parent.members.map(member => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    key: member.id,
-    className: "ml-single flex items-center border-b border-solid border-[#ffffff] py-1 justify-between"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Avatar, {
-    src: member.avatar,
-    size: 40,
+  }, member.name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+    lineClamp: 1,
+    size: "sm",
+    fw: 100,
+    c: "#202020"
+  }, member.email)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
+    radius: "sm",
+    height: 24,
+    style: {
+      backgroundColor: addedMembers.includes(member.id) ? "#f00f00" : "#39758D",
+      // Conditional background color
+      color: "#fff",
+      fontWeight: 400,
+      padding: "5px 0px",
+      width: "100px"
+    }
+    // disabled={addedMembers.includes(member.id)}
+    ,
+    size: "sm",
+    marginLeft: 2,
+    onClick: () => (addedMembers.includes(member.id) ? handleRemoveButtonClick : handleAssignButtonClick)(member)
+  }, addedMembers.includes(member.id) ? 'Remove' : 'Add'))), filteredMembers && filteredMembers.length === 0 && isEmailValid && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "ml-single flex items-center border-b border-solid border-[#C2D4DC] py-3 justify-between"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_23__.Avatar, {
+    size: 32,
     radius: 32
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "mls-ne ml-3 w-[80%]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Text, {
+    className: "mls-ne ml-2 w-full"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+    lineClamp: 1,
     size: "sm",
-    fw: 700,
+    fw: 100,
     c: "#202020"
-  }, member.name)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("button", {
-    onClick: () => handleAssignButtonClick(member),
-    className: `rounded-[5px] h-[32px] px-2 py-0 w-[100px] ml-2 ${selectedMembers.some(selectedMember => parseInt(selectedMember.id) === parseInt(member.id)) ? 'bg-[#f00]' : 'bg-[#39758D]'}`
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Text, {
+  }, searchValue)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
+    radius: "sm",
+    height: 24,
+    style: {
+      backgroundColor: "#39758D",
+      // Conditional background color
+      color: "#fff",
+      fontWeight: 400,
+      padding: "5px",
+      minWidth: "110px"
+    },
     size: "sm",
-    fw: 400,
-    c: "#fff"
-  }, selectedMembers.some(selectedMember => parseInt(selectedMember.id) === parseInt(member.id)) ? 'Remove' : 'Assign')))))))))))));
+    marginLeft: 2,
+    onClick: () => handleSendInvite(searchValue)
+  }, "Send Invite")))))))))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (ProjectDetailsNav);
 
@@ -8515,7 +8756,7 @@ const HighlightedText = ({
   className
 }) => {
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-    className: classnames__WEBPACK_IMPORTED_MODULE_1___default()('font-semibold text-gray-900 dark:text-gray-100 whitespace-pre-line', className)
+    className: classnames__WEBPACK_IMPORTED_MODULE_1___default()('gray-900 dark:text-gray-100 whitespace-pre-line', className)
   }, children);
 };
 const ActivityLogs = ({
@@ -8527,70 +8768,74 @@ const ActivityLogs = ({
       key: attrIndex
     }, activity?.subject_name === 'task' && activity?.event === 'created' && attrName === 'name' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
-    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName]), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, " is created. ")), activity?.subject_name === 'task' && activity?.subject_type === 'comment' && attrName === 'comment' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
+      className: ""
+    }, " Created the task "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.attributes[attrName], "\"")), activity?.subject_name === 'task' && activity?.subject_type === 'comment' && attrName === 'comment' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName])), activity?.subject_name === 'task' && activity?.event === 'updated' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, attrName === 'name' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
+      className: ""
+    }, "Has changed the task title from "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.old[attrName], "\""), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
       className: "mx-1"
-    }, "Title change: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.old[attrName]), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, " to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName])), attrName === 'description' && (activity.properties.old[attrName] ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    }, " to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.attributes[attrName], "\"")), attrName === 'description' && (activity.properties.old[attrName] ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, "Description change: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.old[attrName]), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, " to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName])) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+      className: ""
+    }, "Has updated the description to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.attributes[attrName], "\"")) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, "Description add: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName]))), attrName === 'assignedTo_name' && (activity.properties.old[attrName] ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+      className: ""
+    }, "Has added the description "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.attributes[attrName], "\""))), attrName === 'assignedTo_name' && (activity.properties.old[attrName] ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
+      className: ""
+    }, "Assigned the task from "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.old[attrName], "\""), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
       className: "mx-1"
-    }, "Assigned: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.old[attrName]), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, " to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName])) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    }, " to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.attributes[attrName], "\"")) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, "Assigned: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName]))), attrName === 'priority_name' && (activity.properties.old[attrName] ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+      className: ""
+    }, "Assigned the task to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName]))), attrName === 'priority_name' && (activity.properties.old[attrName] ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
+      className: ""
+    }, "Has changed the priority for this task from "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.old[attrName], "\""), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
       className: "mx-1"
-    }, "Priority: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.old[attrName]), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, " to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName])) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    }, " to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.attributes[attrName], "\"")) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, "Priority: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName]))), attrName === 'start_date' && (activity.properties.old[attrName] ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+      className: ""
+    }, "Has set priority for this task to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.attributes[attrName], "\""))), attrName === 'start_date' && (activity.properties.old[attrName] ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
+      className: ""
     }, "Start date change: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.old[attrName]), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
       className: "mx-1"
     }, " to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName])) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, "Start date: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName]))), attrName === 'end_date' && (activity.properties.old[attrName] ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+      className: ""
+    }, "Start date: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName]))), attrName === 'end_date' && (activity.properties.attributes[attrName] ? activity.properties.old[attrName] ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
+      className: ""
+    }, "Has changed the due date from "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.old[attrName], "\""), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
       className: "mx-1"
-    }, "Due date change: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.old[attrName]), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, " to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName])) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    }, " to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.attributes[attrName], "\"")) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, "Due date: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName]))), attrName === 'section_name' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+      className: ""
+    }, "Has set due date for this task to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.attributes[attrName], "\"")) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-1"
     }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
+      className: ""
+    }, "Has cleared the due date "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.old[attrName], "\""), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
       className: "mx-1"
+    }, "for this task"))), attrName === 'section_name' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+      className: "mt-1"
+    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
+      className: ""
     }, "Section change: "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.old[attrName]), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
       className: "mx-1"
     }, " to "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName]))), activity?.subject_name === 'task' && activity?.event === 'removed' && attrName === 'name' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
@@ -8599,13 +8844,13 @@ const ActivityLogs = ({
       className: "mx-1"
     }, " is deleted. "))), activity?.subject_name === 'task' && activity?.event === 'attachment-removed' && attrName === 'name' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-4"
-    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName]), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, " is deleted. "))), activity?.subject_name === 'task' && activity?.event === 'attachment-upload' && attrName === 'name' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
+      className: ""
+    }, "Has deleted the attachment "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.attributes[attrName], "\""))), activity?.subject_name === 'task' && activity?.event === 'attachment-upload' && attrName === 'name' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
       className: "mt-4"
-    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, activity.properties.attributes[attrName]), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
-      className: "mx-1"
-    }, " is upload. "))));
+    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
+      className: ""
+    }, "Has added the attachment "), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(HighlightedText, null, "\"", activity.properties.attributes[attrName], "\""))));
   });
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (ActivityLogs);
@@ -8686,8 +8931,8 @@ const AddTaskDrawer = ({
     loggedUserId
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_12__.useSelector)(state => state.auth.user);
   const {
-    success
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_12__.useSelector)(state => state.settings.task);
+    loggedInUser
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_12__.useSelector)(state => state.auth.session);
   const icon = (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__["default"], {
     style: {
       width: (0,_mantine_core__WEBPACK_IMPORTED_MODULE_15__.rem)(18),
@@ -8717,6 +8962,8 @@ const AddTaskDrawer = ({
     if (date) {
       var formatedDate = dayjs__WEBPACK_IMPORTED_MODULE_9___default()(date).format('YYYY-MM-DD');
       setSelectedDueDate(formatedDate);
+    } else {
+      setSelectedDueDate(null);
     }
   };
   const handlePriority = priority => {
@@ -8730,7 +8977,7 @@ const AddTaskDrawer = ({
     files.forEach((file, index) => {
       formData.append(`attachments${index}`, file);
     });
-    formData.append('user_id', loggedUserId);
+    formData.append('user_id', loggedInUser ? loggedInUser.loggedUserId : loggedUserId);
     dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_7__.uploadAttachments)({
       data: formData
     })).then(response => {
@@ -8773,7 +9020,7 @@ const AddTaskDrawer = ({
       name: taskName,
       project_id: projectId,
       task_section_id: taskSectionId,
-      created_by: loggedUserId,
+      created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
       assigned_to: selectedMember,
       members: selectedFollower,
       start_date: selectedDueDate,
@@ -8786,28 +9033,30 @@ const AddTaskDrawer = ({
       attachments: attachments
     };
     if (newTaskData.name !== '' && newTaskData.name !== 'Type task name here') {
-      dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_7__.createTask)(newTaskData));
-      setTaskName('Type task name here');
-      setTaskDescription('');
-      setSelectedMember(null);
-      setSelectedTags(null);
-      setSelectedPriority(null);
-      setSelectedDueDate(null);
-      setSelectedFollower(null);
-      setAttachments([]);
-      if (success) {
-        _mantine_notifications__WEBPACK_IMPORTED_MODULE_17__.notifications.show({
-          color: theme.primaryColor,
-          title: success,
-          icon: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_18__["default"], null),
-          autoClose: 5000
-        });
-        const timer = setTimeout(() => {
-          dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_7__.removeSuccessMessage)());
-        }, 5000); // Clear notification after 3 seconds
+      dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_7__.createTask)(newTaskData)).then(response => {
+        if (response.payload.status === 200) {
+          setTaskName('Type task name here');
+          setTaskDescription('');
+          setSelectedMember(null);
+          setSelectedTags(null);
+          setSelectedPriority(null);
+          setSelectedDueDate(null);
+          setSelectedFollower(null);
+          setAttachments([]);
+          closeTaskCreateDrawer();
+          _mantine_notifications__WEBPACK_IMPORTED_MODULE_17__.notifications.show({
+            color: theme.primaryColor,
+            title: response.payload.message || 'Task created successfully',
+            icon: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_18__["default"], null),
+            autoClose: 5000
+          });
+          const timer = setTimeout(() => {
+            dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_7__.removeSuccessMessage)());
+          }, 5000); // Clear notification after 3 seconds
 
-        return () => clearTimeout(timer);
-      }
+          return () => clearTimeout(timer);
+        }
+      });
     }
   };
   const handleAddTaskDrawerOpen = () => {
@@ -8855,8 +9104,6 @@ const AddTaskDrawer = ({
     onKeyDown: e => {
       if (e.key === "Enter") {
         handleTaskCreation();
-        // setTaskName('Type task name here');
-        closeTaskCreateDrawer();
       }
     }
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
@@ -9069,6 +9316,9 @@ const AddTaskDrawerFromCalendar = ({
     loggedUserId
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_10__.useSelector)(state => state.auth.user);
   const {
+    loggedInUser
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_10__.useSelector)(state => state.auth.session);
+  const {
     success
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_10__.useSelector)(state => state.settings.task);
   const icon = (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__["default"], {
@@ -9125,7 +9375,7 @@ const AddTaskDrawerFromCalendar = ({
       name: taskName,
       project_id: projectId,
       task_section_id: taskSectionId,
-      created_by: loggedUserId,
+      created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
       assigned_to: selectedMember,
       members: selectedFollower,
       start_date: selectedDueDate,
@@ -9456,11 +9706,16 @@ const EditTaskDrawer = ({
     task
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_14__.useSelector)(state => state.settings.task);
   const [selectedValue, setSelectedValue] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)('Comments & Activities');
+  const [visible, setVisible] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     if (taskId) {
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_8__.fetchTask)({
         id: taskId
-      }));
+      })).then(response => {
+        if (response.payload && response.payload.status === 200) {
+          setVisible(false);
+        }
+      });
     }
   }, [taskId, selectedValue]);
   const contentEditableRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)('');
@@ -9481,7 +9736,6 @@ const EditTaskDrawer = ({
   const [selectedPriority, setSelectedPriority] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
   const [attachments, setAttachments] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(task.attachments && task.attachments.length > 0 ? task.attachments : []);
   const [subTask, setSubTask] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(task.children && task.children.length > 0 ? task.children : []);
-  const [visible, setVisible] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
   const handleAssignButtonClick = member => {
     setSelectedMember(member);
   };
@@ -9511,7 +9765,7 @@ const EditTaskDrawer = ({
       formData.append(`attachments${index}`, file);
     });
     formData.append('task_id', task.id);
-    formData.append('user_id', loggedUserId);
+    formData.append('user_id', loggedInUser ? loggedInUser.loggedUserId : loggedUserId);
     dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_8__.createAttachment)({
       data: formData
     })).then(response => {
@@ -9533,9 +9787,10 @@ const EditTaskDrawer = ({
     }
     setAttachments(task.attachments && task.attachments.length > 0 ? task.attachments : []);
     setSubTask(task.children && task.children.length > 0 ? task.children : []);
-    setTimeout(() => {
-      setVisible(false);
-    }, 1000);
+
+    /*setTimeout(() => {
+        setVisible(false);
+    }, 1000);*/
   }, [taskEditDrawerOpen]);
   const [commentDropdownOpened, {
     toggle
@@ -9551,7 +9806,7 @@ const EditTaskDrawer = ({
         id: task.id,
         data: {
           name: taskEditableName,
-          'updated_by': loggedUserId
+          'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
       }));
       setTaskName(taskEditableName);
@@ -9561,11 +9816,17 @@ const EditTaskDrawer = ({
       }));
     }
   };
+  const handleFocusSubtask = () => {
+    // Clear the task name the default placeholder
+    if (taskName === 'Type task name here') {
+      setTaskName('');
+    }
+  };
   const handleTaskDescription = description => {
     if (description && description !== '' && description !== task.description && (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_12__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit'])) {
       const updatedTask = {
         description: description,
-        updated_by: loggedUserId
+        updated_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
       };
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_8__.editTask)({
         id: task.id,
@@ -9581,7 +9842,7 @@ const EditTaskDrawer = ({
   const handleAttachmentDelete = id => {
     const deletedTaskAttachment = {
       task_id: task && task.id,
-      deleted_by: loggedUserId
+      deleted_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
     };
     dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_8__.deleteAttachment)({
       id: id,
@@ -9644,7 +9905,7 @@ const EditTaskDrawer = ({
           dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_8__.deleteTask)({
             id: taskId,
             data: {
-              'deleted_by': loggedUserId,
+              'deleted_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
               'type': taskType
             }
           }));
@@ -9686,6 +9947,7 @@ const EditTaskDrawer = ({
     onChange: e => setTaskName(e.target.value),
     onBlur: handlerBlur // Handle changes
     ,
+    onFocus: handleFocusSubtask,
     html: taskName,
     className: "inline-block w-full text-[#4d4d4d] font-bold text-[16px] !min-h-[36px]"
   }) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_23__.Text, {
@@ -9952,13 +10214,10 @@ const dbdateFormate = date => {
   const [month, day, year] = formattedDate.split(' ');
   return `${day}-${month}-${year}`;
 };
-const inputDate = new Date("2024-02-05");
-const options = {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric'
-};
-const formattedDate = inputDate.toLocaleDateString('en-US', options);
+
+// const inputDate = new Date("2024-02-05");
+// const options = { day: 'numeric', month: 'short', year: 'numeric' };
+// const formattedDate = inputDate.toLocaleDateString('en-US', options);
 
 // console.log(formattedDate); // Output: 5-Feb-2024
 
@@ -9967,7 +10226,7 @@ const DueDate = ({
   dueDate
 }) => {
   const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useDispatch)();
-  const [selectedDate, setSelectedDate] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
+  const [selectedDates, setSelectedDates] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
   const [calendarVisible, setCalendarVisible] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
   const calendarRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
@@ -9976,10 +10235,29 @@ const DueDate = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // const handleSelect = (date) => {
+  //   editHandler(date);
+  //   setSelectedDates(date);
+  //   setCalendarVisible(false); // Hide calendar after selecting a date 
+
+  // };
+
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (dueDate) {
+      setSelectedDates([new Date(dueDate)]);
+    }
+  }, [dueDate]);
   const handleSelect = date => {
-    editHandler(date);
-    setSelectedDate(date);
-    setCalendarVisible(false); // Hide calendar after selecting a date 
+    const isSelected = selectedDates.some(selectedDate => dayjs__WEBPACK_IMPORTED_MODULE_3___default()(date).isSame(selectedDate, 'date'));
+    if (isSelected) {
+      setSelectedDates([]);
+      editHandler(null);
+    } else {
+      setSelectedDates([date]);
+      editHandler(date);
+    }
+    setCalendarVisible(false);
   };
   const handleClickOutside = event => {
     if (calendarRef.current && !calendarRef.current.contains(event.target)) {
@@ -9995,9 +10273,9 @@ const DueDate = ({
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "due-select-btn cursor-pointer inline-block",
     onClick: toggleCalendar
-  }, selectedDate ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, selectedDates.length > 0 ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "due-selected text-[#4d4d4d] font-semibold text-[14px]"
-  }, formatDate(selectedDate), " ") : dueDate === null ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, selectedDates.length > 0 && formatDate(selectedDates[0]), " ") : dueDate === null ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "h-[32px] w-[32px] border border-dashed border-[#4d4d4d] rounded-full p-1"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_5__["default"], {
     color: "#4d4d4d",
@@ -10010,6 +10288,7 @@ const DueDate = ({
     onClick: handleCalendarClick
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_dates__WEBPACK_IMPORTED_MODULE_6__.Calendar, {
     getDayProps: date => ({
+      selected: selectedDates.some(selectedDate => dayjs__WEBPACK_IMPORTED_MODULE_3___default()(date).isSame(selectedDate, 'date')),
       onClick: () => handleSelect(date)
     })
   })));
@@ -10220,6 +10499,7 @@ const MainTask = ({
     className: `assign-to flex items-center w-full !py-0`,
     span: 2.5
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: `pl-1`,
     onClick: e => e.stopPropagation()
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_TaskAssignTo__WEBPACK_IMPORTED_MODULE_2__["default"], {
     taskId: task.id,
@@ -10345,7 +10625,7 @@ const MyZenButton = ({
         const submitData = {
           project_id: task && task.project_id,
           task_id: task ? task.id : taskId,
-          user_id: loggedUserId,
+          user_id: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
           name: task && task.name,
           slug: task && task.slug
         };
@@ -10636,11 +10916,8 @@ const SubtaskContent = ({
     taskId: subtask && subtask.id,
     taskTags: subtask && subtask.tags ? subtask.tags : null
   }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Grid.Col, {
-    className: `w-full flex items-center justify-end`,
-    span: 1,
-    style: {
-      paddingRight: '23px'
-    }
+    className: `w-full flex items-center justify-end !pr-0`,
+    span: 1
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_TaskDelete__WEBPACK_IMPORTED_MODULE_8__["default"], {
     task: subtask,
     taskId: subtask && subtask.id,
@@ -10670,11 +10947,12 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconUserCircle.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconUserCircle.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Popover/Popover.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../../../ui/permissions */ "./src/components/ui/permissions.jsx");
@@ -10752,39 +11030,47 @@ const TaskAssignTo = ({
         id: taskId,
         data: {
           assigned_to: member,
-          'updated_by': loggedUserId
+          'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
       }));
     }
   };
   const bgColor = (0,_ui_useTwColorByName__WEBPACK_IMPORTED_MODULE_4__["default"])();
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+
+  // Check permission
+  const hasAccess = (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Popover, {
+    opened: showMembersList && hasAccess,
+    onClose: () => setShowMembersList(false),
+    width: 348,
+    position: "bottom",
+    withArrow: true,
+    shadow: "md"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     onClick: handleAssignedToButtonClick,
     className: "assignto-btn"
   }, selectedMember ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex items-center gap-2"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tooltip, {
-    label: `Assigned`,
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tooltip, {
+    label: "Assigned",
     position: "top",
     withArrow: true
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Avatar, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Avatar, {
     color: `${bgColor(selectedMember.name)["font-color"]}`,
     bg: `${bgColor(selectedMember.name)["bg-color"]}`,
     size: 32,
     radius: 32,
-    src: selectedMember.avatar ? selectedMember.avatar : null
-  }, selectedMember.avatar ? '' : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+    src: selectedMember.avatar || null
+  }, !selectedMember.avatar && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     style: {
       lineHeight: "14px"
     },
     size: "xs"
-  }, (0,_ui_acronym__WEBPACK_IMPORTED_MODULE_3__["default"])(selectedMember.name)))), !(view === 'cardView') &&
-  // <p className="ml-2">{selectedMember.name}</p>
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tooltip, {
+  }, (0,_ui_acronym__WEBPACK_IMPORTED_MODULE_3__["default"])(selectedMember.name)))), view !== "cardView" && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tooltip, {
     label: selectedMember.name,
     position: "top",
     withArrow: true
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     lineClamp: 1,
     size: "sm",
     fw: 500,
@@ -10793,29 +11079,28 @@ const TaskAssignTo = ({
   }, selectedMember.name))) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex items-center"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "h-[30x] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tooltip, {
-    label: `Assign to`,
+    className: "h-[30px] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Tooltip, {
+    label: "Assign to",
     position: "top",
     withArrow: true
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_10__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_11__["default"], {
     color: "#4d4d4d",
-    size: "20",
+    size: 20,
     stroke: 1.25
-  }))))), showMembersList && (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    ref: membersListRef,
-    className: "shadow-lg members-lists absolute w-[368px] bg-white mt-1 border border-solid border-[#ffffff] rounded-lg z-[9]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.ScrollArea, {
+  })))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Popover.Dropdown, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    ref: membersListRef
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.ScrollArea, {
     h: 272
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "p-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
-  }, boardMembers && boardMembers.length > 0 ? boardMembers.length : 0, " people available"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, boardMembers?.length || 0, " people available"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mt-3"
-  }, boardMembers && boardMembers.length > 0 && boardMembers.map(member => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, boardMembers?.map(member => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     key: member.id,
     className: "ml-single flex items-center border-b border-solid border-[#C2D4DC] py-1 justify-between"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_UserAvatarSingle__WEBPACK_IMPORTED_MODULE_5__["default"], {
@@ -10823,18 +11108,18 @@ const TaskAssignTo = ({
     size: 32
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mls-ne ml-3 w-[80%]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
   }, member.name)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("button", {
     onClick: () => handleAssignButtonClick(member),
     className: "rounded-[5px] h-[32px] px-1 py-0 w-[100px] ml-2 bg-[#39758D]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 400,
     c: "#fff"
-  }, selectedMember && selectedMember.id === member.id ? 'Assigned' : 'Assign')))))))));
+  }, selectedMember?.id === member.id ? "Assigned" : "Assign"))))))))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskAssignTo);
 
@@ -10862,6 +11147,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! react-beautiful-dnd */ "./node_modules/react-beautiful-dnd/dist/react-beautiful-dnd.esm.js");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Accordion/Accordion.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../../../../ui/permissions */ "./src/components/ui/permissions.jsx");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPlus.mjs");
@@ -10907,13 +11194,31 @@ const TaskContent = ({
   }, [taskData]);
   const addSubtask = () => {
     setSubtasks([...subtasks, subtasks.length]);
+
+    //check if childColumns && childColumns[taskData.slug] name is 'Type task name here' using some
+    if (childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].some(subtask => subtask.name === 'Type task name here')) {
+      // /how to get the index of the first element that matches the condition
+      const index = childColumns[taskData.slug].findIndex(subtask => subtask.name === 'Type task name here');
+      //index element tag editable
+      const subtask = childColumns[taskData.slug][index];
+
+      //check if subtask is not undefined
+      if (subtask !== undefined) {
+        //focus on the subtask
+        const subtaskElement = document.querySelector(`[data-id="${subtask.id}"]`);
+        if (subtaskElement) {
+          subtaskElement.focus();
+        }
+      }
+      return false;
+    }
     const newTaskData = {
       name: 'Type task name here',
       parent: taskData,
       task_section_id: taskData.task_section_id,
       project_id: taskData.project_id,
       type: 'sub-task',
-      created_by: loggedUserId,
+      created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
       status: 'ACTIVE'
     };
     dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_4__.createTask)(newTaskData));
@@ -10944,7 +11249,7 @@ const TaskContent = ({
     }),
     classNames: {
       control: '!p-0 !w-auto',
-      content: '!pr-0 !pb-3 drop-shadow-md',
+      content: '!pl-[30px] !pr-0 !pb-2',
       label: '!py-0 !pt-1',
       chevron: '!mx-0 !ml-1'
       // chevron: classes.chevron
@@ -10954,6 +11259,8 @@ const TaskContent = ({
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex w-full items-center py-1"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: `min-w-[19px] min-h-[30px]`
+  }, childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Accordion.Control, null)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex w-full items-center"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_MainTask__WEBPACK_IMPORTED_MODULE_3__["default"], {
     addSubtask: addSubtask,
@@ -10979,7 +11286,7 @@ const TaskContent = ({
   })))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_TaskDelete__WEBPACK_IMPORTED_MODULE_6__["default"], {
     task: taskData,
     taskId: taskData && taskData.id
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Accordion.Control, null))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Accordion.Panel, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_14__.Droppable, {
+  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Accordion.Panel, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_14__.Droppable, {
     key: taskData.id,
     droppableId: taskData.slug,
     type: "SUBTASK"
@@ -10987,7 +11294,7 @@ const TaskContent = ({
     style: {
       transition: 'background-color 0.3s ease'
     },
-    className: `w-full h-full min-h-[20px] ${childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 ? 'py-1 bg-[#F0F8FF] rounded-lg' : ''}`,
+    className: `w-full h-full min-h-[20px] !shadow-md mb-2 ${childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 ? 'py-1 bg-[#F0F8FF] rounded-lg' : ''}`,
     ref: dropProvided.innerRef,
     ...dropProvided.droppableProps
   }, childColumns && childColumns[taskData.slug] && childColumns[taskData.slug].length > 0 && childColumns[taskData.slug].map((subTask, subtaskIndex) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_14__.Draggable, {
@@ -11004,7 +11311,22 @@ const TaskContent = ({
     taskData: taskData,
     key: subtaskIndex,
     subtask: subTask
-  })))), dropProvided.placeholder)))))));
+  })))), dropProvided.placeholder)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Flex, {
+    justify: "center",
+    align: "center",
+    direction: "row"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Button, {
+    onClick: () => {
+      toggleSection(taskData.slug);
+      addSubtask();
+    },
+    variant: "filled",
+    color: `#ED7D31`,
+    size: `xs`
+  }, " ", (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__["default"], {
+    size: `18`,
+    stroke: 1.5
+  }), " Add Sub Task")))))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskContent);
 
@@ -11098,7 +11420,7 @@ const TaskDelete = ({
           dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.deleteTask)({
             id: taskId,
             data: {
-              'deleted_by': loggedUserId,
+              'deleted_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
               'type': taskType
             }
           })).then(response => {
@@ -11192,22 +11514,17 @@ const dbdateFormate = date => {
   const [month, day, year] = formattedDate.split(' ');
   return `${day}-${month}-${year}`;
 };
-const inputDate = new Date("2024-02-05");
-const options = {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric'
-};
-const formattedDate = inputDate.toLocaleDateString('en-US', options);
 
-// console.log(formattedDate); // Output: 5-Feb-2024
+// const inputDate = new Date("2024-02-05");
+// const options = { day: 'numeric', month: 'short', year: 'numeric' };
+// const formattedDate = inputDate.toLocaleDateString('en-US', options);
 
 const TaskDueDate = ({
   taskId,
   dueDate
 }) => {
   const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_5__.useDispatch)();
-  const [selectedDate, setSelectedDate] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
+  const [selectedDates, setSelectedDates] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
   const [calendarVisible, setCalendarVisible] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
   const calendarRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
   const {
@@ -11222,20 +11539,37 @@ const TaskDueDate = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Initialize selectedDates with dueDate
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (dueDate) {
+      setSelectedDates([new Date(dueDate)]);
+    }
+  }, [dueDate]);
   const handleSelect = date => {
-    if (taskId && taskId !== 'undefined' && date) {
-      var formatedDate = dayjs__WEBPACK_IMPORTED_MODULE_3___default()(date).format('YYYY-MM-DD');
+    const isSelected = selectedDates.some(selectedDate => dayjs__WEBPACK_IMPORTED_MODULE_3___default()(date).isSame(selectedDate, 'date'));
+
+    // Toggle selection
+    if (isSelected) {
+      setSelectedDates([]);
+    } else {
+      setSelectedDates([date]);
+    }
+
+    // Update the task's due date in the store
+    if (taskId && taskId !== 'undefined') {
+      const formattedDate = isSelected ? null : dayjs__WEBPACK_IMPORTED_MODULE_3___default()(date).format('YYYY-MM-DD');
+      console.log(formattedDate);
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_2__.editTask)({
         id: taskId,
         data: {
-          start_date: formatedDate,
-          end_date: formatedDate,
-          'updated_by': loggedUserId
+          start_date: formattedDate,
+          end_date: formattedDate,
+          'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
       }));
     }
-    setSelectedDate(date);
-    setCalendarVisible(false); // Hide calendar after selecting a date 
+    setCalendarVisible(false);
   };
   const handleClickOutside = event => {
     if (calendarRef.current && !calendarRef.current.contains(event.target)) {
@@ -11254,10 +11588,10 @@ const TaskDueDate = ({
     label: `Due Date`,
     position: "top",
     withArrow: true
-  }, selectedDate ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, selectedDates.length > 0 ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "due-selected text-[#202020] font-medium text-[14px] cursor-pointer",
     onClick: toggleCalendar
-  }, formatDate(selectedDate), " ") : dueDate === null ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, selectedDates.length > 0 && formatDate(selectedDates[0]), " ") : dueDate === null ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "h-[30px] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer",
     onClick: toggleCalendar
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__["default"], {
@@ -11273,6 +11607,7 @@ const TaskDueDate = ({
     onClick: handleCalendarClick
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_dates__WEBPACK_IMPORTED_MODULE_8__.Calendar, {
     getDayProps: date => ({
+      selected: selectedDates.some(selectedDate => dayjs__WEBPACK_IMPORTED_MODULE_3___default()(date).isSame(selectedDate, 'date')),
       onClick: () => handleSelect(date)
     })
   })));
@@ -11294,10 +11629,11 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconUsers.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconUsers.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Popover/Popover.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _ui_UsersAvatarGroup__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../../../ui/UsersAvatarGroup */ "./src/components/ui/UsersAvatarGroup.jsx");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
@@ -11365,7 +11701,7 @@ const TaskFollower = ({
         id: taskId,
         data: {
           members: updatedMembers,
-          'updated_by': loggedUserId
+          'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
       }));
     }
@@ -11374,12 +11710,22 @@ const TaskFollower = ({
     setSelectedMembers(followers && followers.length > 0 ? followers : []);
   }, [followers]);
 
+  // Check permission
+  const hasAccess = (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']);
+
   // const handleRemoveButtonClick = (selectedMember) => {
   //     setSelectedMembers(selectedMembers.filter((member) => member.id !== selectedMember.id));
   // };
 
   const remainingMembersTooltip = selectedMembers.slice(4).map(member => member.name).join(', ');
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Popover, {
+    opened: showMembersList && hasAccess,
+    onClose: () => setShowMembersList(false),
+    width: 348,
+    position: "bottom",
+    withArrow: true,
+    shadow: "md"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "assignto-btn"
   }, selectedMembers && selectedMembers.length > 0 ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     onClick: handleAssignedToButtonClick,
@@ -11388,25 +11734,24 @@ const TaskFollower = ({
     users: selectedMembers,
     size: 36,
     maxCount: 3
-  })) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tooltip, {
+  })) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Tooltip, {
     label: `Follow`,
     position: "top",
     withArrow: true
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     onClick: handleAssignedToButtonClick,
     className: "h-[30px] w-[30px] border border-dashed border-[#4d4d4d] rounded-full p-1 cursor-pointer"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__["default"], {
     color: "#4d4d4d",
     size: "20",
     stroke: 1.25
-  })))), showMembersList && (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    ref: membersListRef,
-    className: "shadow-lg z-[9] members-lists absolute w-[368px] bg-white mt-1 border border-solid border-[#ffffff] rounded-lg"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.ScrollArea, {
+  }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Popover.Dropdown, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    ref: membersListRef
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.ScrollArea, {
     h: 272
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "p-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
@@ -11420,18 +11765,18 @@ const TaskFollower = ({
     size: 32
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mls-ne ml-3 w-[80%]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
   }, member.name)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("button", {
     onClick: () => handleAssignButtonClick(member),
     className: `rounded-[5px] h-[32px] px-2 py-0 w-[100px] ml-2 ${selectedMembers.some(selectedMember => parseInt(selectedMember.id) === parseInt(member.id)) ? 'bg-[#f00]' : 'bg-[#39758D]'}`
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     size: "sm",
     fw: 400,
     c: "#fff"
-  }, selectedMembers.some(selectedMember => parseInt(selectedMember.id) === parseInt(member.id)) ? 'Remove' : 'Assign')))))))));
+  }, selectedMembers.some(selectedMember => parseInt(selectedMember.id) === parseInt(member.id)) ? 'Remove' : 'Assign')))))))))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskFollower);
 
@@ -11458,7 +11803,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/MantineProvider/MantineThemeProvider/MantineThemeProvider.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Pill/Pill.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../../../ui/permissions */ "./src/components/ui/permissions.jsx");
 /* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
 /* harmony import */ var _store_base_commonSlice__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../../../../store/base/commonSlice */ "./src/store/base/commonSlice.js");
@@ -11502,13 +11848,17 @@ const TaskName = ({
   }, [task]);
   const [taskName, setTaskName] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(defaultTaskName);
   const [isFocused, setIsFocused] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(inputFieldIsFocused || false);
+  const [openedTooltip, setOpenedTooltip] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
+
   // const [isTaskNameFull, setIsTaskNameFull] = useState(false);
 
   const handleFocus = () => {
     setIsFocused(true);
+    setOpenedTooltip(false);
   };
   const handleBlur = () => {
     setIsFocused(false);
+    setOpenedTooltip(false);
     dispatch((0,_store_base_commonSlice__WEBPACK_IMPORTED_MODULE_4__.updateInputFieldFocus)(false));
   };
   const handleChange = e => {
@@ -11516,7 +11866,6 @@ const TaskName = ({
   };
   const handlerBlur = () => {
     const taskEditableName = contentEditableRef.current.innerHTML;
-    console.log('Task Editable Name:', taskEditableName);
     if (taskId && taskId !== 'undefined') {
       if (taskEditableName === 'Type task name here' || taskEditableName === '') {
         // Clear the subtask name and show placeholder
@@ -11526,7 +11875,7 @@ const TaskName = ({
           id: taskId,
           data: {
             name: taskEditableName,
-            'updated_by': loggedUserId
+            'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
           }
         })).then(response => {
           if (response.payload && response.payload.status === 200) {
@@ -11560,6 +11909,7 @@ const TaskName = ({
   };
   const handleFocusSubtask = () => {
     setIsFocused(true);
+    setOpenedTooltip(false);
 
     // Clear the task name and show placeholder if it matches the default placeholder
     if (taskName === 'Type task name here') {
@@ -11567,6 +11917,14 @@ const TaskName = ({
     }
   };
   const [isShown, setIsShown] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (isSubtask && contentEditableRef.current) {
+      setTaskName('');
+      setTimeout(() => {
+        contentEditableRef.current.focus();
+      }, 0);
+    }
+  }, [isSubtask]);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     setTaskName(defaultTaskName);
   }, [nameOfTask]);
@@ -11579,8 +11937,12 @@ const TaskName = ({
     onBlur: handleBlur,
     onMouseEnter: () => {
       setIsShown(true);
+      setOpenedTooltip(true);
     },
-    onMouseLeave: () => setIsShown(false)
+    onMouseLeave: () => {
+      setIsShown(false);
+      setOpenedTooltip(false);
+    }
   }, !(view === 'cardView') && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "!min-w-[18px] w-[18px]"
   }, (isShown || isFocused) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_9__["default"], {
@@ -11588,12 +11950,22 @@ const TaskName = ({
     stroke: 1.25
   }))), !isSubtask && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Pill, {
     className: "!bg-[#ED7D31] !text-white !px-2"
-  }, childColumns && childColumns[task.slug] && childColumns[task.slug].length > 0 ? childColumns[task.slug].length : 0)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, childColumns && childColumns[task.slug] && childColumns[task.slug].length > 0 ? childColumns[task.slug].length : 0)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Tooltip, {
+    arrowPosition: "side",
+    arrowOffset: 24,
+    arrowSize: 4,
+    label: defaultTaskName,
+    position: "top-start",
+    withArrow: true,
+    opened: openedTooltip && isShown
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: `${isFocused ? 'border border-solid border-[#bababa] rounded-md min-w-[150px] w-full' : 'w-full'} 
               ${isSubtask ? 'pl-3.5' : ''}`
-  }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)((react_contenteditable__WEBPACK_IMPORTED_MODULE_1___default())
-  // disabled={false}
-  , {
+  }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)((react_contenteditable__WEBPACK_IMPORTED_MODULE_1___default()), {
+    key: task.id,
+    "data-id": task.id
+    // disabled={false}
+    ,
     innerRef: contentEditableRef,
     html: isFocused ? taskName : previewText // Inner HTML content
     ,
@@ -11611,11 +11983,11 @@ const TaskName = ({
       'lineHeight': 'normal'
     },
     lineClamp: 1
-  }) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+  }) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Text, {
     lineClamp: 1,
     size: "sm",
     className: "text-[#000000] font-medium text-[14px] px-0 !outline-none pr-1"
-  }, "avijit"))));
+  }, taskName)))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskName);
 
@@ -11637,9 +12009,10 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCheck.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconMinus.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconEdit.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconArrowsMove.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconEdit.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
 /* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router/dist/index.js");
@@ -11649,12 +12022,14 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/Box/Box.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/Box/Box.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
 /* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
 /* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+/* harmony import */ var react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! react-beautiful-dnd */ "./node_modules/react-beautiful-dnd/dist/react-beautiful-dnd.esm.js");
+
 
 
 
@@ -11699,9 +12074,19 @@ const TaskPriority = ({
         setShowPriorityEditInput(false);
       }
     };
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') {
+        setShowPriorityList(false);
+        setShowPriorityAddInput(false);
+        setShowPriorityEditInput(false);
+        setNewPriority('');
+      }
+    };
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
     };
   }, []);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
@@ -11724,7 +12109,7 @@ const TaskPriority = ({
         name: newPriority,
         project_id: projectId,
         color_code: newPriorityColor,
-        created_by: loggedUserId
+        created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
       };
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.createProjectPriority)(submitData));
       setNewPriority('');
@@ -11732,11 +12117,13 @@ const TaskPriority = ({
     setShowPriorityAddInput(false);
   };
   const handleCreatePriority = () => {
+    setNewPriority('');
     setShowPriorityAddInput(true);
   };
   const [priorityId, setPriorityId] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
   // priorityEditHandler
   const priorityEditHandler = priority => {
+    setShowPriorityAddInput(false);
     if (priority && priority.id) {
       setNewPriority(priority.name);
       setNewPriorityColor(priority.color_code);
@@ -11751,7 +12138,7 @@ const TaskPriority = ({
         name: newPriority,
         project_id: projectId,
         color_code: newPriorityColor,
-        created_by: loggedUserId
+        created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
       };
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.createProjectPriority)(submitData)).then(response => {
         if (response.payload && response.payload.data) {
@@ -11785,7 +12172,7 @@ const TaskPriority = ({
         id: taskId,
         data: {
           priority: priority,
-          'updated_by': loggedUserId
+          'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
       }));
     }
@@ -11798,13 +12185,13 @@ const TaskPriority = ({
   const priorityDeleteHandler = () => _mantine_modals__WEBPACK_IMPORTED_MODULE_8__.modals.openConfirmModal({
     title: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Title, {
       order: 5
-    }, "Are you sure this priority delete?"),
+    }, "You are parmanently deleting this priority"),
     size: 'sm',
     radius: 'md',
     withCloseButton: false,
     children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
       size: "sm"
-    }, "This action is so important that you are required to confirm it with a modal. Please click one of these buttons to proceed."),
+    }, "Are you sure you want to delete this priority?"),
     labels: {
       confirm: 'Confirm',
       cancel: 'Cancel'
@@ -11857,6 +12244,34 @@ const TaskPriority = ({
       }
     }
   });
+  const handleDragEnd = result => {
+    if (!result.destination) return;
+    const reorderedPriorities = Array.from(projectPriorities);
+    const [movedItem] = reorderedPriorities.splice(result.source.index, 1);
+    reorderedPriorities.splice(result.destination.index, 0, movedItem);
+    if (result.type === 'priority') {
+      dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.editProjectPrioritySortOrder)({
+        data: {
+          project_id: projectId,
+          sort_order: reorderedPriorities.map((priority, index) => ({
+            id: priority.id,
+            sort_order: index + 1
+          }))
+        }
+      })).then(response => {
+        if (response.payload && response.payload.status === 200) {
+          setShowPriorityList(false);
+          _mantine_notifications__WEBPACK_IMPORTED_MODULE_6__.notifications.show({
+            color: theme.primaryColor,
+            title: response.payload.message,
+            icon: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__["default"], null),
+            autoClose: 5000
+            // withCloseButton: true,
+          });
+        }
+      });
+    }
+  };
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "priority-wrapper"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
@@ -11879,7 +12294,7 @@ const TaskPriority = ({
       backgroundColor: selectedPriorityColor,
       height: '25px'
     },
-    className: "flex px-2 py-0 rounded-[25px] items-center gap-0 inline-flex"
+    className: "px-2 py-0 rounded-[25px] items-center gap-0 inline-flex"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
     className: `min-w-14 max-w-14 !pl-1.5`,
     lineClamp: 1,
@@ -11893,15 +12308,32 @@ const TaskPriority = ({
   })))), showPriorityList && (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     ref: selectPriorityRef,
     className: "selectpriority-list border rounded-lg bg-white shadow px-2 py-3 absolute z-10 min-w-[250px] max-w-[250px]"
-  }, projectPriorities && projectPriorities.length > 0 && projectPriorities.map((priority, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_15__.DragDropContext, {
+    onDragEnd: result => {
+      handleDragEnd(result);
+    }
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_15__.Droppable, {
+    droppableId: "priorityList",
+    type: "priority"
+  }, provided => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    ...provided.droppableProps,
+    ref: provided.innerRef
+  }, projectPriorities && projectPriorities.map((priority, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_15__.Draggable, {
+    key: priority.id,
+    draggableId: priority.id.toString(),
+    index: index
+  }, provided => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    ref: provided.innerRef,
+    ...provided.draggableProps,
+    ...provided.dragHandleProps
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Grid, {
     columns: 12,
-    className: `hover:bg-[#ebf1f4]`
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid.Col, {
-    span: 10,
-    className: `!py-1`
+    className: "hover:bg-[#ebf1f4]"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Grid.Col, {
+    span: 9,
+    className: "!py-1"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: `flex items-center gap-2 w-full cursor-pointer text-[12px] p-1`,
-    key: index,
+    className: "flex items-center gap-2 w-full cursor-pointer text-[12px] p-1",
     onClick: () => handleSelectPriority(priority)
   }, selectedPriority === priority.id ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__["default"], {
     size: "14"
@@ -11910,18 +12342,29 @@ const TaskPriority = ({
     c: "black",
     size: "xs",
     fw: 400
-  }, priority.name))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid.Col, {
+  }, priority.name))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Grid.Col, {
     span: 1,
     className: `flex items-center !py-1`
-  }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ActionIcon, {
-    onClick: () => priorityEditHandler(priority),
+  }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.ActionIcon, {
+    ...provided.dragHandleProps,
     variant: "transparent",
     "aria-label": "Edit"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_17__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_18__["default"], {
     size: 16,
     stroke: 1,
     color: "#ED7D31"
-  }))))), (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Box, {
+  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Grid.Col, {
+    span: 1,
+    className: `flex items-center !py-1`
+  }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.ActionIcon, {
+    onClick: () => priorityEditHandler(priority),
+    variant: "transparent",
+    "aria-label": "Edit"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_19__["default"], {
+    size: 16,
+    stroke: 1,
+    color: "#ED7D31"
+  }))))))), provided.placeholder))), (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.Box, {
     className: `border-t border-t-[#C8C8C8] pt-1.5 mt-2`
   }, showPriorityAddInput ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex items-center gap-1 py-1"
@@ -11931,19 +12374,19 @@ const TaskPriority = ({
     value: newPriorityColor,
     onChange: handleColorInputChange,
     placeholder: "Color"
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.TextInput, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.TextInput, {
     size: "xs",
     className: "text-[12px]",
     defaultValue: newPriority,
     onChange: handleInputChange,
     placeholder: 'Type name here',
-    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ActionIcon, {
+    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.ActionIcon, {
       onClick: handleAddPriority,
       size: 24,
       radius: "xl",
       color: "#ED7D31",
       variant: "filled"
-    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_20__["default"], {
+    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_22__["default"], {
       style: {
         width: '18px',
         height: '18px'
@@ -11953,7 +12396,7 @@ const TaskPriority = ({
   })) : !showPriorityEditInput && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", {
     className: "block cursor-pointer text-[12px] p-1 text-[#ED7D31]",
     onClick: handleCreatePriority
-  }, "+ Create Priority"), showPriorityEditInput && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  }, "+ Create"), showPriorityEditInput && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex items-center gap-1 py-1"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("input", {
     className: "w-[30px] h-[30px] rounded-sm text-[12px]",
@@ -11961,31 +12404,31 @@ const TaskPriority = ({
     value: newPriorityColor,
     onChange: handleColorInputChange,
     placeholder: "Color"
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.TextInput, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.TextInput, {
     size: "xs",
     className: "w-full text-[12px]",
     value: newPriority,
     onChange: handleInputChange,
     placeholder: 'Type name here',
-    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ActionIcon, {
+    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.ActionIcon, {
       onClick: handleUpdatePriority,
       size: 24,
       radius: "xl",
       color: "#ED7D31",
       variant: "filled"
-    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_20__["default"], {
+    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_22__["default"], {
       style: {
         width: '18px',
         height: '18px'
       },
       stroke: 1.5
     }))
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ActionIcon, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.ActionIcon, {
     onClick: priorityDeleteHandler,
     size: 24,
     radius: "xl",
     variant: "transparent"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_21__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_23__["default"], {
     size: "24",
     stroke: 1.5,
     color: `red`
@@ -12008,11 +12451,18 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCheck.mjs");
 /* harmony import */ var react_contenteditable__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! react-contenteditable */ "./node_modules/react-contenteditable/lib/react-contenteditable.js");
 /* harmony import */ var react_contenteditable__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(react_contenteditable__WEBPACK_IMPORTED_MODULE_1__);
-/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../../../ui/permissions */ "./src/components/ui/permissions.jsx");
+/* harmony import */ var _store_base_commonSlice__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../../../../store/base/commonSlice */ "./src/store/base/commonSlice.js");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/MantineProvider/MantineThemeProvider/MantineThemeProvider.mjs");
+
+
+
 
 
 
@@ -12025,26 +12475,43 @@ const TaskSectionName = ({
   nameOfTaskSection,
   view
 }) => {
-  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useDispatch)();
+  const theme = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_5__.useMantineTheme)();
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_6__.useDispatch)();
   const {
     loggedUserId
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useSelector)(state => state.auth.user);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_6__.useSelector)(state => state.auth.user);
   const {
     loggedInUser
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useSelector)(state => state.auth.session);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_6__.useSelector)(state => state.auth.session);
+  const {
+    inputFieldIsFocused
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_6__.useSelector)(state => state.base.common);
   const defaultTaskName = nameOfTaskSection || "Type section name here";
   const contentEditableRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)('');
   const [taskName, setTaskName] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(defaultTaskName);
-  const [isFocused, setIsFocused] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
+  const [isFocused, setIsFocused] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(inputFieldIsFocused || false);
   const handleFocus = () => {
     setIsFocused(true);
-  };
-  const handleBlur = () => {
-    setIsFocused(false);
   };
   const handleChange = e => {
     setTaskName(e.target.value);
   };
+  const handleKeyDown = event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      contentEditableRef.current.blur();
+    }
+  };
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (isFocused === true && contentEditableRef.current) {
+      //get current value of contentEditableRef
+      const taskEditableName = contentEditableRef.current.innerHTML;
+      setTaskName(taskEditableName === 'Type section name here' ? '' : taskEditableName);
+      setTimeout(() => {
+        contentEditableRef.current.focus();
+      }, 0);
+    }
+  }, [isFocused]);
   const handlerBlur = () => {
     const taskEditableName = contentEditableRef.current.innerHTML;
     if (taskSectionId && taskSectionId !== 'undefined' && taskEditableName !== taskName) {
@@ -12052,17 +12519,33 @@ const TaskSectionName = ({
         id: taskSectionId,
         data: {
           name: taskEditableName,
-          updated_by: loggedUserId
+          updated_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
-      }));
-      setTaskName(taskEditableName);
+      })).then(response => {
+        if (response.payload && response.payload.status === 200) {
+          const taskSections = response.payload.data.taskSections;
+          const taskListSectionsName = response.payload.data.taskListSectionsName[taskSections]?.name;
+          setTaskName(taskListSectionsName);
+          _mantine_notifications__WEBPACK_IMPORTED_MODULE_7__.notifications.show({
+            color: theme.primaryColor,
+            title: response.payload.message,
+            icon: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__["default"], null),
+            autoClose: 5000
+            // withCloseButton: true,
+          });
+        }
+      });
+    } else {
+      setTaskName(nameOfTaskSection);
     }
+    dispatch((0,_store_base_commonSlice__WEBPACK_IMPORTED_MODULE_4__.updateInputFieldFocus)(false));
+    setIsFocused(false);
   };
   const previewTextLength = view === 'cardView' ? 17 : 70; // Adjust the number of characters to show
-  const isLongText = taskName.length > previewTextLength;
+  const isLongText = taskName && taskName.length > previewTextLength;
   const previewText = isLongText ? taskName.slice(0, previewTextLength) + '...' : taskName;
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: isFocused ? 'border border-solid border-[#000000] rounded-md min-w-[150px]' : 'cursor-pointer'
+    className: `${isFocused ? 'border border-solid border-[#000000] rounded-md' : 'cursor-pointer'} ${view === 'listView' ? 'w-[350px]' : 'w-[180px]'}`
   }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-edit']) ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)((react_contenteditable__WEBPACK_IMPORTED_MODULE_1___default()), {
     innerRef: contentEditableRef,
     html: isFocused ? taskName : previewText // Inner HTML content
@@ -12071,13 +12554,14 @@ const TaskSectionName = ({
     ,
     onBlur: () => {
       handlerBlur();
-      handleBlur();
     } // Handle changes
     ,
     onFocus: handleFocus,
+    onKeyDown: handleKeyDown // Handle keydown event
+    ,
     tagName: "p" // Use a paragraph tag
     ,
-    className: "text-[#4d4d4d] font-semibold text-[14px] px-1 !outline-none pr-1 leading-6"
+    className: `text-[#4d4d4d] font-semibold text-[14px] px-1 !outline-none pr-1 leading-6`
   }) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("p", {
     className: "text-[#4d4d4d] font-semibold text-[14px] px-1 leading-6"
   }, taskName));
@@ -12160,7 +12644,7 @@ const TaskTag = ({
     if (removedTag) {
       const data = {
         'name': removedTag,
-        'user_id': loggedUserId,
+        'user_id': loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
         'task_id': taskId
       };
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.deleteTagFromTask)(data));
@@ -12170,7 +12654,7 @@ const TaskTag = ({
     if (addTag) {
       const data = {
         'name': addTag,
-        'user_id': loggedUserId,
+        'user_id': loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
         'task_id': taskId
       };
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.addTagToTask)(data));
@@ -12289,6 +12773,9 @@ const TaskTagForTaskAdd = props => {
     loggedUserId
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_2__.useSelector)(state => state.auth.user);
   const {
+    loggedInUser
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_2__.useSelector)(state => state.auth.session);
+  const {
     tags
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_2__.useSelector)(state => state.settings.tag);
   const [showTagsList, setShowTagsList] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
@@ -12315,7 +12802,7 @@ const TaskTagForTaskAdd = props => {
     if (removedTag) {
       const data = {
         'name': removedTag,
-        'user_id': loggedUserId,
+        'user_id': loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
         'task_id': null
       };
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.deleteTagFromTask)(data));
@@ -12394,10 +12881,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Timeline/Timeline.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPointFilled.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
 /* harmony import */ var _ActivityLogs__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./ActivityLogs */ "./src/components/Elements/Project/TasksElements/ActivityLogs.js");
 /* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! dayjs */ "./node_modules/dayjs/dayjs.min.js");
@@ -12416,35 +12901,31 @@ const TaskActivity = ({
   selectedValue
 }) => {
   const dateTimeFormat = 'DD MMM YYYY hh:mm A';
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Timeline, null, task.logActivities && task.logActivities.length > 0 ? task.logActivities && task.logActivities.length > 0 && task.logActivities.map((activity, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Timeline.Item, {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Timeline, {
+    color: "white",
+    bulletSize: 32
+  }, task.logActivities && task.logActivities.length > 0 ? task.logActivities && task.logActivities.length > 0 && task.logActivities.map((activity, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Timeline.Item, {
     key: activity.id + index,
-    title: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Flex, {
-      gap: "xs",
-      justify: "flex-start",
-      align: "center",
-      direction: "row"
-    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Avatar, {
+    title: activity.user_name,
+    bullet: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Avatar, {
       size: 32,
       src: activity.avatar,
       alt: activity.user_name
-    }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
-      fw: 500,
-      fz: 14,
-      c: "#202020"
-    }, activity.user_name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
-      fw: 400,
-      fz: 12,
-      c: "#39758D"
-    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_8__["default"], {
-      size: 14
-    })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
-      fw: 400,
-      fz: 12,
-      c: `#39758D`
-    }, activity.created_at ? dayjs__WEBPACK_IMPORTED_MODULE_3___default()(activity.created_at).format(dateTimeFormat) : ''))
+    })
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Text, {
+    c: "dimmed",
+    size: "sm"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ActivityLogs__WEBPACK_IMPORTED_MODULE_2__["default"], {
     activity: activity
-  }))) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Timeline.Item, null, "No Activities")));
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Text, {
+    fw: 400,
+    fz: 12,
+    c: `#39758D`,
+    style: {
+      marginLeft: '3px',
+      marginTop: '3px'
+    }
+  }, activity.created_at ? dayjs__WEBPACK_IMPORTED_MODULE_3___default()(activity.created_at).format(dateTimeFormat) : ''))) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Timeline.Item, null, "No Activities")));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskActivity);
 
@@ -12511,11 +12992,6 @@ const TaskBoard = () => {
   const {
     id
   } = (0,react_router_dom__WEBPACK_IMPORTED_MODULE_8__.useParams)();
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_2__.fetchTasksByProject)({
-      id: id
-    }));
-  }, [dispatch]);
   const [accordionItems, setAccordionItems] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     if (tasks && tasks.taskListSectionsName) {
@@ -12631,14 +13107,14 @@ const TaskBoard = () => {
   const taskSectionDeleteHandler = (taskSectionId, noOfTasks) => _mantine_modals__WEBPACK_IMPORTED_MODULE_9__.modals.openConfirmModal({
     title: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Title, {
       order: 5
-    }, "Are you sure this section delete?"),
+    }, "You are parmanently deleting this section"),
     centered: true,
     size: 'sm',
     radius: 'md',
     withCloseButton: false,
     children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
       size: "sm"
-    }, "This action is so important that you are required to confirm it with a modal. Please click one of these buttons to proceed."),
+    }, "Are you sure you want to delete this section?"),
     labels: {
       confirm: 'Confirm',
       cancel: 'Cancel'
@@ -13007,9 +13483,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Textarea/Textarea.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPointFilled.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
 /* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
@@ -13150,23 +13625,13 @@ const TaskComment = ({
     alt: comment.user_name
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
     fw: 500,
-    fz: 14,
+    fz: 16,
     c: "#202020"
-  }, comment.user_name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
-    fw: 400,
-    fz: 12,
-    c: "#39758D"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__["default"], {
-    size: 14
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
-    fw: 400,
-    fz: 12,
-    c: "#39758D"
-  }, comment.created_at ? dayjs__WEBPACK_IMPORTED_MODULE_3___default()(comment.created_at).format(dateTimeFormat) : ''), ((0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) || parseInt(loggedUserId) === parseInt(comment.user_id)) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.ActionIcon, {
+  }, comment.user_name), ((0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) || parseInt(loggedUserId) === parseInt(comment.user_id)) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.ActionIcon, {
     onClick: () => commentDeleteHandler(comment && comment.id),
     variant: "transparent",
     "aria-label": "Delete"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__["default"], {
     size: 16,
     stroke: 1,
     color: "var(--mantine-color-red-filled)"
@@ -13179,7 +13644,11 @@ const TaskComment = ({
     style: {
       whiteSpace: 'pre-line'
     }
-  }, comment.content))))));
+  }, comment.content), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
+    fw: 400,
+    fz: 12,
+    c: "#39758D"
+  }, comment.created_at ? dayjs__WEBPACK_IMPORTED_MODULE_3___default()(comment.created_at).format(dateTimeFormat) : ''))))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskComment);
 
@@ -13201,9 +13670,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Textarea/Textarea.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Timeline/Timeline.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPointFilled.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
 /* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! dayjs */ "./node_modules/dayjs/dayjs.min.js");
@@ -13269,7 +13737,7 @@ const TaskCommentAndActivity = ({
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     setComments(task && task.commentsAndLogActivities ? task.commentsAndLogActivities : []);
   }, [task.commentsAndLogActivities]);
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, selectedValue === 'Comments & Activities' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, selectedValue === 'Comments & Activities' && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "write-comments pb-4"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex gap-2 mb-2"
@@ -13294,37 +13762,29 @@ const TaskCommentAndActivity = ({
     color: "#39758D",
     size: "md",
     onClick: handleAddComment
-  }, "Comment"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "comments-lists max-h-[400px] overflow-y-scroll scrollbar-width-thin"
-  }, selectedValue === 'Comments & Activities' && comments && comments.length > 0 && comments.map((comment, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    key: index,
-    className: "single-comment mb-4"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Flex, {
-    gap: "xs",
-    justify: "flex-start",
-    align: "center",
-    direction: "row"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Avatar, {
-    size: 32,
-    src: comment.avatar,
-    alt: comment.user_name
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
-    fw: 500,
-    fz: 14,
-    c: "#202020"
-  }, comment.user_name), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
-    fw: 400,
-    fz: 12,
-    c: "#39758D"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_10__["default"], {
-    size: 14
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
-    fw: 400,
-    fz: 12,
-    c: "#39758D"
-  }, comment.created_at ? dayjs__WEBPACK_IMPORTED_MODULE_2___default()(comment.created_at).format(dateTimeFormat) : '')), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "comment-body pl-[40px]"
+  }, "Comment")))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Timeline, {
+    color: "white",
+    bulletSize: 32,
+    style: {
+      textAlign: 'left'
+    }
+  }, selectedValue === 'Comments & Activities' && comments && comments.length > 0 && comments.map((comment, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Timeline.Item, {
+    title: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+      fw: 700
+    }, comment.user_name),
+    bullet: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Avatar, {
+      size: 32,
+      src: comment.avatar,
+      alt: comment.user_name
+    })
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+    c: "dimmed",
+    size: "sm",
+    style: {
+      marginLeft: '0px'
+    }
   }, comment.content && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+    ta: "left",
     fw: 400,
     fz: 14,
     c: "#4D4D4D",
@@ -13333,7 +13793,16 @@ const TaskCommentAndActivity = ({
     }
   }, comment.content || ''), comment.properties && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ActivityLogs__WEBPACK_IMPORTED_MODULE_3__["default"], {
     activity: comment
-  }))))));
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Text, {
+    ta: "left",
+    size: "sm",
+    fw: 400,
+    fz: 12,
+    c: "#39758D",
+    style: {
+      marginLeft: '0px'
+    }
+  }, comment.created_at ? dayjs__WEBPACK_IMPORTED_MODULE_2___default()(comment.created_at).format(dateTimeFormat) : '')))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskCommentAndActivity);
 
@@ -13352,30 +13821,32 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/MantineProvider/MantineThemeProvider/MantineThemeProvider.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Accordion/Accordion.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Popover/Popover.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/List/List.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Checkbox/Checkbox.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconDotsVertical.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
-/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/MantineProvider/MantineThemeProvider/MantineThemeProvider.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Accordion/Accordion.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Popover/Popover.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/List/List.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Checkbox/Checkbox.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Flex/Flex.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconDotsVertical.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
 /* harmony import */ var _Task_TaskSectionName__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./Task/TaskSectionName */ "./src/components/Elements/Project/TasksElements/Task/TaskSectionName.jsx");
-/* harmony import */ var react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! react-beautiful-dnd */ "./node_modules/react-beautiful-dnd/dist/react-beautiful-dnd.esm.js");
+/* harmony import */ var react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! react-beautiful-dnd */ "./node_modules/react-beautiful-dnd/dist/react-beautiful-dnd.esm.js");
 /* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./utils */ "./src/components/Elements/Project/TasksElements/utils.js");
 /* harmony import */ var _TaskListContent__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ./TaskListContent */ "./src/components/Elements/Project/TasksElements/TaskListContent.jsx");
-/* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
+/* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../../../ui/permissions */ "./src/components/ui/permissions.jsx");
-/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+/* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
 /* harmony import */ var _AddTaskDrawer__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./AddTaskDrawer */ "./src/components/Elements/Project/TasksElements/AddTaskDrawer.jsx");
+/* harmony import */ var _store_base_commonSlice__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ../../../../store/base/commonSlice */ "./src/store/base/commonSlice.js");
+
 
 
 
@@ -13391,15 +13862,15 @@ __webpack_require__.r(__webpack_exports__);
 
 
 const TaskList = () => {
-  const theme = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_7__.useMantineTheme)();
+  const theme = (0,_mantine_core__WEBPACK_IMPORTED_MODULE_8__.useMantineTheme)();
   // const tasks = useSelector(state => state.task);
-  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useDispatch)();
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useDispatch)();
   const {
     loggedUserId
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useSelector)(state => state.auth.user);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.auth.user);
   const {
     loggedInUser
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useSelector)(state => state.auth.session);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.auth.session);
   const {
     projectInfo,
     tasks,
@@ -13407,7 +13878,7 @@ const TaskList = () => {
     ordered,
     taskListSections,
     childColumns
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useSelector)(state => state.settings.task);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_9__.useSelector)(state => state.settings.task);
   const contentEditableRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)('');
   const [expandedItems, setExpandedItems] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]); // Initialize with an empty array
   // console.log(expandedItems, ordered)
@@ -13455,9 +13926,10 @@ const TaskList = () => {
       name: 'Type section name here',
       project_id: projectInfo.id,
       sort_order: ordered.length + 1,
-      created_by: loggedUserId
+      created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
     };
     dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.createTaskSection)(newSection));
+    dispatch((0,_store_base_commonSlice__WEBPACK_IMPORTED_MODULE_7__.updateInputFieldFocus)(true));
   };
   const onDragEnd = result => {
     if (!result.destination) {
@@ -13473,7 +13945,7 @@ const TaskList = () => {
       const submittedData = {
         orderedList: newOrdered,
         project_id: projectInfo.id,
-        updated_by: loggedUserId
+        updated_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
       };
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.editSectionSortOrder)({
         data: submittedData
@@ -13499,7 +13971,7 @@ const TaskList = () => {
       const submittedData = {
         orderedList: combineUpdateChildData,
         project_id: projectInfo.id,
-        updated_by: loggedUserId
+        updated_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
       };
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.editTaskSortOrder)({
         data: submittedData
@@ -13524,7 +13996,7 @@ const TaskList = () => {
     const submittedData = {
       orderedList: combineUpdateData,
       project_id: projectInfo.id,
-      updated_by: loggedUserId
+      updated_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
     };
     dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.editTaskSortOrder)({
       data: submittedData
@@ -13533,17 +14005,17 @@ const TaskList = () => {
   };
 
   //taskDeleteHandler
-  const taskSectionDeleteHandler = (taskSectionId, noOfTasks) => _mantine_modals__WEBPACK_IMPORTED_MODULE_9__.modals.openConfirmModal({
-    title: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Title, {
+  const taskSectionDeleteHandler = (taskSectionId, noOfTasks) => _mantine_modals__WEBPACK_IMPORTED_MODULE_10__.modals.openConfirmModal({
+    title: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Title, {
       order: 5
-    }, "Are you sure this section delete?"),
+    }, "You are parmanently deleting this section"),
     centered: true,
     size: 'sm',
     radius: 'md',
     withCloseButton: false,
-    children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+    children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Text, {
       size: "sm"
-    }, "This action is so important that you are required to confirm it with a modal. Please click one of these buttons to proceed."),
+    }, "Are you sure you want to delete this section?"),
     labels: {
       confirm: 'Confirm',
       cancel: 'Cancel'
@@ -13552,25 +14024,24 @@ const TaskList = () => {
     onConfirm: () => {
       if (taskSectionId && taskSectionId !== 'undefined') {
         if (noOfTasks > 0) {
-          _mantine_modals__WEBPACK_IMPORTED_MODULE_9__.modals.open({
+          _mantine_modals__WEBPACK_IMPORTED_MODULE_10__.modals.open({
             withCloseButton: false,
             centered: true,
-            children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, {
+            children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Text, {
               size: "sm"
             }, "This section has ", noOfTasks, " tasks. Please delete all tasks before deleting this section."), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
               className: "!grid w-full !justify-items-center"
-            }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Button, {
+            }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_13__.Button, {
               justify: "center",
-              onClick: () => _mantine_modals__WEBPACK_IMPORTED_MODULE_9__.modals.closeAll(),
+              onClick: () => _mantine_modals__WEBPACK_IMPORTED_MODULE_10__.modals.closeAll(),
               mt: "md"
             }, "Ok")))
           });
         } else {
-          console.log(taskSectionId, noOfTasks);
           dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.deleteTaskSection)({
             id: taskSectionId,
             data: {
-              'deleted_by': loggedUserId
+              'deleted_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
             }
           }));
         }
@@ -13591,10 +14062,10 @@ const TaskList = () => {
   const markIsCompleteHandler = (event, markIsComplete) => {
     console.log(markIsComplete);
     if (markIsComplete === 'disable') {
-      _mantine_notifications__WEBPACK_IMPORTED_MODULE_13__.notifications.show({
+      _mantine_notifications__WEBPACK_IMPORTED_MODULE_14__.notifications.show({
         color: theme.errorColor,
         title: 'Already ' + selectedMarkSectionName + ' section is marked as complete',
-        icon: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_14__["default"], null),
+        icon: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__["default"], null),
         autoClose: 5000
       });
       //event target unchecked
@@ -13605,37 +14076,37 @@ const TaskList = () => {
         data: {
           project_id: projectInfo ? projectInfo.id : null,
           markIsChecked: event.target.checked,
-          updated_by: loggedInUser && loggedInUser.id ? loggedInUser.id : loggedUserId
+          updated_by: loggedInUser && loggedInUser.loggedUserId ? loggedInUser.loggedUserId : loggedUserId
         }
       }));
     }
   };
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Accordion, {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Accordion, {
     variant: "separated",
     multiple: true,
     value: expandedItems,
     onChange: setExpandedItems,
-    chevron: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__["default"], {
+    chevron: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_17__["default"], {
       size: 30,
       stroke: 2
     }),
     classNames: {
       control: '!w-[18px] !pl-0 !pr-2',
-      content: '!pb-0 !pt-0'
+      content: '!pb-0 !pt-0 !px-0'
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_17__.DragDropContext, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_18__.DragDropContext, {
     onDragEnd: result => onDragEnd(result)
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_17__.Droppable, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_18__.Droppable, {
     droppableId: "droppable",
     type: "COLUMN"
   }, provided => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     ...provided.droppableProps,
     ref: provided.innerRef
-  }, ordered && ordered.length > 0 && ordered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_17__.Draggable, {
+  }, ordered && ordered.length > 0 && ordered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_18__.Draggable, {
     key: taskListSection,
     draggableId: taskListSection,
     index: index
-  }, (provided, snapshot) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Accordion.Item, {
+  }, (provided, snapshot) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Accordion.Item, {
     key: taskListSection,
     value: taskListSections && taskListSections[taskListSection] && taskListSections[taskListSection].slug,
     className: "!border-solid !border-[#dddddd] !rounded-t-md accordion-item !bg-[#fcfcfc]",
@@ -13646,8 +14117,8 @@ const TaskList = () => {
     ...provided.dragHandleProps,
     className: "flex items-center w-full border-b border-solid border-[#dddddd] !bg-[#F0F8FF]"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "flex w-full items-center font-bold py-1 pr-3 !pl-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Accordion.Control, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Task_TaskSectionName__WEBPACK_IMPORTED_MODULE_2__["default"], {
+    className: "flex w-full items-center font-bold py-1 pr-3 !pl-3 gap-5"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Accordion.Control, null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Task_TaskSectionName__WEBPACK_IMPORTED_MODULE_2__["default"], {
     taskSectionId: taskListSections[taskListSection] && taskListSections[taskListSection].id,
     nameOfTaskSection: taskListSections[taskListSection] && taskListSections[taskListSection].name,
     view: "listView"
@@ -13659,22 +14130,22 @@ const TaskList = () => {
     taskSectionId: taskListSections[taskListSection] && taskListSections[taskListSection].id
   })), (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_5__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-delete']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex items-center gap-2 cursor-pointer pr-1"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Popover, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Popover, {
     width: 200,
     position: "bottom-end",
     withArrow: true,
     shadow: "md"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_19__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_20__["default"], {
     size: 20,
     stroke: 1.25
-  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Popover.Dropdown, null, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_5__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-delete']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.List, {
+  })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Popover.Dropdown, null, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_5__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'section-delete']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.List, {
     spacing: "xs",
     size: "sm"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.List.Item, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.Tooltip, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.List.Item, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Tooltip, {
     label: `Mark as complete`,
     position: "top",
     withArrow: true
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Checkbox, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_23__.Checkbox, {
     label: "Mark as complete",
     defaultChecked: !!(taskListSections[taskListSection] && taskListSections[taskListSection].mark_is_complete === 'complete'),
     onChange: event => {
@@ -13683,22 +14154,22 @@ const TaskList = () => {
     },
     color: "orange",
     value: taskListSections[taskListSection] && taskListSections[taskListSection].id
-  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.List.Item, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.Tooltip, {
+  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.List.Item, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Tooltip, {
     label: `Delete section`,
     position: "top",
     withArrow: true
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_23__.Flex, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_24__.Flex, {
     className: `cursor-pointer`,
     onClick: () => {
       taskSectionDeleteHandler(taskListSections[taskListSection] && taskListSections[taskListSection].id, columns && columns && columns[taskListSection] ? columns[taskListSection].length : 0);
     },
     gap: `sm`
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_24__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_25__["default"], {
     className: "cursor-pointer",
     size: 20,
     stroke: 1.25,
     color: "var(--mantine-color-red-filled)"
-  }), " ", (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.Text, null, "Delete"))))))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Accordion.Panel, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_TaskListContent__WEBPACK_IMPORTED_MODULE_4__["default"], {
+  }), " ", (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Text, null, "Delete"))))))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.Accordion.Panel, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_TaskListContent__WEBPACK_IMPORTED_MODULE_4__["default"], {
     className: snapshot.isDragging ? 'is-dragging' : '',
     listType: "CONTENT",
     snapshot: snapshot,
@@ -13781,7 +14252,7 @@ const TaskListContent = ({
     style: {
       transition: 'background-color 0.3s ease'
     },
-    className: `w-full h-full min-h-[25px] ${tasks && tasks.length === 0 ? 'border-b border-gray-200' : ''}`,
+    className: `w-full h-full min-h-[25px] !px-[5px] ${tasks && tasks.length === 0 ? 'border-b border-gray-200' : ''}`,
     ref: dropProvided.innerRef,
     ...dropProvided.droppableProps
   }, tasks && tasks.length > 0 ? tasks.map((task, taskIndex) =>
@@ -14033,7 +14504,6 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconEdit.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
 /* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router-dom/dist/index.js");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../ui/permissions */ "./src/components/ui/permissions.jsx");
@@ -14119,14 +14589,7 @@ const UserCard = props => {
     size: 20,
     stroke: 1.25,
     color: "#ED7D31"
-  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("button", {
-    className: "text-center"
-    // onClick={onDeleteClick}
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__["default"], {
-    size: 20,
-    stroke: 1.25,
-    color: "red"
-  }))));
+  })))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (UserCard);
 
@@ -14626,7 +15089,7 @@ function HeaderTabs() {
     className: "py-1",
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.Group, {
-    className: ` h-[78px]`,
+    className: ` h-[60px]`,
     justify: "space-between"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex space-x-4"
@@ -14643,7 +15106,7 @@ function HeaderTabs() {
     size: 24,
     color: `#202020`
   })), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("span", null, "Portal"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "flex items-center gap-4"
+    className: "flex items-center gap-2"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     id: "lazytask_premium_mobile_app_qr_code"
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.Button, {
@@ -14651,7 +15114,10 @@ function HeaderTabs() {
     className: `font-semibold`,
     onClick: open,
     variant: "filled",
-    color: "#ED7D31"
+    color: "#ED7D31",
+    style: {
+      height: '34px'
+    }
   }, "Workspace"), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_22__.Burger, {
     opened: opened,
     onClick: toggle,
@@ -14728,7 +15194,8 @@ function HeaderTabs() {
     overlayProps: {
       backgroundOpacity: 0,
       blur: 0
-    }
+    },
+    zIndex: 1000
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_32__.Drawer.Body, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "workspace-create-card w-full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
@@ -15674,7 +16141,8 @@ const MyTaskList = () => {
   const {
     userTaskOrdered,
     userTaskListSections,
-    userTaskColumns
+    userTaskColumns,
+    allTasks
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_5__.useSelector)(state => state.settings.myTask);
   const {
     isLoading
@@ -15697,7 +16165,14 @@ const MyTaskList = () => {
     dispatch((0,_Settings_store_myTaskSlice__WEBPACK_IMPORTED_MODULE_2__.updateColumns)(userTaskColumns));
   }, [userTaskColumns]);
   const changeTabHandler = value => {
-    dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_4__.updateIsLoading)(true));
+    if (value === "all") {
+      dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_4__.updateIsLoading)(true));
+      setTimeout(() => {
+        dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_4__.updateIsLoading)(false));
+      }, 1000);
+    } else {
+      dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_4__.updateIsLoading)(true));
+    }
   };
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     const fetchData = async () => {
@@ -15724,14 +16199,19 @@ const MyTaskList = () => {
     color: "#39758D",
     variant: "pills",
     radius: "sm",
-    defaultValue: "today"
+    defaultValue: "all",
+    onTabChange: value => changeTabHandler(value)
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.List, {
     className: "mb-3"
-  }, userTaskOrdered && userTaskOrdered.length > 0 && userTaskOrdered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.Tab, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.Tab, {
+    value: "all",
+    className: "font-bold"
+  }, "All"), userTaskOrdered && userTaskOrdered.length > 0 && userTaskOrdered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.Tab, {
     value: taskListSection,
     className: "font-bold",
     onClick: () => changeTabHandler(true)
-  }, userTaskListSections && userTaskListSections[taskListSection] && userTaskListSections[taskListSection]))), userTaskOrdered && userTaskOrdered.length > 0 ? userTaskOrdered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.Panel, {
+  }, userTaskListSections && userTaskListSections[taskListSection] && userTaskListSections[taskListSection]))), userTaskOrdered && userTaskOrdered.length > 0 ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, userTaskOrdered.map((taskListSection, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.Panel, {
+    key: index,
     value: taskListSection
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Partial_TaskHeader__WEBPACK_IMPORTED_MODULE_3__["default"], null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.ScrollArea, {
     className: "h-[calc(100vh-300px)] p-[3px]",
@@ -15745,7 +16225,21 @@ const MyTaskList = () => {
     }
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_MyTaskListContent__WEBPACK_IMPORTED_MODULE_1__["default"], {
     contents: userTaskColumns && userTaskColumns[taskListSection] ? userTaskColumns[taskListSection] : []
-  })))) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+  })))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tabs.Panel, {
+    value: "all"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Partial_TaskHeader__WEBPACK_IMPORTED_MODULE_3__["default"], null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.ScrollArea, {
+    className: "h-[calc(100vh-300px)] p-[3px]",
+    scrollbarSize: 4
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.LoadingOverlay, {
+    visible: isLoading,
+    zIndex: 1000,
+    overlayProps: {
+      radius: 'sm',
+      blur: 4
+    }
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_MyTaskListContent__WEBPACK_IMPORTED_MODULE_1__["default"], {
+    contents: allTasks ? allTasks : []
+  }))))) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "text-center"
   }, "No Task Found")));
 };
@@ -15870,7 +16364,7 @@ const MyTaskRow = ({
     },
     className: "flex single-task-content main-task items-center w-full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "task-name w-[30%] pr-2 items-center"
+    className: `task-name pr-2 items-center ${task.parent ? 'w-[29%]' : 'w-[30%]'}`
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex gap-2 items-center w-full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
@@ -15911,7 +16405,7 @@ const MyTaskRow = ({
     task: task,
     priority: task.priority
   }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "tags w-[28%] pl-5"
+    className: `tags ${task.parent ? 'w-[29%] pl-8' : 'w-[28%] pl-5'}`
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     onClick: e => e.stopPropagation()
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Task_TaskTag__WEBPACK_IMPORTED_MODULE_5__["default"], {
@@ -15947,35 +16441,47 @@ __webpack_require__.r(__webpack_exports__);
 
 
 const TaskHeader = () => {
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "border rounded-lg mt-1 px-2 py-1 bg-blue-100"
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "border rounded-t-lg px-2 py-2 bg-[#39758D]"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "text-base font-medium w-[30%]"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_1__.Text, {
-    fz: "sm"
+    c: `#ffffff`,
+    fz: "md",
+    fw: 700
   }, "Task Name")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "text-base font-medium w-[10%] flex"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_1__.Text, {
-    fz: "sm"
+    c: `#ffffff`,
+    fz: "md",
+    fw: 700
   }, "Assigned")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "text-base font-medium w-[12%] flex justify-center"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_1__.Text, {
-    fz: "sm"
+    c: `#ffffff`,
+    fz: "md",
+    fw: 700
   }, "Following")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "text-base font-medium w-[10%] flex justify-center"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_1__.Text, {
-    fz: "sm"
+    c: `#ffffff`,
+    fz: "md",
+    fw: 700
   }, "Due Date")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "text-base font-medium w-[10%] flex justify-center"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_1__.Text, {
-    fz: "sm"
+    c: `#ffffff`,
+    fz: "md",
+    fw: 700
   }, "Priority")), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "text-base font-medium w-[28%] flex pl-5"
+    className: "text-base font-medium w-[28%] flex justify-center"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_1__.Text, {
-    fz: "sm"
-  }, "Tags"))));
+    c: `#ffffff`,
+    fz: "md",
+    fw: 700
+  }, "Tags")))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskHeader);
 
@@ -16178,6 +16684,9 @@ const TaskActivity = ({
     loggedUserId,
     name
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useSelector)(state => state.auth.user);
+  const {
+    loggedInUser
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_4__.useSelector)(state => state.auth.session);
   const dateTimeFormat = 'DD MMM YYYY hh:mm A';
   const formatTimestamp = timestamp => {
     const now = new Date();
@@ -16199,8 +16708,8 @@ const TaskActivity = ({
   const handleAddComment = () => {
     const timestamp = new Date().toISOString();
     const newComment = {
-      user_id: loggedUserId,
-      user_name: name,
+      user_id: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
+      user_name: loggedInUser ? loggedInUser.name : '',
       commentable_id: task && task.id ? task.id : null,
       commentable_type: 'task',
       content: commentText,
@@ -16257,9 +16766,10 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconUserCircle.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconUserCircle.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Popover/Popover.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_myTaskSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../Settings/store/myTaskSlice */ "./src/components/Settings/store/myTaskSlice.js");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../ui/permissions */ "./src/components/ui/permissions.jsx");
@@ -16311,12 +16821,22 @@ const TaskAssignTo = ({
         id: task.id,
         data: {
           assigned_to: member,
-          'updated_by': loggedUserId
+          'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
       }));
     }
   };
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+
+  // Check permission
+  const hasAccess = (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Popover, {
+    opened: showMembersList && hasAccess,
+    onClose: () => setShowMembersList(false),
+    width: 348,
+    position: "bottom",
+    withArrow: true,
+    shadow: "md"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     onClick: handleAssignedToButtonClick,
     className: "assignto-btn"
   }, selectedMember ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
@@ -16324,7 +16844,7 @@ const TaskAssignTo = ({
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_ui_UserAvatarSingle__WEBPACK_IMPORTED_MODULE_3__["default"], {
     user: selectedMember,
     size: 32
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Text, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Text, {
     title: selectedMember.name,
     lineClamp: 1,
     size: "sm",
@@ -16335,17 +16855,16 @@ const TaskAssignTo = ({
     className: "flex items-center justify-center"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "h-[32px] w-[32px] border border-dashed border-[#4d4d4d] rounded-full p-1 cursor-pointer"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_6__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__["default"], {
     color: "#4d4d4d",
     size: "22"
-  })))), showMembersList && (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_2__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    ref: membersListRef,
-    className: "shadow-lg members-lists absolute w-[368px] bg-white mt-1 border border-solid border-[#ffffff] rounded-lg z-[9]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.ScrollArea, {
+  }))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Popover.Dropdown, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    ref: membersListRef
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.ScrollArea, {
     h: 272
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "p-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
@@ -16359,7 +16878,7 @@ const TaskAssignTo = ({
     size: 32
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mls-ne ml-3 w-[80%]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Text, {
     className: "font-semibold text-[14px]",
     size: "sm",
     fw: 700,
@@ -16367,11 +16886,11 @@ const TaskAssignTo = ({
   }, member.name)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("button", {
     onClick: () => handleAssignButtonClick(member),
     className: "rounded-[5px] h-[32px] px-1 py-0 w-[100px] ml-2 bg-[#39758D]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Text, {
     size: "sm",
     fw: 400,
     c: "#fff"
-  }, selectedMember && selectedMember.id === member.id ? 'Assigned' : 'Assign')))))))));
+  }, selectedMember && selectedMember.id === member.id ? 'Assigned' : 'Assign'))))))))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskAssignTo);
 
@@ -16447,7 +16966,7 @@ const TaskComment = ({
   const handleAddComment = () => {
     const timestamp = new Date().toISOString();
     const newComment = {
-      user_id: loggedUserId,
+      user_id: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
       user_name: name,
       commentable_id: task && task.id ? task.id : null,
       commentable_type: 'task',
@@ -16484,7 +17003,7 @@ const TaskComment = ({
         dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.deleteComment)({
           id: commentId,
           data: {
-            'deleted_by': loggedUserId
+            'deleted_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
           }
         })).then(response => {
           if (response.payload && response.payload.data) {
@@ -16631,8 +17150,8 @@ const TaskCommentAndActivity = ({
   const handleAddComment = () => {
     const timestamp = new Date().toISOString();
     const newComment = {
-      user_id: loggedUserId,
-      user_name: name,
+      user_id: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
+      user_name: loggedInUser ? loggedInUser.name : '',
       commentable_id: task && task.id ? task.id : null,
       commentable_type: 'task',
       content: commentText,
@@ -16731,14 +17250,16 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _mantine_dates__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/dates */ "./node_modules/@mantine/dates/esm/components/Calendar/Calendar.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCalendarEvent.mjs");
+/* harmony import */ var _mantine_dates__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/dates */ "./node_modules/@mantine/dates/esm/components/Calendar/Calendar.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCalendarEvent.mjs");
 /* harmony import */ var _mantine_dates_styles_css__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! @mantine/dates/styles.css */ "./node_modules/@mantine/dates/styles.css");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! dayjs */ "./node_modules/dayjs/dayjs.min.js");
 /* harmony import */ var dayjs__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__webpack_require__.n(dayjs__WEBPACK_IMPORTED_MODULE_2__);
 /* harmony import */ var _Settings_store_myTaskSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../Settings/store/myTaskSlice */ "./src/components/Settings/store/myTaskSlice.js");
 /* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../ui/permissions */ "./src/components/ui/permissions.jsx");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Tooltip/Tooltip.mjs");
+
 
 
 
@@ -16768,13 +17289,10 @@ const dbdateFormate = date => {
   const [month, day, year] = formattedDate.split(' ');
   return `${day}-${month}-${year}`;
 };
-const inputDate = new Date("2024-02-05");
-const options = {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric'
-};
-const formattedDate = inputDate.toLocaleDateString('en-US', options);
+
+// const inputDate = new Date("2024-02-05");
+// const options = { day: 'numeric', month: 'short', year: 'numeric' };
+// const formattedDate = inputDate.toLocaleDateString('en-US', options);
 
 // console.log(formattedDate); // Output: 5-Feb-2024
 
@@ -16785,6 +17303,7 @@ const TaskDueDate = ({
   const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_5__.useDispatch)();
 
   // const [selectedDate, setSelectedDate] = useState(dueDate ? new Date(dueDate) : null );
+  const [selectedDates, setSelectedDates] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
   const [calendarVisible, setCalendarVisible] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
   const calendarRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
   const {
@@ -16799,15 +17318,30 @@ const TaskDueDate = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Initialize selectedDates with dueDate
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (dueDate) {
+      setSelectedDates([new Date(dueDate)]);
+    }
+  }, [dueDate]);
   const handleSelect = date => {
+    const isSelected = selectedDates.some(selectedDate => dayjs__WEBPACK_IMPORTED_MODULE_2___default()(date).isSame(selectedDate, 'date'));
+    // Toggle selection
+    if (isSelected) {
+      setSelectedDates([]);
+    } else {
+      setSelectedDates([date]);
+    }
     if (taskId && taskId !== 'undefined' && date) {
-      var formatedDate = dayjs__WEBPACK_IMPORTED_MODULE_2___default()(date).format('YYYY-MM-DD');
+      // var formatedDate = dayjs(date).format('YYYY-MM-DD');
+      const formattedDate = isSelected ? null : dayjs__WEBPACK_IMPORTED_MODULE_2___default()(date).format('YYYY-MM-DD');
       dispatch((0,_Settings_store_myTaskSlice__WEBPACK_IMPORTED_MODULE_3__.editMyTask)({
         id: taskId,
         data: {
-          start_date: formatedDate,
-          end_date: formatedDate,
-          'updated_by': loggedUserId
+          start_date: formattedDate,
+          end_date: formattedDate,
+          'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
       })).then(response => {
         // setSelectedDate(date);
@@ -16832,19 +17366,30 @@ const TaskDueDate = ({
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "due-select-btn cursor-pointer",
     onClick: toggleCalendar
-  }, dueDate === null ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "h-[32px] w-[32px] border border-dashed border-[#4d4d4d] rounded-full p-1"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_6__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.Tooltip, {
+    label: `Due Date`,
+    position: "top",
+    withArrow: true
+  }, selectedDates.length > 0 ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "due-selected text-[#202020] font-medium text-[14px] cursor-pointer",
+    onClick: toggleCalendar
+  }, selectedDates.length > 0 && formatDate(selectedDates[0]), " ") : dueDate === null ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "h-[30px] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer",
+    onClick: toggleCalendar
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__["default"], {
     color: "#4d4d4d",
-    size: "22"
+    size: "20",
+    stroke: 1.25
   })) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "due-selected text-[#4d4d4d] font-semibold text-[14px]"
-  }, dbdateFormate(dueDate)), calendarVisible && (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_4__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "due-selected text-[#202020] font-medium text-[14px] cursor-pointer",
+    onClick: toggleCalendar
+  }, dbdateFormate(dueDate))), calendarVisible && (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_4__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     ref: calendarRef,
     className: "absolute bg-white border border-solid border-[#6191A4] rounded-sm p-2 z-[9]",
     onClick: handleCalendarClick
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_dates__WEBPACK_IMPORTED_MODULE_7__.Calendar, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_dates__WEBPACK_IMPORTED_MODULE_8__.Calendar, {
     getDayProps: date => ({
+      selected: selectedDates.some(selectedDate => dayjs__WEBPACK_IMPORTED_MODULE_2___default()(date).isSame(selectedDate, 'date')),
       onClick: () => handleSelect(date)
     })
   })));
@@ -16866,10 +17411,11 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconUsers.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconUsers.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Popover/Popover.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _ui_UsersAvatarGroup__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../ui/UsersAvatarGroup */ "./src/components/ui/UsersAvatarGroup.jsx");
 /* harmony import */ var _Settings_store_myTaskSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../Settings/store/myTaskSlice */ "./src/components/Settings/store/myTaskSlice.js");
@@ -16932,7 +17478,7 @@ const TaskFollower = ({
         id: taskId,
         data: {
           members: updatedMembers,
-          'updated_by': loggedUserId
+          'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
       }));
     }
@@ -16941,7 +17487,17 @@ const TaskFollower = ({
     setSelectedMembers(followers || []);
     setBoardMembers(task && task.project && task.project.members && task.project.members.length > 0 ? task.project.members : []);
   }, [followers, task]);
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+
+  // Check permission
+  const hasAccess = (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Popover, {
+    opened: showMembersList && hasAccess,
+    onClose: () => setShowMembersList(false),
+    width: 348,
+    position: "bottom",
+    withArrow: true,
+    shadow: "md"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Popover.Target, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "assignto-btn flex items-center justify-center"
   }, selectedMembers && selectedMembers.length > 0 ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     onClick: handleAssignedToButtonClick,
@@ -16953,18 +17509,17 @@ const TaskFollower = ({
   })) : (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     onClick: handleAssignedToButtonClick,
     className: "h-[30px] w-[30px] border border-dashed border-[#4d4d4d] rounded-full p-1 cursor-pointer"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_5__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_6__["default"], {
     color: "#4d4d4d",
     size: "20",
     stroke: 1.25
-  }))), showMembersList && (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    ref: membersListRef,
-    className: "shadow-lg z-[9] members-lists absolute w-[368px] bg-white mt-1 border border-solid border-[#ffffff] rounded-lg"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.ScrollArea, {
+  })))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_5__.Popover.Dropdown, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    ref: membersListRef
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.ScrollArea, {
     h: 272
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "p-3"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
@@ -16973,24 +17528,24 @@ const TaskFollower = ({
   }, boardMembers.length > 0 && boardMembers.map(member => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     key: member.id,
     className: "ml-single flex items-center border-b border-solid border-[#C2D4DC] py-1 justify-between"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Avatar, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Avatar, {
     src: member.avatar,
     size: 32,
     radius: 32
   }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "mls-ne ml-3 w-[80%]"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Text, {
     size: "sm",
     fw: 700,
     c: "#202020"
   }, member.name)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("button", {
     onClick: () => handleAssignButtonClick(member),
     className: `rounded-[5px] h-[32px] px-2 py-0 w-[100px] ml-2 ${selectedMembers.some(selectedMember => parseInt(selectedMember.id) === parseInt(member.id)) ? 'bg-[#f00]' : 'bg-[#39758D]'}`
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Text, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Text, {
     size: "sm",
     fw: 400,
     c: "#fff"
-  }, selectedMembers.some(selectedMember => parseInt(selectedMember.id) === parseInt(member.id)) ? 'Remove' : 'Assign')))))))));
+  }, selectedMembers.some(selectedMember => parseInt(selectedMember.id) === parseInt(member.id)) ? 'Remove' : 'Assign')))))))))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (TaskFollower);
 
@@ -17057,7 +17612,7 @@ const TaskName = ({
         id: taskId,
         data: {
           name: taskEditableName,
-          'updated_by': loggedUserId
+          'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
       }));
       setTaskName(taskEditableName);
@@ -17119,9 +17674,10 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconCheck.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconMinus.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconEdit.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconArrowsMove.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconEdit.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
 /* harmony import */ var _Settings_store_myTaskSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../Settings/store/myTaskSlice */ "./src/components/Settings/store/myTaskSlice.js");
@@ -17130,12 +17686,14 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Title/Title.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/Box/Box.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/core/Box/Box.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/TextInput/TextInput.mjs");
 /* harmony import */ var _mantine_modals__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! @mantine/modals */ "./node_modules/@mantine/modals/esm/events.mjs");
 /* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
+/* harmony import */ var react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! react-beautiful-dnd */ "./node_modules/react-beautiful-dnd/dist/react-beautiful-dnd.esm.js");
+
 
 
 
@@ -17178,9 +17736,19 @@ const TaskPriority = ({
         setShowPriorityEditInput(false);
       }
     };
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') {
+        setShowPriorityList(false);
+        setShowPriorityAddInput(false);
+        setShowPriorityEditInput(false);
+        setNewPriority('');
+      }
+    };
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
     };
   }, []);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
@@ -17203,7 +17771,7 @@ const TaskPriority = ({
         name: newPriority,
         project_id: projectId,
         color_code: newPriorityColor,
-        created_by: loggedUserId
+        created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
       };
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.createProjectPriority)(submitData)).then(response => {
         if (response.payload && response.payload.data) {
@@ -17260,7 +17828,7 @@ const TaskPriority = ({
         name: newPriority,
         project_id: projectId,
         color_code: newPriorityColor,
-        created_by: loggedUserId
+        created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
       };
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.createProjectPriority)(submitData)).then(response => {
         if (response.payload && response.payload.status === 200) {
@@ -17290,7 +17858,7 @@ const TaskPriority = ({
         id: taskId,
         data: {
           priority: priority,
-          'updated_by': loggedUserId
+          'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId
         }
       }));
     }
@@ -17303,13 +17871,13 @@ const TaskPriority = ({
   const priorityDeleteHandler = () => _mantine_modals__WEBPACK_IMPORTED_MODULE_8__.modals.openConfirmModal({
     title: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Title, {
       order: 5
-    }, "Are you sure this priority delete?"),
+    }, "You are parmanently deleting this priority"),
     size: 'sm',
     radius: 'md',
     withCloseButton: false,
     children: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
       size: "sm"
-    }, "This action is so important that you are required to confirm it with a modal. Please click one of these buttons to proceed."),
+    }, "Are you sure you want to delete this priority?"),
     labels: {
       confirm: 'Confirm',
       cancel: 'Cancel'
@@ -17363,6 +17931,35 @@ const TaskPriority = ({
       }
     }
   });
+  const handleDragEnd = result => {
+    if (!result.destination) return;
+    const reorderedPriorities = Array.from(projectPriorities);
+    const [movedItem] = reorderedPriorities.splice(result.source.index, 1);
+    reorderedPriorities.splice(result.destination.index, 0, movedItem);
+    if (result.type === 'priority') {
+      dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_1__.editProjectPrioritySortOrder)({
+        data: {
+          project_id: projectId,
+          sort_order: reorderedPriorities.map((priority, index) => ({
+            id: priority.id,
+            sort_order: index + 1
+          }))
+        }
+      })).then(response => {
+        if (response.payload && response.payload.status === 200) {
+          setProjectPriorities(reorderedPriorities);
+          setShowPriorityList(false);
+          _mantine_notifications__WEBPACK_IMPORTED_MODULE_6__.notifications.show({
+            color: theme.primaryColor,
+            title: response.payload.message,
+            icon: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__["default"], null),
+            autoClose: 5000
+            // withCloseButton: true,
+          });
+        }
+      });
+    }
+  };
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "priority-wrapper"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
@@ -17395,33 +17992,63 @@ const TaskPriority = ({
   }))), showPriorityList && (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     ref: selectPriorityRef,
     className: "selectpriority-list border rounded-lg bg-white shadow  px-2 py-3 absolute z-10 min-w-[250px]"
-  }, projectPriorities.length > 0 && projectPriorities.map((priority, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid, {
-    className: `hover:bg-[#ebf1f4]`
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid.Col, {
-    span: "auto",
-    className: `!py-1`
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_14__.DragDropContext, {
+    onDragEnd: result => {
+      handleDragEnd(result);
+    }
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_14__.Droppable, {
+    droppableId: "priorityList",
+    type: "priority"
+  }, provided => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    ...provided.droppableProps,
+    ref: provided.innerRef
+  }, projectPriorities && projectPriorities.map((priority, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_beautiful_dnd__WEBPACK_IMPORTED_MODULE_14__.Draggable, {
+    key: priority.id,
+    draggableId: priority.id.toString(),
+    index: index
+  }, provided => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    ref: provided.innerRef,
+    ...provided.draggableProps,
+    ...provided.dragHandleProps
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid, {
+    columns: 12,
+    className: "hover:bg-[#ebf1f4]"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid.Col, {
+    span: 9,
+    className: "!py-1"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: `flex items-center gap-2 w-full cursor-pointer text-[12px] p-1`,
-    key: index,
+    className: "flex items-center gap-2 w-full cursor-pointer text-[12px] p-1",
     onClick: () => handleSelectPriority(priority)
   }, selectedPriority === priority.id ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_7__["default"], {
     size: "14"
   }) : null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Text, {
+    lineClamp: 1,
     c: "black",
     size: "xs",
     fw: 400
-  }, priority.name))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Grid.Col, {
-    span: `content`,
+  }, priority.name))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid.Col, {
+    span: 1,
     className: `flex items-center !py-1`
-  }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.ActionIcon, {
-    onClick: () => priorityEditHandler(priority),
+  }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ActionIcon, {
+    ...provided.dragHandleProps,
     variant: "transparent",
     "aria-label": "Edit"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_17__["default"], {
     size: 16,
     stroke: 1,
     color: "#ED7D31"
-  }))))), (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_17__.Box, {
+  }))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.Grid.Col, {
+    span: 1,
+    className: `flex items-center !py-1`
+  }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ActionIcon, {
+    onClick: () => priorityEditHandler(priority),
+    variant: "transparent",
+    "aria-label": "Edit"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_18__["default"], {
+    size: 16,
+    stroke: 1,
+    color: "#ED7D31"
+  }))))))), provided.placeholder))), (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_3__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Box, {
     className: `border-t border-t-[#C8C8C8] pt-1.5 mt-2`
   }, showPriorityAddInput ? (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     className: "flex items-center gap-1 py-1"
@@ -17431,19 +18058,19 @@ const TaskPriority = ({
     value: newPriorityColor,
     onChange: handleColorInputChange,
     placeholder: "Color"
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.TextInput, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.TextInput, {
     size: "xs",
     className: "w-full text-[12px]",
     defaultValue: newPriority,
     onChange: handleInputChange,
     placeholder: 'Type name here',
-    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.ActionIcon, {
+    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ActionIcon, {
       onClick: handleAddPriority,
       size: 24,
       radius: "xl",
       color: "#ED7D31",
       variant: "filled"
-    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_19__["default"], {
+    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_21__["default"], {
       style: {
         width: '18px',
         height: '18px'
@@ -17461,31 +18088,31 @@ const TaskPriority = ({
     value: newPriorityColor,
     onChange: handleColorInputChange,
     placeholder: "Color"
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.TextInput, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.TextInput, {
     size: "xs",
     className: "w-full text-[12px]",
     value: newPriority,
     onChange: handleInputChange,
     placeholder: 'Type name here',
-    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.ActionIcon, {
+    rightSection: (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ActionIcon, {
       onClick: handleUpdatePriority,
       size: 24,
       radius: "xl",
       color: "#ED7D31",
       variant: "filled"
-    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_19__["default"], {
+    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_21__["default"], {
       style: {
         width: '18px',
         height: '18px'
       },
       stroke: 1.5
     }))
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_15__.ActionIcon, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_16__.ActionIcon, {
     onClick: priorityDeleteHandler,
     size: 24,
     radius: "xl",
     variant: "transparent"
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_20__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_22__["default"], {
     size: "24",
     stroke: 1.5,
     color: `red`
@@ -17567,7 +18194,7 @@ const TaskTag = ({
     if (removedTag) {
       const data = {
         'name': removedTag,
-        'user_id': loggedUserId,
+        'user_id': loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
         'task_id': taskId
       };
       dispatch((0,_Settings_store_myTaskSlice__WEBPACK_IMPORTED_MODULE_1__.deleteTagFromMyTask)(data));
@@ -17577,7 +18204,7 @@ const TaskTag = ({
     if (addTag) {
       const data = {
         'name': addTag,
-        'user_id': loggedUserId,
+        'user_id': loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
         'task_id': taskId
       };
       dispatch((0,_Settings_store_myTaskSlice__WEBPACK_IMPORTED_MODULE_1__.addTagToMyTask)(data));
@@ -17738,9 +18365,10 @@ const MyTask = () => {
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_8__.Container, {
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "settings-page-card bg-white rounded-xl p-6 pt-3 my-5 mb-0"
+    className: "settings-page-card bg-white rounded-xl p-6 pt-3 mt-5"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Grid, {
-    columns: 12
+    columns: 12,
+    className: "pb-3"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_9__.Grid.Col, {
     span: 9
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
@@ -20003,7 +20631,7 @@ const NotificationTemplate = () => {
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Container, {
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "settings-page-card bg-white rounded-xl p-5 pt-3 my-5 mb-0"
+    className: "settings-page-card bg-white rounded-xl p-5 pt-3 my-5 pb-[2.3rem]"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Settings_SettingsNav__WEBPACK_IMPORTED_MODULE_5__["default"], null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.ScrollArea, {
     scrollbars: "y",
     className: "w-full h-[calc(100vh-250px)] pr-1",
@@ -20375,9 +21003,10 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Text/Text.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
 /* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Button/Button.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Select/Select.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Avatar/Avatar.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Group/Group.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ActionIcon/ActionIcon.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Select/Select.mjs");
 /* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
 /* harmony import */ var _Settings_store_companySlice__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../Settings/store/companySlice */ "./src/components/Settings/store/companySlice.js");
 /* harmony import */ var _mantine_notifications__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! @mantine/notifications */ "./node_modules/@mantine/notifications/esm/notifications.store.mjs");
@@ -20386,8 +21015,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _store_auth_userSlice__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../store/auth/userSlice */ "./src/store/auth/userSlice.js");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconX.mjs");
 /* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconSearch.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
-/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPlus.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconTrash.mjs");
+/* harmony import */ var _tabler_icons_react__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! @tabler/icons-react */ "./node_modules/@tabler/icons-react/dist/esm/icons/IconPlus.mjs");
 /* harmony import */ var _Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../Settings/store/taskSlice */ "./src/components/Settings/store/taskSlice.js");
 /* harmony import */ var _ui_UserAvatarSingle__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ../ui/UserAvatarSingle */ "./src/components/ui/UserAvatarSingle.jsx");
 /* harmony import */ var react_router_dom__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! react-router-dom */ "./node_modules/react-router/dist/index.js");
@@ -20411,6 +21040,9 @@ const OnboardingForm = () => {
   const {
     loggedUserId
   } = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useSelector)(state => state.auth.user);
+  const {
+    loggedInUser
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_8__.useSelector)(state => state.auth.session);
   const [active, setActive] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(0);
   const [workspaceName, setWorkspaceName] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)('');
   const [workspaceError, setWorkspaceError] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
@@ -20424,6 +21056,11 @@ const OnboardingForm = () => {
   const [taskSectionId, setTaskSectionId] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
   const [taskSectionError, setTaskSectionError] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)('');
   const [projectSections, setProjectSections] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
+  const [isEmailValid, setIsEmailValid] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
+  const validateEmail = email => {
+    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return regex.test(email);
+  };
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     dispatch((0,_store_auth_userSlice__WEBPACK_IMPORTED_MODULE_4__.fetchAllMembers)());
   }, []);
@@ -20435,6 +21072,7 @@ const OnboardingForm = () => {
   const handleSearchInputChange = e => {
     const inputValue = e.target.value;
     setSearchValue(inputValue);
+    setIsEmailValid(validateEmail(inputValue));
   };
   const [addedMembers, setAddedMembers] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
   const [currentMemberData, setCurrentMemberData] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
@@ -20490,7 +21128,7 @@ const OnboardingForm = () => {
         name: value,
         project_id: projectId,
         sort_order: index + 1,
-        created_by: loggedUserId
+        created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId
       };
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_5__.createTaskSection)(newSection)).then(response => {
         if (response.payload && response.payload.status && response.payload.status === 200) {
@@ -20659,11 +21297,11 @@ const OnboardingForm = () => {
       name: taskName,
       project_id: projectId,
       task_section_id: taskSectionId,
-      created_by: loggedUserId,
+      created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
       type: 'task',
       status: 'ACTIVE'
     };
-    if (newTaskData.name !== '') {
+    if (newTaskData.name !== '' && newTaskData.created_by) {
       dispatch((0,_Settings_store_taskSlice__WEBPACK_IMPORTED_MODULE_5__.createTask)(newTaskData)).then(response => {
         if (response.payload && response.payload.status && response.payload.status === 200) {
           dispatch((0,_Settings_store_settingSlice__WEBPACK_IMPORTED_MODULE_3__.editLazytasksConfig)({
@@ -20685,6 +21323,46 @@ const OnboardingForm = () => {
     }
   };
   const stepTitles = ['Create Your Workspace', 'Add Users to ' + projectName, 'Create Section', 'Create Task'];
+
+  //handleSendInvite
+  const handleSendInvite = email => {
+    const values = {
+      email: email,
+      loggedInUserId: loggedUserId
+    };
+    dispatch((0,_store_auth_userSlice__WEBPACK_IMPORTED_MODULE_4__.createUser)(values)).then(response => {
+      if (response.payload && response.payload.status && response.payload.status === 200) {
+        const members = [response.payload.data];
+        dispatch((0,_Settings_store_projectSlice__WEBPACK_IMPORTED_MODULE_2__.editProject)({
+          id: projectId,
+          data: {
+            'members': members,
+            'updated_by': loggedUserId
+          }
+        })).then(response => {
+          if (response.payload && response.payload.status && response.payload.status === 200) {
+            setProjectName(response.payload.data?.name);
+            dispatch((0,_Settings_store_settingSlice__WEBPACK_IMPORTED_MODULE_3__.editLazytasksConfig)({
+              data: {
+                'step_completed': 2
+              }
+            })).then(response => {
+              setActive(2);
+            });
+          }
+        });
+        (0,_mantine_notifications__WEBPACK_IMPORTED_MODULE_9__.showNotification)({
+          id: 'load-data',
+          loading: true,
+          title: 'User',
+          message: response.payload && response.payload.message && response.payload.message,
+          autoClose: 2000,
+          disallowClose: true,
+          color: 'green'
+        });
+      }
+    });
+  };
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
     style: {
       display: 'flex',
@@ -20833,7 +21511,32 @@ const OnboardingForm = () => {
     size: "sm",
     marginLeft: 2,
     onClick: () => handleButtonClick(user)
-  }, addedMembers.includes(user.id) ? 'Added' : 'Add')))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Stepper.Step, {
+  }, addedMembers.includes(user.id) ? 'Added' : 'Add'))), filteredMembers && filteredMembers.length === 0 && isEmailValid && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "ml-single flex items-center border-b border-solid border-[#C2D4DC] py-3 justify-between"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Avatar, {
+    size: 32,
+    radius: 32
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
+    className: "mls-ne ml-2 w-full"
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_14__.Text, {
+    size: "sm",
+    fw: 100,
+    c: "#202020"
+  }, searchValue)), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_18__.Button, {
+    radius: "sm",
+    height: 24,
+    style: {
+      backgroundColor: "#39758D",
+      // Conditional background color
+      color: "#fff",
+      fontWeight: 400,
+      padding: "5px 0px",
+      width: "100px"
+    },
+    size: "sm",
+    marginLeft: 2,
+    onClick: () => handleSendInvite(searchValue)
+  }, "Send Invite"))))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Stepper.Step, {
     allowStepSelect: false,
     label: "Step 3"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_10__.Card, {
@@ -20849,7 +21552,7 @@ const OnboardingForm = () => {
     },
     scrollbarSize: 6,
     type: "hover"
-  }, sections.map((section, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_19__.Group, {
+  }, sections.map((section, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.Group, {
     key: index,
     mb: "xs",
     spacing: "xs"
@@ -20862,12 +21565,12 @@ const OnboardingForm = () => {
     style: {
       width: '100%'
     },
-    rightSection: sections.length > 1 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_20__.ActionIcon, {
+    rightSection: sections.length > 1 && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_21__.ActionIcon, {
       variant: "subtle",
       size: "md",
       onClick: () => removeSection(index),
       "aria-label": "Remove input"
-    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_21__["default"], {
+    }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_22__["default"], {
       size: 16,
       color: "#6A6A6A"
     }))
@@ -20880,7 +21583,7 @@ const OnboardingForm = () => {
       alignSelf: 'flex-start',
       color: '#39758D'
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_22__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_tabler_icons_react__WEBPACK_IMPORTED_MODULE_23__["default"], {
     size: 18,
     color: "#39758D"
   }), " Add Section"))), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Stepper.Step, {
@@ -20908,7 +21611,7 @@ const OnboardingForm = () => {
     },
     onChange: e => handleTaskName(e),
     error: taskNameError
-  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_23__.Select, {
+  }), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_24__.Select, {
     searchable: true,
     clearable: true,
     label: "Section*",
@@ -23285,7 +23988,7 @@ const SettingMain = () => {
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_4__.Container, {
     size: "full"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)("div", {
-    className: "settings-page-card bg-white rounded-xl p-6 pt-3 my-5 mb-0"
+    className: "settings-page-card bg-white rounded-xl p-6 pt-3 my-5 pb-[2.2rem]"
   }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_SettingsNav__WEBPACK_IMPORTED_MODULE_2__["default"], null), (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react_router_dom__WEBPACK_IMPORTED_MODULE_5__.Outlet, null)))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (SettingMain);
@@ -23556,27 +24259,18 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_10__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
-/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
-/* harmony import */ var _Header__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../Header */ "./src/components/Header.jsx");
-/* harmony import */ var _reducers_usersSlice__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../reducers/usersSlice */ "./src/reducers/usersSlice.js");
-/* harmony import */ var _Elements_UserCard__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../Elements/UserCard */ "./src/components/Elements/UserCard.jsx");
-/* harmony import */ var _SettingsNav__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ./SettingsNav */ "./src/components/Settings/SettingsNav.jsx");
-/* harmony import */ var _Elements_Button_ProfileCreateButton__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../Elements/Button/ProfileCreateButton */ "./src/components/Elements/Button/ProfileCreateButton.jsx");
-/* harmony import */ var _store_auth_userSlice__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ../../store/auth/userSlice */ "./src/store/auth/userSlice.js");
-/* harmony import */ var _Elements_Modal_Project_CreateProjectModal__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ../Elements/Modal/Project/CreateProjectModal */ "./src/components/Elements/Modal/Project/CreateProjectModal.jsx");
-/* harmony import */ var _Elements_ProjectCard__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! ../Elements/ProjectCard */ "./src/components/Elements/ProjectCard.jsx");
-/* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! ../ui/permissions */ "./src/components/ui/permissions.jsx");
+/* harmony import */ var react_redux__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-redux */ "./node_modules/react-redux/dist/react-redux.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/ScrollArea/ScrollArea.mjs");
+/* harmony import */ var _mantine_core__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! @mantine/core */ "./node_modules/@mantine/core/esm/components/Grid/Grid.mjs");
+/* harmony import */ var _Elements_UserCard__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../Elements/UserCard */ "./src/components/Elements/UserCard.jsx");
+/* harmony import */ var _Elements_Button_ProfileCreateButton__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../Elements/Button/ProfileCreateButton */ "./src/components/Elements/Button/ProfileCreateButton.jsx");
+/* harmony import */ var _store_auth_userSlice__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../store/auth/userSlice */ "./src/store/auth/userSlice.js");
+/* harmony import */ var _ui_permissions__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../ui/permissions */ "./src/components/ui/permissions.jsx");
 
 
 
 
-
-
-
-
-
+// import { setUsers } from '../../reducers/usersSlice';
 
 
 
@@ -23585,23 +24279,22 @@ const Users = () => {
   // const users = useSelector((state) => state.users);
   const {
     loggedInUser
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_10__.useSelector)(state => state.auth.session);
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_5__.useSelector)(state => state.auth.session);
   const {
     allMembers
-  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_10__.useSelector)(state => state.auth.user);
-  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_10__.useDispatch)();
+  } = (0,react_redux__WEBPACK_IMPORTED_MODULE_5__.useSelector)(state => state.auth.user);
+  const dispatch = (0,react_redux__WEBPACK_IMPORTED_MODULE_5__.useDispatch)();
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     // Dispatch an action to set users data when the component mounts
-    dispatch((0,_store_auth_userSlice__WEBPACK_IMPORTED_MODULE_6__.fetchAllMembers)());
-    if (allMembers && allMembers.length > 0) {
-      dispatch((0,_reducers_usersSlice__WEBPACK_IMPORTED_MODULE_2__.setUsers)(allMembers));
-    }
+    dispatch((0,_store_auth_userSlice__WEBPACK_IMPORTED_MODULE_3__.fetchAllMembers)());
+    /*if(allMembers && allMembers.length>0){
+        dispatch(setUsers(allMembers));
+    }*/
   }, [dispatch]);
-  // console.log(usersData);
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_11__.ScrollArea, {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_6__.ScrollArea, {
     className: "h-[calc(100vh-250px)] pb-[2px]",
     scrollbarSize: 4
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid, {
     gutter: {
       base: 20
     },
@@ -23609,7 +24302,7 @@ const Users = () => {
     align: "stretch",
     spacing: "sm",
     verticalSpacing: "sm"
-  }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_9__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid.Col, {
+  }, (0,_ui_permissions__WEBPACK_IMPORTED_MODULE_4__.hasPermission)(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director']) && (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     span: {
       base: 12,
       xs: 4,
@@ -23617,7 +24310,7 @@ const Users = () => {
       md: 3,
       lg: 3
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Elements_Button_ProfileCreateButton__WEBPACK_IMPORTED_MODULE_5__["default"], null)), Array.isArray(allMembers) && allMembers && allMembers.length > 0 && allMembers.map((user, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_12__.Grid.Col, {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Elements_Button_ProfileCreateButton__WEBPACK_IMPORTED_MODULE_2__["default"], null)), Array.isArray(allMembers) && allMembers && allMembers.length > 0 && allMembers.map((user, index) => (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_mantine_core__WEBPACK_IMPORTED_MODULE_7__.Grid.Col, {
     key: index,
     span: {
       base: 12,
@@ -23626,7 +24319,7 @@ const Users = () => {
       md: 3,
       lg: 3
     }
-  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Elements_UserCard__WEBPACK_IMPORTED_MODULE_3__["default"], {
+  }, (0,react__WEBPACK_IMPORTED_MODULE_0__.createElement)(_Elements_UserCard__WEBPACK_IMPORTED_MODULE_1__["default"], {
     key: index,
     ...user
   }))))));
@@ -24007,6 +24700,7 @@ const deleteTagFromMyTask = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_2__.cre
 });
 const initialState = {
   tasks: [],
+  allTasks: [],
   userTaskListSections: {},
   userTaskColumns: {},
   userTaskOrdered: [],
@@ -24062,6 +24756,7 @@ const taskSlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_2__.createSlice)(
       state.userTaskOrdered = action.payload.data && action.payload.data.orders ? action.payload.data.orders : [];
       state.userTaskColumns = action.payload.data && action.payload.data.tasks ? action.payload.data.tasks : {};
       state.userTaskListSections = action.payload.data && action.payload.data.taskSections ? action.payload.data.taskSections : {};
+      state.allTasks = action.payload.data && action.payload.data.allTasks ? action.payload.data.allTasks : {};
       state.userTaskChildColumns = action.payload.data && action.payload.data.childTasks ? action.payload.data.childTasks : {};
       state.userProjects = action.payload.data && action.payload.data.userProjects ? action.payload.data.userProjects : [];
       state.taskStatus = action.payload.data && action.payload.data.taskStatus ? action.payload.data.taskStatus : [];
@@ -24840,6 +25535,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   deleteTagFromTask: () => (/* binding */ deleteTagFromTask),
 /* harmony export */   deleteTask: () => (/* binding */ deleteTask),
 /* harmony export */   deleteTaskSection: () => (/* binding */ deleteTaskSection),
+/* harmony export */   editProjectPrioritySortOrder: () => (/* binding */ editProjectPrioritySortOrder),
 /* harmony export */   editSectionSortOrder: () => (/* binding */ editSectionSortOrder),
 /* harmony export */   editTask: () => (/* binding */ editTask),
 /* harmony export */   editTaskSection: () => (/* binding */ editTaskSection),
@@ -24897,6 +25593,11 @@ const deleteProjectPriority = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.c
   data
 }) => {
   return (0,_services_TaskService__WEBPACK_IMPORTED_MODULE_0__.removeProjectPriority)(data);
+});
+const editProjectPrioritySortOrder = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createAsyncThunk)('tasks/editProjectPrioritySortOrder', async ({
+  data
+}) => {
+  return (0,_services_TaskService__WEBPACK_IMPORTED_MODULE_0__.updateProjectPrioritySortOrder)(data);
 });
 const editTaskSection = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createAsyncThunk)('tasks/updateTaskSection', async ({
   id,
@@ -25306,6 +26007,19 @@ const taskSlice = (0,_reduxjs_toolkit__WEBPACK_IMPORTED_MODULE_1__.createSlice)(
       state.isLoading = false;
       state.isError = false;
       state.error = action.error?.message;
+    }).addCase(editProjectPrioritySortOrder.pending, state => {
+      state.isLoading = false;
+      state.isError = false;
+    }).addCase(editProjectPrioritySortOrder.fulfilled, (state, action) => {
+      state.isLoading = false;
+      state.isError = false;
+      state.projectPriorities = action.payload.data;
+      state.success = `Priority Sorted Successfully`;
+    }).addCase(editProjectPrioritySortOrder.rejected, (state, action) => {
+      console.error('Error Payload:', action.error);
+      state.isLoading = false;
+      state.isError = true;
+      state.error = action.error?.message || 'Failed to update project priorities';
     })
     //deleteProjectPriority
     .addCase(deleteProjectPriority.pending, state => {
@@ -27291,6 +28005,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   removeTagFromTask: () => (/* binding */ removeTagFromTask),
 /* harmony export */   removeTask: () => (/* binding */ removeTask),
 /* harmony export */   removeTaskSection: () => (/* binding */ removeTaskSection),
+/* harmony export */   updateProjectPrioritySortOrder: () => (/* binding */ updateProjectPrioritySortOrder),
 /* harmony export */   updateSectionSortOrder: () => (/* binding */ updateSectionSortOrder),
 /* harmony export */   updateTask: () => (/* binding */ updateTask),
 /* harmony export */   updateTaskSection: () => (/* binding */ updateTaskSection),
@@ -27454,6 +28169,18 @@ async function removeProjectPriority(data) {
       url: '/priorities/delete',
       method: 'get',
       params: data
+    });
+    return response.data;
+  } catch (error) {
+    return error.message;
+  }
+}
+async function updateProjectPrioritySortOrder(data) {
+  try {
+    const response = await _ApiService__WEBPACK_IMPORTED_MODULE_0__["default"].fetchData({
+      url: '/priorities/sortOrder/update',
+      method: 'post',
+      data
     });
     return response.data;
   } catch (error) {
@@ -136302,6 +137029,35 @@ var defaultAttributes = {
 
 
 //# sourceMappingURL=defaultAttributes.mjs.map
+
+
+/***/ }),
+
+/***/ "./node_modules/@tabler/icons-react/dist/esm/icons/IconArrowsMove.mjs":
+/*!****************************************************************************!*\
+  !*** ./node_modules/@tabler/icons-react/dist/esm/icons/IconArrowsMove.mjs ***!
+  \****************************************************************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (/* binding */ IconArrowsMove)
+/* harmony export */ });
+/* harmony import */ var _createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../createReactComponent.mjs */ "./node_modules/@tabler/icons-react/dist/esm/createReactComponent.mjs");
+/**
+ * @license @tabler/icons-react v3.14.0 - MIT
+ *
+ * This source code is licensed under the MIT license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+
+
+
+var IconArrowsMove = (0,_createReactComponent_mjs__WEBPACK_IMPORTED_MODULE_0__["default"])("outline", "arrows-move", "IconArrowsMove", [["path", { "d": "M18 9l3 3l-3 3", "key": "svg-0" }], ["path", { "d": "M15 12h6", "key": "svg-1" }], ["path", { "d": "M6 9l-3 3l3 3", "key": "svg-2" }], ["path", { "d": "M3 12h6", "key": "svg-3" }], ["path", { "d": "M9 18l3 3l3 -3", "key": "svg-4" }], ["path", { "d": "M12 15v6", "key": "svg-5" }], ["path", { "d": "M15 6l-3 -3l-3 3", "key": "svg-6" }], ["path", { "d": "M12 3v6", "key": "svg-7" }]]);
+
+
+//# sourceMappingURL=IconArrowsMove.mjs.map
 
 
 /***/ }),

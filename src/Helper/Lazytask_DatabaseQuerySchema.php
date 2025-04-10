@@ -41,7 +41,7 @@ class Lazytask_DatabaseQuerySchema {
 		$sql = "SELECT project.id as projectId, priority.id as priorityId, priority.name as priorityName, priority.color_code as color_code, priority.sort_order as sort_order 
 				FROM `{$priorityTable}` as priority 
 				JOIN `{$projectTable}` as project ON priority.`project_id` = project.`id` 
-				WHERE project.`id` = %d";
+				WHERE project.`id` = %d ORDER BY priority.sort_order ASC";
 		$results = $db->get_results($db->prepare(
 			$sql, (int)$projectId
 		), ARRAY_A);

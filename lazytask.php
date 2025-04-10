@@ -10,7 +10,7 @@
  * Plugin Name:       LazyTasks - Project & Task Management with Collaboration, Kanban and Gantt Chart
  * Plugin URI:        https://lazycoders.co/lazytasks
  * Description:       Comprehensive Task and Project Management: Create, assign, follow, and comment on tasks with ease. Our user-friendly interface ensures your projects are always on track and accessible.
- * Version:           1.0.10
+ * Version:           1.0.11
  * Requires at least: 6.2
  * Tested up to:      6.7.2
  * Requires PHP:      8.0
@@ -34,7 +34,7 @@ global $wpdb;
  * Start at version 1.0.0 and use SemVer - https://semver.org
  * Rename this for your plugin and update it as you release new versions.
  */
-define( 'LAZYTASK_VERSION', '1.0.10' );
+define( 'LAZYTASK_VERSION', '1.0.11' );
 
 define( 'LAZYTASK_TABLE_PREFIX', $wpdb->prefix .'pms_' );
 

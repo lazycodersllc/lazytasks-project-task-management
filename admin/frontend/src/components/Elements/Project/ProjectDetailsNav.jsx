@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, {Fragment, useEffect, useState} from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
     ActionIcon,
@@ -28,6 +28,11 @@ import UsersAvatarGroup from "../../ui/UsersAvatarGroup";
 import { editProject } from "../../Settings/store/projectSlice";
 import { fetchTasksByProject, updateBoardMembers, updateIsLoading } from "../../Settings/store/taskSlice";
 import { hasPermission } from "../../ui/permissions";
+import {createUser, fetchAllMembers} from "../../../store/auth/userSlice";
+import UserAvatarSingle from "../../ui/UserAvatarSingle";
+import {modals} from "@mantine/modals";
+import {editLazytasksConfig} from "../../Settings/store/settingSlice";
+import {showNotification} from "@mantine/notifications";
 const ProjectDetailsNav = () => {
     const location = useLocation();
     const navigate = useNavigate()
@@ -37,7 +42,48 @@ const ProjectDetailsNav = () => {
 
     const usersData = useSelector((state) => state.users);
     const { boardMembers, projectInfo } = useSelector((state) => state.settings.task);
+    const {tasks} = useSelector((state) => state.settings.task)
 
+    const [ isOpenedMemberPopover, setIsOpenedMemberPopover ] = useState(false);
+
+    useEffect(() => {
+        //isOpenedMemberPopover is true
+        if ( isOpenedMemberPopover ) {
+            console.log('ok')
+            dispatch(fetchTasksByProject({ id: id } ))
+            dispatch(fetchAllMembers())
+        }
+    }, [isOpenedMemberPopover]);
+
+    const [isEmailValid, setIsEmailValid] = useState(false);
+
+    const validateEmail = (email) => {
+        const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return regex.test(email);
+    };
+
+    const {allMembers} = useSelector((state) => state.auth.user);
+    const [searchValue, setSearchValue] = useState('');
+
+    const [ filteredMembers, setFilteredMembers ] = useState([]);
+
+    useEffect(() => {
+        if (allMembers && allMembers.length > 0) {
+            const filtered = allMembers.filter(
+                (member) =>
+                    member.name.toLowerCase().includes(searchValue.toLowerCase()) ||
+                    member.email.toLowerCase().includes(searchValue.toLowerCase())
+            );
+            setFilteredMembers(filtered);
+        } else {
+            setFilteredMembers([]);
+        }
+    }, [allMembers, searchValue]);
+    const handleSearchInputChange = (e) => {
+        const inputValue = e.target.value;
+        setSearchValue(inputValue);
+        setIsEmailValid(validateEmail(inputValue));
+    };
     const dispatch = useDispatch();
     const { id } = useParams();
 
@@ -46,6 +92,9 @@ const ProjectDetailsNav = () => {
     const calendarPagePathName = `/project/task/calendar/${id}`;
 
     const [selectedMembers, setSelectedMembers] = useState(boardMembers || []);
+
+    const [addedMembers, setAddedMembers] = useState(boardMembers && boardMembers.length>0 ? boardMembers.map((member) => member.id):[]);
+
 
     const handleAssignButtonClick = (member) => {
         // Toggle between assigning and removing a member
@@ -64,17 +113,86 @@ const ProjectDetailsNav = () => {
         }
 
         if (id && id !== 'undefined' && updatedMembers) {
-            dispatch(editProject({ id: id, data: { 'members': updatedMembers, 'updated_by': loggedUserId } }));
-            dispatch(updateBoardMembers(updatedMembers));
+            dispatch(editProject({ id: id, data: { 'members': updatedMembers, 'updated_by': loggedUserId } })).then((response) => {
+
+                if (response.payload.status === 200) {
+                    console.log(response.payload.data.members)
+                    dispatch(updateBoardMembers( response.payload.data.members||[] ));
+                    setSelectedMembers( response.payload.data.members||[] );
+                    setAddedMembers( response.payload.data.members && response.payload.data.members.length > 0 ? response.payload.data.members.map((member) => member.id):[] );
+
+                }
+
+            });
+        }
+    };
+    const handleRemoveButtonClick = (member) => {
+
+        const isMemberAssignedToTask = tasks && tasks.allTasks && Object.values(tasks.allTasks).length>0 && Object.values(tasks.allTasks).some((task) => task.assignedTo_id === member.id.toString());
+        const isMemberAssignedToSubTask = tasks && tasks.allTasks && Object.values(tasks.allTasks).length>0 && Object.values(tasks.allTasks).some((task) => task.children && task.children.length>0 && task.children.some((subtask) => subtask.assignedTo_id === member.id.toString()));
+        if(isMemberAssignedToTask || isMemberAssignedToSubTask){
+            modals.open({
+                withCloseButton: false,
+                centered: true,
+                children: (
+                    <Fragment>
+                        <Text size="sm">
+                            This member is assigned to a task. Please reassign the task before removing the member.
+                        </Text>
+
+                        <div className="!grid w-full !justify-items-center">
+                            <Button justify="center" onClick={() => {
+                                setIsOpenedMemberPopover(true)
+                                modals.closeAll()
+                            }} mt="md">
+                                Ok
+                            </Button>
+                        </div>
+                    </Fragment>
+                ),
+            });
+
+            return false;
+
+        }
+
+        // Toggle between assigning and removing a member
+        var updatedMembers = [];
+        const index = selectedMembers.findIndex((selectedMember) => parseInt(selectedMember.id) === parseInt(member.id));
+        if (index === -1) {
+            const assignAfterMembers = [...selectedMembers, member];
+            updatedMembers = assignAfterMembers;
+
+            setSelectedMembers(assignAfterMembers);
+        } else {
+            const deletedAfterMembers = selectedMembers.filter((selectedMember) => parseInt(selectedMember.id) !== parseInt(member.id));
+            updatedMembers = deletedAfterMembers;
+
+            setSelectedMembers(deletedAfterMembers);
+        }
+
+        if (id && id !== 'undefined' && updatedMembers) {
+            dispatch(editProject({ id: id, data: { 'members': updatedMembers, 'updated_by': loggedUserId } })).then((response) => {
+
+                if (response.payload.status === 200) {
+                    console.log(response.payload.data.members)
+                    dispatch(updateBoardMembers( response.payload.data.members||[] ));
+                    setSelectedMembers( response.payload.data.members||[] );
+                    setAddedMembers( response.payload.data.members && response.payload.data.members.length > 0 ? response.payload.data.members.map((member) => member.id):[] );
+
+                }
+
+            });
         }
     };
 
     useEffect(() => {
         setSelectedMembers(boardMembers || []);
+        setAddedMembers( boardMembers && boardMembers.length>0 ? boardMembers.map((member) => member.id):[]);
     }, [projectInfo]);
 
     const goToTasksList = (id) => {
-        dispatch(fetchTasksByProject({ id: id }))
+        // dispatch(fetchTasksByProject({ id: id }))
         navigate(`/project/task/list/${id}`)
     }
     //searchHandler
@@ -89,6 +207,45 @@ const ProjectDetailsNav = () => {
     const handleRefresh = () => {
         dispatch(updateIsLoading(true))
     }
+    const handleSendInvite = (email) => {
+
+        const values= {
+            email: email,
+            loggedInUserId : loggedInUser ? loggedInUser.id : loggedUserId
+        }
+        dispatch(createUser(values)).then((response) => {
+            if(response.payload && response.payload.status && response.payload.status === 200){
+                const members = [...selectedMembers, response.payload.data]
+                dispatch(editProject({id: projectInfo ? projectInfo.id : id, data: {'members': members, 'updated_by': loggedInUser ? loggedInUser.id : loggedUserId}})).then((res) => {
+                    if(res.payload && res.payload.status && res.payload.status === 200){
+                        dispatch(updateBoardMembers( res.payload.data.members||[] ));
+                        setIsOpenedMemberPopover(false)
+                        setSearchValue('')
+                    }
+                });
+
+
+                showNotification({
+                    id: 'load-data',
+                    loading: true,
+                    title: 'User',
+                    message: response.payload && response.payload.message && response.payload.message,
+                    autoClose: 2000,
+                    disallowClose: true,
+                    color: 'green',
+                });
+            }
+        });
+    }
+
+    const projectCount = projectInfo?.parent?.projects?.length || 0;
+    const cardHeight = 80;
+    const maxVisibleCards = 3;
+
+    const scrollAreaHeight = projectCount > maxVisibleCards
+    ? cardHeight * maxVisibleCards
+    : 'auto';
+
 
     return (
         <>
@@ -98,7 +255,7 @@ const ProjectDetailsNav = () => {
                         <Title order={4}>
                             {projectInfo && projectInfo.parent && projectInfo.parent.name}
                         </Title>
-                        <Popover width={300} position="bottom-start" withArrow shadow="md">
+                        <Popover width={300} position="bottom-start" withArrow shadow="md" zIndex={1000}>
                             <Popover.Target>
                                 <Flex className={`min-w-[200px] !justify-between border px-2 py-1 rounded-md cursor-pointer`}
                                     gap="md"
@@ -112,7 +269,7 @@ const ProjectDetailsNav = () => {
                                 </Flex>
                             </Popover.Target>
                             <Popover.Dropdown>
-                                <ScrollArea h={350} offsetScrollbars scrollbarSize={6}>
+                                <ScrollArea h={scrollAreaHeight} offsetScrollbars scrollbarSize={6}>
 
                                     {projectInfo && projectInfo.parent && projectInfo.parent.projects && projectInfo.parent.projects.length > 0 && projectInfo.parent.projects.map((project, index) => (
 
@@ -244,10 +401,11 @@ const ProjectDetailsNav = () => {
                     <div className="flex gap-1">
                         <UsersAvatarGroup users={boardMembers} size={40} maxCount={50} />
                         {hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager']) &&
-                            <Popover height={150} position="bottom" withArrow shadow="md">
+                            <Popover height={150} position="bottom" withArrow shadow="md" opened={isOpenedMemberPopover} onChange={setIsOpenedMemberPopover}>
                                 <Popover.Target>
                                     <Tooltip label="Add Member" position="top" withArrow>
                                         <Avatar
+                                            onClick={ () => setIsOpenedMemberPopover( !isOpenedMemberPopover ) }
                                             // onClick={onAddMember}
                                             size={40}
                                             bg="#ED7D31"
@@ -259,27 +417,76 @@ const ProjectDetailsNav = () => {
                                     </Tooltip>
                                 </Popover.Target>
                                 <Popover.Dropdown>
+                                    <TextInput
+                                        leftSection={<IconSearch size={16} />}
+                                        placeholder="Quick search member"
+                                        mb="sm"
+                                        className="!mb-2"
+                                        value={searchValue}
+                                        onChange={handleSearchInputChange}
+                                    />
+                                    <Text className={`!mb-2`} size="sm" fw={700} c="#202020">{ filteredMembers && filteredMembers.length> 0 ? filteredMembers.length : 0} people available</Text>
 
-                                    <ScrollArea className="h-[290px] min-w-[368px]" scrollbarSize={5}>
+                                    <ScrollArea className="h-[290px] min-w-[380px] max-w-[380px] !pr-1.5" scrollbarSize={5}>
                                         <div className="p-0">
-                                            <Text size="sm" fw={700} c="#202020">{projectInfo.parent && projectInfo.parent.members && projectInfo.parent.members.length > 0 ? projectInfo.parent.members.length : 0} people available</Text>
+
                                             <div className="mt-2">
-                                                {projectInfo.parent && projectInfo.parent.members && projectInfo.parent.members.length > 0 && projectInfo.parent.members.map((member) => (
-                                                    <div key={member.id} className="ml-single flex items-center border-b border-solid border-[#ffffff] py-1 justify-between">
-                                                        <Avatar src={member.avatar} size={40} radius={32} />
-                                                        <div className="mls-ne ml-3 w-[80%]">
-                                                            <Text size="sm" fw={700} c="#202020">{member.name}</Text>
+                                                { filteredMembers && filteredMembers.length > 0 && filteredMembers.map((member) => (
+                                                    <div key={member.id} className="ml-single flex items-center border-b border-solid border-[#ffffff] py-1.5 justify-between gap-1">
+                                                        {/*<Avatar src={member.avatar} size={40} radius={32} />*/}
+                                                        <UserAvatarSingle user={member} size={32} />
+                                                        <div className="mls-ne ml-2 w-full">
+                                                            <Text lineClamp={1} size="sm" fw={700} c="#202020">{member.name}</Text>
+                                                            <Text lineClamp={1} size="sm" fw={100} c="#202020">{member.email}</Text>
                                                         </div>
-                                                        <button
-                                                            onClick={() => handleAssignButtonClick(member)}
-                                                            className={`rounded-[5px] h-[32px] px-2 py-0 w-[100px] ml-2 ${selectedMembers.some((selectedMember) => parseInt(selectedMember.id) === parseInt(member.id)) ? 'bg-[#f00]' : 'bg-[#39758D]'}`}
+
+                                                        <Button
+                                                            radius="sm"
+                                                            height={24}
+                                                            style={{
+                                                                backgroundColor: addedMembers.includes(member.id) ? "#f00f00" : "#39758D", // Conditional background color
+                                                                color: "#fff",
+                                                                fontWeight: 400,
+                                                                padding: "5px 0px",
+                                                                width: "100px",
+                                                            }}
+                                                            // disabled={addedMembers.includes(member.id)}
+                                                            size="sm"
+                                                            marginLeft={2}
+                                                            onClick={ () =>
+                                                                ( addedMembers.includes(member.id) ? handleRemoveButtonClick : handleAssignButtonClick )(member)
+                                                            }
                                                         >
-                                                            <Text size="sm" fw={400} c="#fff">
-                                                                {selectedMembers.some((selectedMember) => parseInt(selectedMember.id) === parseInt(member.id)) ? 'Remove' : 'Assign'}
-                                                            </Text>
-                                                        </button>
+                                                            {addedMembers.includes(member.id) ? 'Remove' : 'Add'}
+                                                        </Button>
+
                                                     </div>
                                                 ))}
+                                                { filteredMembers && filteredMembers.length === 0 && isEmailValid &&
+                                                    <div className="ml-single flex items-center border-b border-solid border-[#C2D4DC] py-3 justify-between">
+                                                        <Avatar size={32} radius={32} />
+                                                        <div className="mls-ne ml-2 w-full">
+                                                            <Text lineClamp={1} size="sm" fw={100} c="#202020">{searchValue}</Text>
+                                                        </div>
+                                                        <Button
+                                                            radius="sm"
+                                                            height={24}
+                                                            style={{
+                                                                backgroundColor: "#39758D", // Conditional background color
+                                                                color: "#fff",
+                                                                fontWeight: 400,
+                                                                padding: "5px",
+                                                                minWidth: "110px",
+                                                            }}
+                                                            size="sm"
+                                                            marginLeft={2}
+                                                            onClick={() => handleSendInvite(searchValue)}
+                                                        >
+                                                            Send Invite
+                                                        </Button>
+
+                                                    </div>
+                                                }
                                             </div>
                                         </div>
                                     </ScrollArea>

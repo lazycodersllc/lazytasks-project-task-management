@@ -1,20 +1,20 @@
 import { IconUserCircle } from '@tabler/icons-react';
-import React, {useState, useRef, useEffect, Fragment} from 'react';
-import {Avatar, ScrollArea, Text, Tooltip} from '@mantine/core';
-import {useDispatch, useSelector} from 'react-redux';
-import {editTask, setEditableTask} from "../../../../Settings/store/taskSlice";
-import {hasPermission} from "../../../../ui/permissions";
+import React, { useState, useRef, useEffect, Fragment } from 'react';
+import { Popover, Avatar, ScrollArea, Text, Tooltip } from '@mantine/core';
+import { useDispatch, useSelector } from 'react-redux';
+import { editTask, setEditableTask } from "../../../../Settings/store/taskSlice";
+import { hasPermission } from "../../../../ui/permissions";
 import acronym from "../../../../ui/acronym";
 import useTwColorByName from "../../../../ui/useTwColorByName";
 import UserAvatarSingle from "../../../../ui/UserAvatarSingle";
-const TaskAssignTo = ({ taskId, assigned, view, assignedMember= {}}) => {
+const TaskAssignTo = ({ taskId, assigned, view, assignedMember = {} }) => {
     const dispatch = useDispatch();
 
-    const {boardMembers} = useSelector((state) => state.settings.task);
+    const { boardMembers } = useSelector((state) => state.settings.task);
     const [showMembersList, setShowMembersList] = useState(false);
-    const [members, setMembers] = useState(boardMembers? boardMembers: []);
-    const {loggedUserId} = useSelector((state) => state.auth.user)
-    const {loggedInUser} = useSelector((state) => state.auth.session)
+    const [members, setMembers] = useState(boardMembers ? boardMembers : []);
+    const { loggedUserId } = useSelector((state) => state.auth.user)
+    const { loggedInUser } = useSelector((state) => state.auth.session)
 
 
     const [selectedMember, setSelectedMember] = useState((assigned && assigned.id) ? assigned : null);
@@ -56,37 +56,50 @@ const TaskAssignTo = ({ taskId, assigned, view, assignedMember= {}}) => {
         );
 
         assignedMember(member);
-    
+
         setSelectedMember(member);
         setShowMembersList(false);
         if (taskId && taskId !== 'undefined' && member) {
-            dispatch(editTask({id: taskId, data: {assigned_to: member, 'updated_by': loggedUserId}}))
+            dispatch(editTask({ id: taskId, data: { assigned_to: member, 'updated_by': loggedInUser ? loggedInUser.loggedUserId : loggedUserId } }))
         }
     };
     const bgColor = useTwColorByName();
 
-    return (
-        <Fragment>
-            <div onClick={handleAssignedToButtonClick} className="assignto-btn">
-                {selectedMember ? (
+    // Check permission
+    const hasAccess = hasPermission(
+        loggedInUser && loggedInUser.llc_permissions,
+        ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']
+    );
 
+    return (
+        <Popover
+            opened={showMembersList && hasAccess}
+            onClose={() => setShowMembersList(false)}
+            width={348}
+            position="bottom"
+            withArrow
+            shadow="md"
+        >
+            <Popover.Target>
+                <div onClick={handleAssignedToButtonClick} className="assignto-btn">
+                    {selectedMember ? (
                         <div className="flex items-center gap-2">
-                            <Tooltip label={`Assigned`} position="top" withArrow>
+                            <Tooltip label="Assigned" position="top" withArrow>
                                 <Avatar
-                                    color={ `${bgColor(selectedMember.name)["font-color"]}` }
-                                    bg={ `${bgColor(selectedMember.name)["bg-color"]}` }
+                                    color={`${bgColor(selectedMember.name)["font-color"]}`}
+                                    bg={`${bgColor(selectedMember.name)["bg-color"]}`}
                                     size={32}
                                     radius={32}
-                                    src={selectedMember.avatar?selectedMember.avatar:null}
-
+                                    src={selectedMember.avatar || null}
                                 >
-                                    { selectedMember.avatar ? '' : <Text style={{ lineHeight:"14px"}} size="xs">{acronym(selectedMember.name)}</Text> }
+                                    {!selectedMember.avatar && (
+                                        <Text style={{ lineHeight: "14px" }} size="xs">
+                                            {acronym(selectedMember.name)}
+                                        </Text>
+                                    )}
                                 </Avatar>
                             </Tooltip>
-
-                            {/*<Avatar src={selectedMember.avatar} size={32} radius={32}/>*/}
-                            {!(view === 'cardView') && (
-                                // <p className="ml-2">{selectedMember.name}</p>
+                            {view !== "cardView" && (
                                 <Tooltip label={selectedMember.name} position="top" withArrow>
                                     <Text lineClamp={1} size="sm" fw={500} c="#202020" className="ml-2">
                                         {selectedMember.name}
@@ -94,35 +107,31 @@ const TaskAssignTo = ({ taskId, assigned, view, assignedMember= {}}) => {
                                 </Tooltip>
                             )}
                         </div>
-                ) : (
-                    <div className="flex items-center">
-                        <div className="h-[30x] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer">
-                            <Tooltip label={`Assign to`} position="top" withArrow>
-                                <IconUserCircle color="#4d4d4d" size="20" stroke={1.25} />
-                            </Tooltip>
+                    ) : (
+                        <div className="flex items-center">
+                            <div className="h-[30px] w-[30px] border border-dashed border-[#202020] rounded-full p-1 cursor-pointer">
+                                <Tooltip label="Assign to" position="top" withArrow>
+                                    <IconUserCircle color="#4d4d4d" size={20} stroke={1.25} />
+                                </Tooltip>
+                            </div>
                         </div>
-                    </div>
-                )
-                }
-            </div>
+                    )}
+                </div>
+            </Popover.Target>
 
-            {showMembersList && hasPermission(loggedInUser && loggedInUser.llc_permissions, ['superadmin', 'admin', 'director', 'manager', 'line_manager', 'employee', 'task-edit']) && (
-                <div
-                    ref={membersListRef}
-                    className="shadow-lg members-lists absolute w-[368px] bg-white mt-1 border border-solid border-[#ffffff] rounded-lg z-[9]"
-                > 
+            <Popover.Dropdown>
+                <div ref={membersListRef}>
                     <ScrollArea h={272}>
                         <div className="p-3">
                             <Text size="sm" fw={700} c="#202020">
-                                {boardMembers && boardMembers.length>0 ? boardMembers.length: 0 } people available
+                                {boardMembers?.length || 0} people available
                             </Text>
                             <div className="mt-3">
-                                {boardMembers && boardMembers.length>0 && boardMembers.map((member) => (
+                                {boardMembers?.map((member) => (
                                     <div
                                         key={member.id}
                                         className="ml-single flex items-center border-b border-solid border-[#C2D4DC] py-1 justify-between"
                                     >
-                                        {/*<Avatar src={member.avatar} size={32} radius={32} />*/}
                                         <UserAvatarSingle user={member} size={32} />
                                         <div className="mls-ne ml-3 w-[80%]">
                                             <Text size="sm" fw={700} c="#202020">
@@ -134,7 +143,7 @@ const TaskAssignTo = ({ taskId, assigned, view, assignedMember= {}}) => {
                                             className="rounded-[5px] h-[32px] px-1 py-0 w-[100px] ml-2 bg-[#39758D]"
                                         >
                                             <Text size="sm" fw={400} c="#fff">
-                                                {selectedMember && selectedMember.id === member.id ? 'Assigned' : 'Assign'}
+                                                {selectedMember?.id === member.id ? "Assigned" : "Assign"}
                                             </Text>
                                         </button>
                                     </div>
@@ -143,8 +152,8 @@ const TaskAssignTo = ({ taskId, assigned, view, assignedMember= {}}) => {
                         </div>
                     </ScrollArea>
                 </div>
-            )}
-        </Fragment>
+            </Popover.Dropdown>
+        </Popover>
     );
 };
 

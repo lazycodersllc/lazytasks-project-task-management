@@ -56,9 +56,9 @@ const MyTask = () => {
             
             <div className='dashboard'>
                 <Container size="full">
-                    <div className="settings-page-card bg-white rounded-xl p-6 pt-3 my-5 mb-0">
+                    <div className="settings-page-card bg-white rounded-xl p-6 pt-3 mt-5">
 
-                        <Grid columns={12}>
+                        <Grid columns={12} className="pb-3">
                             <Grid.Col span={9}>
                                 <div className='mt-2 mb-3 d-flex justify-between'>
                                     <Grid  align="center">

@@ -34,6 +34,7 @@ const AddTaskDrawerFromCalendar = ({ startDate, endDate, project, taskAddDrawerO
     const dispatch = useDispatch();
     const theme = useMantineTheme();
     const {loggedUserId} = useSelector((state) => state.auth.user)
+    const {loggedInUser} = useSelector((state) => state.auth.session)
     const {success} = useSelector((state) => state.settings.task);
 
     const icon = <IconPaperclip style={{ width: rem(18), height: rem(18) }} stroke={1.5} />;
@@ -98,7 +99,7 @@ const AddTaskDrawerFromCalendar = ({ startDate, endDate, project, taskAddDrawerO
             name: taskName,
             project_id: projectId,
             task_section_id: taskSectionId,
-            created_by: loggedUserId,
+            created_by: loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
             assigned_to: selectedMember,
             members: selectedFollower,
             start_date: selectedDueDate,

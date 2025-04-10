@@ -27,7 +27,7 @@ const DeleteProjectModal = (props) => {
     }*/
     const deleteHandler = () => modals.openConfirmModal({
         title: (
-            <Title order={5}>Are you sure this project delete?</Title>
+            <Title order={5}>You are parmanently deleting this project</Title>
         ),
         size: 'sm',
         radius: 'md',
@@ -35,8 +35,7 @@ const DeleteProjectModal = (props) => {
         centered: true,
         children: (
             <Text size="sm">
-                This action is so important that you are required to confirm it with a modal. Please click
-                one of these buttons to proceed.
+                Are you sure you want to delete this project?
             </Text>
         ),
         labels: { confirm: 'Confirm', cancel: 'Cancel' },

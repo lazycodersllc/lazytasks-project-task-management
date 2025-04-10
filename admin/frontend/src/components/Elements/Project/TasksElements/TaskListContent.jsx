@@ -38,7 +38,7 @@ const TaskListContent = ({ listType, view, taskSection, projectId, taskSectionId
         {(dropProvided, snapshot) => (
             <div
                 style={{ transition: 'background-color 0.3s ease' }}
-                className={`w-full h-full min-h-[25px] ${tasks && tasks.length ===0 ? 'border-b border-gray-200' : ''}`}
+                className={`w-full h-full min-h-[25px] !px-[5px] ${tasks && tasks.length ===0 ? 'border-b border-gray-200' : ''}`}
                 ref={dropProvided.innerRef}
                 {...dropProvided.droppableProps}
             >

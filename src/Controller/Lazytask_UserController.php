@@ -32,7 +32,9 @@ final class Lazytask_UserController {
 
 // Get all the user roles as an array.
 				$user_roles = $user->roles;
-
+				if( $user_roles && in_array('lazytasks_role', $user_roles) && $user->user_status == 0) {
+					continue;
+				}
 				$returnArray[] = [
 					'id' => $value['ID'],
 					'name' => $value['display_name'],
@@ -271,10 +273,25 @@ final class Lazytask_UserController {
 		if($lazytask_fcm_token != ''){
 			update_user_meta($user->ID, 'lazytask_fcm_token', $lazytask_fcm_token);
 		}
+		$userRoles = $user->roles;
+		if( in_array('lazytasks_role', $userRoles) && $user->user_status == 0) {
+			$this->update_user_status($user->ID, 1);
+		}
 
 		$token =  JWT::encode($token, $secret_key, 'HS256');
 
 		return new WP_REST_Response(array( 'status'=> 200, 'code'=>'is_valid', 'message'=> 'Success', 'token' => $token));
+	}
+
+   private	function update_user_status($user_id, $status)
+   {
+	   global $wpdb;
+	   $db = Lazytask_DatabaseTableSchema::get_global_wp_db($wpdb);
+	   $db->update(
+		   $db->users,
+			['user_status' => $status],
+			['ID' => $user_id]
+		);
 	}
 
 // Function to generate JWT token
@@ -636,7 +653,7 @@ final class Lazytask_UserController {
 				'user_email'     => $email,
 				'user_nicename'       => $nickname,
 				'display_name'   => $firstName . ' ' . $lastName,
-				'user_registered' => gmdate('Y-m-d H:i:s'),
+				'user_registered' => current_time('mysql'),
 			);
 			$user_id = wp_insert_user($args);
 			if (!is_wp_error($user_id)) {
@@ -831,7 +848,8 @@ final class Lazytask_UserController {
 				$data['childTasks'] = isset($tasks['childData']) ? $tasks['childData'] : null;
 				$data['userProjects'] = isset($projectsByUser['projects'][$userId]) && sizeof($projectsByUser['projects'][$userId]) > 0 ? array_values($projectsByUser['projects'][$userId]) : [];
 				$data['taskStatus'] = isset($projectsByUser['taskStatus']) && sizeof($projectsByUser['taskStatus']) > 0 ? array_values($projectsByUser['taskStatus']) : [];
-
+				$data['allTasks'] = $tasks['data'] ? $tasks['data'] : [];
+				
 				return new WP_REST_Response(['status'=>200, 'data'=>$data]);
 			}
 			$data['userProjects'] = isset($projectsByUser[$userId]) && sizeof($projectsByUser[$userId]) > 0 ? array_values($projectsByUser[$userId]) : [];

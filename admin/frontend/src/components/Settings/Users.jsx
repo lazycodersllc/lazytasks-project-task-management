@@ -1,14 +1,10 @@
 import React, {Fragment, useEffect} from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {Container, Grid, ScrollArea} from '@mantine/core';
-import Header from '../Header';
-import { setUsers } from '../../reducers/usersSlice';
+// import { setUsers } from '../../reducers/usersSlice';
 import UserCard from '../Elements/UserCard';
-import SettingsNav from './SettingsNav';
 import ProfileCreateButton from "../Elements/Button/ProfileCreateButton";
 import {fetchAllMembers} from "../../store/auth/userSlice";
-import CreateProjectModal from "../Elements/Modal/Project/CreateProjectModal";
-import ProjectCard from "../Elements/ProjectCard";
 import {hasPermission} from "../ui/permissions";
 const Users = () => {
     // const users = useSelector((state) => state.users);
@@ -20,11 +16,11 @@ const Users = () => {
     useEffect(() => {
       // Dispatch an action to set users data when the component mounts
         dispatch(fetchAllMembers())
-        if(allMembers && allMembers.length>0){
+        /*if(allMembers && allMembers.length>0){
             dispatch(setUsers(allMembers));
-        }
+        }*/
     }, [dispatch]);
-    // console.log(usersData);
+
   return (
     <Fragment>
         <ScrollArea className="h-[calc(100vh-250px)] pb-[2px]" scrollbarSize={4}>

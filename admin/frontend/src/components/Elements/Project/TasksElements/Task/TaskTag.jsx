@@ -45,7 +45,7 @@ const TaskTag = ({taskId, taskTags}) => {
         if(removedTag){
             const data= {
                 'name': removedTag,
-                'user_id': loggedUserId,
+                'user_id': loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
                 'task_id': taskId
             };
             dispatch(deleteTagFromTask(data))
@@ -56,7 +56,7 @@ const TaskTag = ({taskId, taskTags}) => {
         if(addTag){
             const data={
                 'name': addTag,
-                'user_id': loggedUserId,
+                'user_id': loggedInUser ? loggedInUser.loggedUserId : loggedUserId,
                 'task_id': taskId
             };
             dispatch(addTagToTask(data))
